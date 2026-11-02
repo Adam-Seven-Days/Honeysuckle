@@ -1,0 +1,190 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 3,
+    "identityHash": "56b67369a439373131084bf61cc07be8",
+    "entities": [
+      {
+        "tableName": "history",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bvid` TEXT NOT NULL, `cid` INTEGER NOT NULL, `title` TEXT NOT NULL, `cover_url` TEXT NOT NULL, `duration_sec` INTEGER NOT NULL, `position_sec` INTEGER NOT NULL, `updated_at_epoch_sec` INTEGER NOT NULL, PRIMARY KEY(`bvid`))",
+        "fields": [
+          {
+            "fieldPath": "bvid",
+            "columnName": "bvid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "cid",
+            "columnName": "cid",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "coverUrl",
+            "columnName": "cover_url",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "durationSec",
+            "columnName": "duration_sec",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "positionSec",
+            "columnName": "position_sec",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAtEpochSec",
+            "columnName": "updated_at_epoch_sec",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bvid"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_history_updated_at_epoch_sec",
+            "unique": false,
+            "columnNames": [
+              "updated_at_epoch_sec"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_history_updated_at_epoch_sec` ON `${TABLE_NAME}` (`updated_at_epoch_sec`)"
+          }
+        ]
+      },
+      {
+        "tableName": "search_history",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`keyword` TEXT NOT NULL, `updated_at_epoch_sec` INTEGER NOT NULL, PRIMARY KEY(`keyword`))",
+        "fields": [
+          {
+            "fieldPath": "keyword",
+            "columnName": "keyword",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAtEpochSec",
+            "columnName": "updated_at_epoch_sec",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "keyword"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_search_history_updated_at_epoch_sec",
+            "unique": false,
+            "columnNames": [
+              "updated_at_epoch_sec"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_search_history_updated_at_epoch_sec` ON `${TABLE_NAME}` (`updated_at_epoch_sec`)"
+          }
+        ]
+      },
+      {
+        "tableName": "favorite",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bvid` TEXT NOT NULL, `aid` INTEGER NOT NULL, `title` TEXT NOT NULL, `cover_url` TEXT NOT NULL, `duration_sec` INTEGER NOT NULL, `up_name` TEXT NOT NULL, `folder_id` INTEGER NOT NULL, `folder_title` TEXT NOT NULL, `added_at_epoch_sec` INTEGER NOT NULL, PRIMARY KEY(`bvid`))",
+        "fields": [
+          {
+            "fieldPath": "bvid",
+            "columnName": "bvid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "aid",
+            "columnName": "aid",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "coverUrl",
+            "columnName": "cover_url",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "durationSec",
+            "columnName": "duration_sec",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "upName",
+            "columnName": "up_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "folderId",
+            "columnName": "folder_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "folderTitle",
+            "columnName": "folder_title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "addedAtEpochSec",
+            "columnName": "added_at_epoch_sec",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "bvid"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_favorite_added_at_epoch_sec",
+            "unique": false,
+            "columnNames": [
+              "added_at_epoch_sec"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_favorite_added_at_epoch_sec` ON `${TABLE_NAME}` (`added_at_epoch_sec`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '56b67369a439373131084bf61cc07be8')"
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- 后台播放:MediaSessionService 托管通知与媒体键。
+             exported 留给系统媒体键与蓝牙设备发现这个会话;没有自定义 Action,外部拿不到内部数据。 -->
+        <service
+            android:name=".HsyPlaybackService"
+            android:exported="true"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>

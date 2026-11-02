@@ -1,0 +1,24 @@
+# detekt 规则覆盖层(格式交给 ktlint,规则语义交给 detekt)
+# 全量默认规则由构建脚本的 buildUponDefaultConfig = true 提供,此文件只写与本工程口径不符的覆盖项。
+# 每一项覆盖都必须带"为什么",不允许靠关规则来凑绿灯;能在代码里改好的一律改代码。
+
+style:
+  ReturnCount:
+    # 网络/信封解析函数的错误归一化就是一条条卫哨早退(→ AppError.Network/Server/Decode)。
+    # 把它们压成 2 个 return 只会换成嵌套 if/else 或中间变量,可读性更差。
+    # 开 excludeGuardClauses:函数开头的连续早退不计入统计,函数体的主干仍然受 max 约束。
+    excludeGuardClauses: true
+
+naming:
+  FunctionNaming:
+    # Compose 的官方约定是 @Composable 函数用 PascalCase(HsyTheme 等),与 Kotlin 通用命名规则相反。
+    ignoreAnnotated:
+      - 'Composable'
+
+complexity:
+  LongParameterList:
+    # 只数"调用方非传不可"的参数:带默认值的槽位(modifier / 命令句柄 / 回调)在调用点是可以省略的,
+    # 不构成"签名太长读不动"的那笔负担。Compose 组件按框架约定天然带 3~4 个默认槽 ——
+    # DanmakuHost 必填参数只有 2 个(clock、timeline),整签 6 个。
+    # 规则针对的"必填参数爆炸"仍然生效:必填项一个都不豁免。
+    ignoreDefaultParameters: true

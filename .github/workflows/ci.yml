@@ -1,0 +1,29 @@
+name: ci
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK (基础包 + 当前平台)
+        uses: android-actions/setup-android@v3
+
+      - name: Build(跳 AGP Android Lint)
+        # 这里跳的是 Android 自带的 lint,不在质量卡口范围内(那条定的是 ktlint + detekt)
+        run: ./gradlew build -x lint -x lintDebug -x lintRelease --stacktrace
+
+      - name: Static analysis (ktlint + detekt)
+        run: ./gradlew ktlintCheck detekt --stacktrace

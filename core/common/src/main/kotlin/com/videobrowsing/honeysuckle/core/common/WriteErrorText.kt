@@ -1,0 +1,49 @@
+package com.videobrowsing.honeysuckle.core.common
+
+/** 平台"账号未登录"的业务码:写接口的游客门禁与读接口的游客分支都认它 */
+const val CODE_NOT_LOGGED_IN = -101
+
+/** csrf 失效:凭证还在,但 `bili_jct` 对不上,再点一次也不会成 */
+private const val CODE_CSRF_INVALID = -111
+
+/** 平台风控(HTTP 412 与业务码 -352 是同一类:歇一会儿,不是连点) */
+private const val CODE_RISK_CONTROL = -352
+private const val HTTP_RISK_CONTROL = 412
+private const val CODE_REQUEST_TOO_FREQUENT = -509
+
+/** 投币域的业务码:硬币不够是"换一次别的事",不是重试能好的 */
+private const val CODE_COIN_INSUFFICIENT = -104
+
+/** 评论域的业务码 */
+private const val CODE_COMMENT_CLOSED = 12002
+private const val CODE_COMMENT_TOO_FAST = 12009
+private const val CODE_COMMENT_REJECTED = 12015
+
+/**
+ * 写操作失败 → 一句人话(风控错误页要能说清下一步)。
+ *
+ * 与 [userMessage] 分开,是因为写有它自己的那几张脸:同一个 412 出现在列表刷新上叫"歇一会儿再拉",
+ * 出现在一次点赞上叫"这一下被挡了";`-101` 在写链里意味着"该去登录",而不是"这一页坏了"。
+ * 文案仍留在 `:core:common`,数据层只出分类。
+ */
+fun writeErrorText(action: String, error: AppError): String {
+    if (error.isLoginRequired()) return "${action}需要登录 · 去登录"
+    // 码表另起一段:写接口那张脸主要是平台的业务码,一条条摊在同一个 when 里会把复杂度堆到读不动
+    if (error is AppError.Server) return serverWriteText(action, error)
+    return "${action}失败:${error.userMessage()}"
+}
+
+private fun serverWriteText(action: String, error: AppError.Server): String = when (error.code) {
+    CODE_CSRF_INVALID -> "${action}失败:登录凭证过期,请重新登录"
+    CODE_RISK_CONTROL -> "${action}被平台风控挡下 · 歇一会儿再试,连点只会更久"
+    HTTP_RISK_CONTROL -> "${action}被平台挡回来(412)· 歇一会儿再试"
+    CODE_REQUEST_TOO_FREQUENT -> "${action}太频繁了 · 歇半分钟再来"
+    CODE_COMMENT_CLOSED -> "这个视频关闭了评论"
+    CODE_COMMENT_TOO_FAST -> "评论发得太快 · 歇一会儿再发"
+    CODE_COMMENT_REJECTED -> "内容没过审 · 换个说法再试"
+    CODE_COIN_INSUFFICIENT -> "硬币不够了 · 这次没投出去"
+    else -> "${action}失败:${error.userMessage()}"
+}
+
+/** 这一发失败是不是"该去登录":界面据此把入口换成扫码页,而不是反复重试 */
+fun AppError.isLoginRequired(): Boolean = this is AppError.Server && code == CODE_NOT_LOGGED_IN

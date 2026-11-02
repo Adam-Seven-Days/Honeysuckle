@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    单色层(Android 13+ 主题图标):同一株金银花的剪影。
+    花瓣只描边,六枚瓣与实心花心仍分得开;茎与叶实心。系统只取 alpha 并重上色。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path
+        android:pathData="M54,47 L54,84"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5"
+        android:strokeLineCap="round" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M53,78 C45,74 40,76 36,80 C42,85 49,84 53,80 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M55,76 C63,72 69,74 73,78 C67,82 60,81 55,78 Z" />
+
+    <group android:translateX="54" android:translateY="47">
+        <group android:rotation="30">
+            <path
+                android:fillColor="#00000000"
+                android:strokeColor="#FFFFFF"
+                android:strokeWidth="2.6"
+                android:strokeLineJoin="round"
+                android:pathData="M0,-25 C6.2,-17.5 7.2,-7 0,0 C-7.2,-7 -6.2,-17.5 0,-25 Z" />
+        </group>
+        <group android:rotation="90">
+            <path
+                android:fillColor="#00000000"
+                android:strokeColor="#FFFFFF"
+                android:strokeWidth="2.6"
+                android:strokeLineJoin="round"
+                android:pathData="M0,-25 C6.2,-17.5 7.2,-7 0,0 C-7.2,-7 -6.2,-17.5 0,-25 Z" />
+        </group>
+        <group android:rotation="150">
+            <path
+                android:fillColor="#00000000"
+                android:strokeColor="#FFFFFF"
+                android:strokeWidth="2.6"
+                android:strokeLineJoin="round"
+                android:pathData="M0,-25 C6.2,-17.5 7.2,-7 0,0 C-7.2,-7 -6.2,-17.5 0,-25 Z" />
+        </group>
+        <group android:rotation="210">
+            <path
+                android:fillColor="#00000000"
+                android:strokeColor="#FFFFFF"
+                android:strokeWidth="2.6"
+                android:strokeLineJoin="round"
+                android:pathData="M0,-25 C6.2,-17.5 7.2,-7 0,0 C-7.2,-7 -6.2,-17.5 0,-25 Z" />
+        </group>
+        <group android:rotation="270">
+            <path
+                android:fillColor="#00000000"
+                android:strokeColor="#FFFFFF"
+                android:strokeWidth="2.6"
+                android:strokeLineJoin="round"
+                android:pathData="M0,-25 C6.2,-17.5 7.2,-7 0,0 C-7.2,-7 -6.2,-17.5 0,-25 Z" />
+        </group>
+        <group android:rotation="330">
+            <path
+                android:fillColor="#00000000"
+                android:strokeColor="#FFFFFF"
+                android:strokeWidth="2.6"
+                android:strokeLineJoin="round"
+                android:pathData="M0,-25 C6.2,-17.5 7.2,-7 0,0 C-7.2,-7 -6.2,-17.5 0,-25 Z" />
+        </group>
+
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M0,-8 A8,8 0 1,1 0,8 A8,8 0 1,1 0,-8 Z" />
+    </group>
+</vector>

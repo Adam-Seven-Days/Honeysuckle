@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    自适应图标的前景层:金银花(忍冬)。
+    藤茎从花心一路长到根,六枚窄瓣金 / 银交替(从右上那枚金瓣起算),下衬两片叶。
+    花瓣整体偏转 30°:底部让出缺口,茎身才看得见地接到花心。
+    纯矢量、无位图:108×108 viewport,内容收在中心 66dp 安全圆内,交系统按圆形 / 方圆 / 圆角遮罩裁切。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 藤茎:先画,花瓣自上压下,底部两瓣之间露出茎身 -->
+    <path
+        android:pathData="M54,47 L54,84"
+        android:strokeColor="#4E7A46"
+        android:strokeWidth="5"
+        android:strokeLineCap="round" />
+
+    <!-- 两片叶 -->
+    <path
+        android:fillColor="#5B8C51"
+        android:pathData="M53,78 C45,74 40,76 36,80 C42,85 49,84 53,80 Z" />
+    <path
+        android:fillColor="#6FA05F"
+        android:pathData="M55,76 C63,72 69,74 73,78 C67,82 60,81 55,78 Z" />
+
+    <!-- 六枚花瓣:金 / 银交替 -->
+    <group android:translateX="54" android:translateY="47">
+        <group android:rotation="30">
+            <path
+                android:fillColor="#E8B931"
+                android:strokeColor="#B8891B"
+                android:strokeWidth="1.6"
+                android:strokeLineJoin="round"
+                android:pathData="M0,-25 C6.2,-17.5 7.2,-7 0,0 C-7.2,-7 -6.2,-17.5 0,-25 Z" />
+        </group>
+        <group android:rotation="90">
+            <path
+                android:fillColor="#C3CBC1"
+                android:strokeColor="#7C877B"
+                android:strokeWidth="1.6"
+                android:strokeLineJoin="round"
+                android:pathData="M0,-25 C6.2,-17.5 7.2,-7 0,0 C-7.2,-7 -6.2,-17.5 0,-25 Z" />
+        </group>
+        <group android:rotation="150">
+            <path
+                android:fillColor="#E8B931"
+                android:strokeColor="#B8891B"
+                android:strokeWidth="1.6"
+                android:strokeLineJoin="round"
+                android:pathData="M0,-25 C6.2,-17.5 7.2,-7 0,0 C-7.2,-7 -6.2,-17.5 0,-25 Z" />
+        </group>
+        <group android:rotation="210">
+            <path
+                android:fillColor="#C3CBC1"
+                android:strokeColor="#7C877B"
+                android:strokeWidth="1.6"
+                android:strokeLineJoin="round"
+                android:pathData="M0,-25 C6.2,-17.5 7.2,-7 0,0 C-7.2,-7 -6.2,-17.5 0,-25 Z" />
+        </group>
+        <group android:rotation="270">
+            <path
+                android:fillColor="#E8B931"
+                android:strokeColor="#B8891B"
+                android:strokeWidth="1.6"
+                android:strokeLineJoin="round"
+                android:pathData="M0,-25 C6.2,-17.5 7.2,-7 0,0 C-7.2,-7 -6.2,-17.5 0,-25 Z" />
+        </group>
+        <group android:rotation="330">
+            <path
+                android:fillColor="#C3CBC1"
+                android:strokeColor="#7C877B"
+                android:strokeWidth="1.6"
+                android:strokeLineJoin="round"
+                android:pathData="M0,-25 C6.2,-17.5 7.2,-7 0,0 C-7.2,-7 -6.2,-17.5 0,-25 Z" />
+        </group>
+
+        <!-- 花心:绿盘托一点金 -->
+        <path
+            android:fillColor="#4E7A46"
+            android:pathData="M0,-8 A8,8 0 1,1 0,8 A8,8 0 1,1 0,-8 Z" />
+        <path
+            android:fillColor="#E8B931"
+            android:pathData="M0,-3.2 A3.2,3.2 0 1,1 0,3.2 A3.2,3.2 0 1,1 0,-3.2 Z" />
+    </group>
+</vector>

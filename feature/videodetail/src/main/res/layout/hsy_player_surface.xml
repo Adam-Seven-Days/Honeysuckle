@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  产品播放页的渲染面。
+
+  surface_type 只能由 XML 属性决定:Media3 1.11 的 PlayerView 没有 setSurfaceType 这类 setter,
+  构造期从 AttributeSet 读一次。选 texture_view 不是风格偏好:SurfaceView 是独立窗口层,
+  Compose 画的弹幕层有被画面盖掉的风险,两者必须在同一张画布上才叠得住。
+
+  控制条由页面自己画(use_controller=false):倍速、清晰度、全屏这几个入口要和弹幕层共用一套状态,
+  交给 PlayerView 自带控制器就会出现两份进度与两套显隐规则。
+-->
+<androidx.media3.ui.PlayerView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    app:surface_type="texture_view"
+    app:use_controller="false" />

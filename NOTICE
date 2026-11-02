@@ -1,0 +1,24 @@
+金银花 Honeysuckle
+Copyright (c) 2026 Adam-Seven-Days
+
+本应用以 MIT License 发布,完整全文见本目录 LICENSE。
+
+本应用使用以下第三方开源组件,按各自许可使用,版权归各自作者:
+
+AndroidX / Jetpack (Compose Runtime / UI / Foundation、Lifecycle、Navigation、Room、DataStore)
+  Apache License 2.0 — https://www.apache.org/licenses/LICENSE-2.0
+AndroidX Media3 (ExoPlayer、UI、Session、HLS)
+  Apache License 2.0
+Hilt / Dagger
+  Apache License 2.0
+Kotlin、kotlinx.coroutines、kotlinx.serialization
+  Apache License 2.0
+OkHttp
+  Apache License 2.0
+Coil 3
+  Apache License 2.0
+
+弹幕内核为本仓自研,不包含 DFM / DRE 的代码;其公开设计思路在源码注释中注明来源。
+二维码编码器(字节模式、版本 1–40、L/M/Q/H)同样为本仓自研,按 ISO/IEC 18004 实现,
+不引入任何第三方编解码库。
+本应用不包含任何第三方服务的私有代码或密钥。

@@ -1,0 +1,28 @@
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.{kt,kts}]
+# 风格选型(2026-10-30 全仓实测,原样未格式化的代码上量得):
+#   ktlint_official → 398 条违规;android_studio → 换行类可全量自动修复,与 AS/IntelliJ 排版一致。
+# 故选 android_studio;将来若要转官方风格,动这一行并重跑 ktlintFormat 即可。
+ktlint_code_style = android_studio
+# indent 规则默认按 IntelliJ 口径要 8 空格续行,且拒绝自动修复;全仓手写的是 4 空格续行,
+# 这里把续行缩进定死为 4,规则才与我们实际排版对齐(否则只剩下一片无法自动收敛的 indent 噪声)。
+ij_kotlin_continuation_indent_size = 4
+# 尾逗号方向必须显式定死:留空时 ktlint 会在"补上尾逗号"和"尾逗号多余"之间来回震荡,format 跑两轮都收敛不了。
+ij_kotlin_allow_trailing_comma = true
+ij_kotlin_allow_trailing_comma_on_call_site = true
+# 实测 >100 列 22 行、>120 列 4 行,取 120 作硬线:既保住可读性,人工收尾只涉及 4 行
+max_line_length = 120
+# @Composable 的 PascalCase 函数名是 Compose 生态惯例,放行这类命名违规。
+# 注意:此列表按注解短名匹配,写 androidx.compose.runtime.Composable 这类全限定名不生效。
+ktlint_function_naming_ignore_when_annotated_with = Composable

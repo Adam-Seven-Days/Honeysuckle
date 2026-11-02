@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 纯客户端直连的硬前置:无任何自建后端,全部请求由本 app 直接发往平台接口 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 后台播放:MediaSessionService 以前台媒体服务身份继续出声 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- ExoPlayer 的 setWakeMode:后台缓冲时别让 CPU 睡着把网络拉断 -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- 通知栏播放控制(Android 13 起要运行时授权;拒绝时前台服务仍在,只是通知不展示) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:name=".HsyApplication"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Honeysuckle">
+
+        <!-- 全屏播放会锁横屏:自己接住方向与尺寸变化,不重建 Activity/Compose 树,
+             否则一次横屏会把播放器与整页状态推倒重来(画面黑一帧、进度跳回起点)。
+             PiP(常驻播放阶段的第二件)同样要求接住这些变化:小窗进出不是重建 Activity 的理由。 -->
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:supportsPictureInPicture="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>

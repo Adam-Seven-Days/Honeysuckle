@@ -1,0 +1,361 @@
+package com.videobrowsing.honeysuckle.feature.videodetail
+
+import android.content.Context
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
+import com.videobrowsing.honeysuckle.core.common.formatClock
+import com.videobrowsing.honeysuckle.core.designsystem.component.HsySectionCard
+import com.videobrowsing.honeysuckle.core.designsystem.icon.HsyIcons
+import com.videobrowsing.honeysuckle.core.designsystem.theme.Hsy
+import com.videobrowsing.honeysuckle.core.designsystem.ui.DropdownMenu
+import com.videobrowsing.honeysuckle.core.designsystem.ui.DropdownMenuItem
+import com.videobrowsing.honeysuckle.core.designsystem.ui.FilterChip
+import com.videobrowsing.honeysuckle.core.designsystem.ui.Icon
+import com.videobrowsing.honeysuckle.core.designsystem.ui.OutlinedTextField
+import com.videobrowsing.honeysuckle.core.designsystem.ui.Text
+import com.videobrowsing.honeysuckle.core.designsystem.ui.TextButton
+import com.videobrowsing.honeysuckle.core.designsystem.ui.minimumInteractiveComponentSize
+import com.videobrowsing.honeysuckle.core.model.VideoDetail
+
+@Composable
+internal fun PlaybackNotes(state: VideoDetailUiState, continuing: Boolean) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(
+            text = state.danmakuNote,
+            style = Hsy.typography.bodySmall,
+            color = Hsy.colors.onSurfaceVariant,
+        )
+        val resume = state.resumePositionSec
+        // 引擎里坐着的就是这一条流时,画面/声音从后台沿过来,没有"从历史点重开"这回事
+        Text(
+            text = when {
+                continuing -> "接着后台播放,进度连续"
+                resume > 0 -> "上次看到 ${formatClock(resume.toLong())},已从那里继续"
+                else -> "这一 P 从头开始"
+            },
+            style = Hsy.typography.bodySmall,
+            color = Hsy.colors.onSurfaceVariant,
+        )
+        state.playbackError?.let { error ->
+            Text(
+                text = "取流失败:$error",
+                style = Hsy.typography.bodySmall,
+                color = Hsy.colors.error,
+            )
+        }
+    }
+}
+
+@Composable
+internal fun VideoMeta(state: VideoDetailUiState, detail: VideoDetail, intents: DetailIntents) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            text = detail.brief.title,
+            style = Hsy.typography.titleLarge,
+            color = Hsy.colors.onSurface,
+        )
+        Text(
+            text = statsLineOf(detail.stat),
+            style = Hsy.typography.bodySmall,
+            color = Hsy.colors.onSurfaceVariant,
+        )
+        Text(
+            text = metaLineOf(detail),
+            style = Hsy.typography.bodySmall,
+            color = Hsy.colors.onSurfaceVariant,
+        )
+        MetaActionRow(state, detail, intents)
+        state.interactionMessage?.let { message ->
+            Text(
+                text = message,
+                style = Hsy.typography.bodySmall,
+                color = Hsy.colors.accent,
+                modifier = Modifier.clickable { intents.onAction(VideoDetailAction.DismissMessage) },
+            )
+        }
+    }
+}
+
+/** 互动区那一排:点赞 / 投币 / 收藏 / 分享,游客态多一个扫码入口 */
+@Composable
+private fun MetaActionRow(state: VideoDetailUiState, detail: VideoDetail, intents: DetailIntents) {
+    val context = LocalContext.current
+    val idle = !state.interactionBusy
+    val favorited = state.interaction.favorited == true
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        MetaAction(
+            icon = HsyIcons.thumbUp,
+            label = if (state.interaction.liked) "已点赞" else "点赞",
+            active = state.interaction.liked,
+            enabled = idle,
+            onClick = { intents.onAction(VideoDetailAction.ToggleLike) },
+        )
+        MetaAction(
+            icon = HsyIcons.coin,
+            label = "投币",
+            enabled = idle,
+            onClick = { intents.onAction(VideoDetailAction.AddCoin) },
+        )
+        MetaAction(
+            icon = HsyIcons.star,
+            label = favoriteLabel(state),
+            active = favorited,
+            enabled = idle && !favorited,
+            onClick = { intents.onAction(VideoDetailAction.AddFavorite) },
+        )
+        ShareAction(context = context, detail = detail, enabled = idle)
+        if (!state.loggedIn) {
+            TextButton(onClick = intents.onOpenLogin) { Text("去登录") }
+        }
+    }
+}
+
+/**
+ * 互动区的一枚动作:图标压一行小字,点击区按最小触控尺寸撑开。
+ *
+ * 图标本身不带语义,读屏念的是下面那行文字 —— 同一件事不重复念两遍。
+ */
+@Composable
+private fun MetaAction(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    active: Boolean = false,
+    enabled: Boolean = true,
+) {
+    val color = when {
+        active -> Hsy.colors.accent
+        !enabled -> Hsy.colors.onSurfaceVariant.copy(alpha = DISABLED_ACTION_ALPHA)
+        else -> Hsy.colors.onSurfaceVariant
+    }
+    Column(
+        modifier = Modifier
+            .minimumInteractiveComponentSize()
+            .clip(RoundedCornerShape(Hsy.shapes.medium))
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = color,
+            modifier = Modifier.size(22.dp),
+        )
+        Text(text = label, style = Hsy.typography.labelSmall, color = color)
+    }
+}
+
+/** 分享:菜单里两条路 —— 复制链接(离线可用)与系统分享面板 */
+@Composable
+private fun ShareAction(context: Context, detail: VideoDetail, enabled: Boolean) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        MetaAction(
+            icon = HsyIcons.share,
+            label = "分享",
+            enabled = enabled,
+            onClick = { expanded = true },
+        )
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text("复制链接") },
+                onClick = {
+                    expanded = false
+                    copyVideoLink(context, detail.brief.bvid)
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("系统分享") },
+                onClick = {
+                    expanded = false
+                    shareVideo(context, detail)
+                },
+            )
+        }
+    }
+}
+
+/** 不可点的动作压到这一档:还读得出是什么,但不会以为是可点的 */
+private const val DISABLED_ACTION_ALPHA = 0.45f
+
+@Composable
+internal fun UpCard(
+    detail: VideoDetail,
+    state: VideoDetailUiState,
+    onToggleFollow: () -> Unit,
+    onOpenLogin: () -> Unit,
+) {
+    val loggedIn = state.loggedIn
+    val busy = state.followBusy
+    val following = state.following
+    HsySectionCard(title = "UP 主") {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(Hsy.colors.surfaceVariant),
+            ) {
+                if (detail.ownerAvatarUrl.isNotBlank()) {
+                    AsyncImage(
+                        model = detail.ownerAvatarUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+            Column(
+                modifier = Modifier.padding(start = 12.dp).weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = detail.brief.upName.ifBlank { "未知 UP 主" },
+                    style = Hsy.typography.bodyLarge,
+                    color = Hsy.colors.onSurface,
+                )
+                if (detail.ownerSign.isNotBlank()) {
+                    Text(
+                        text = detail.ownerSign,
+                        style = Hsy.typography.bodySmall,
+                        color = Hsy.colors.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            TextButton(
+                onClick = if (loggedIn) onToggleFollow else onOpenLogin,
+                enabled = !busy,
+            ) {
+                Text(
+                    text = when {
+                        !loggedIn -> "关注 · 需登录"
+                        following == true -> "已关注"
+                        else -> "关注"
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+internal fun Description(description: String) {
+    if (description.isBlank()) return
+    var expanded by remember(description) { mutableStateOf(false) }
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text(text = "视频简介", style = Hsy.typography.titleSmall, color = Hsy.colors.onSurface)
+        Text(
+            text = description,
+            style = Hsy.typography.bodyMedium,
+            color = Hsy.colors.onSurfaceVariant,
+            maxLines = if (expanded) Int.MAX_VALUE else DESCRIPTION_COLLAPSED_LINES,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+        if (description.length > DESCRIPTION_PREVIEW_CHARS) {
+            TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "收起" else "展开") }
+        }
+    }
+}
+
+@Composable
+internal fun PartsRow(state: VideoDetailUiState, onSelect: (Int) -> Unit) {
+    LazyRow(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        itemsIndexed(state.parts) { index, part ->
+            FilterChip(
+                selected = index == state.partIndex,
+                onClick = { onSelect(index) },
+                label = { Text("P${part.index} ${part.title}", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            )
+        }
+    }
+}
+
+/**
+ * 播放器下面那一条发弹幕入口。
+ * 草稿只在本组件里:每敲一个字都往 ViewModel 推一份,会把整页详情跟着重组,
+ * 而这条输入框的中间态只有它自己用得上。清空只发生在"平台真的收下了"那一拍。
+ */
+@Composable
+internal fun DanmakuComposer(state: VideoDetailUiState, onSend: (String) -> Unit, onOpenLogin: () -> Unit) {
+    var draft by remember { mutableStateOf("") }
+    LaunchedEffect(state.danmakuAcceptedAt) {
+        if (state.danmakuAcceptedAt > 0L) draft = ""
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (!state.loggedIn) {
+            Text(
+                text = "发弹幕需要登录",
+                style = Hsy.typography.bodySmall,
+                color = Hsy.colors.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = onOpenLogin) { Text("去登录") }
+        } else {
+            OutlinedTextField(
+                value = draft,
+                onValueChange = { draft = it },
+                modifier = Modifier.weight(1f),
+                placeholder = { Text("发一条弹幕…") },
+                singleLine = true,
+            )
+            Spacer(modifier = Modifier.size(8.dp))
+            TextButton(
+                onClick = { onSend(draft) },
+                enabled = draft.isNotBlank() && !state.danmakuSending,
+            ) { Text(if (state.danmakuSending) "发送中" else "发送") }
+        }
+    }
+}
