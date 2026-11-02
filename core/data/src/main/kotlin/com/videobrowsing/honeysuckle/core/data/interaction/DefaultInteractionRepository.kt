@@ -36,7 +36,8 @@ class DefaultInteractionRepository @Inject constructor(
         }
 
         val liked = api.fetchLiked(aid)
-        val favorited = api.fetchFavorited(aid)
+        val favorited = api.fetchCollectedFolderIds(aid)
+            .flatMap { ids -> HsyResult.Success(ids.isNotEmpty()) }
         when {
             // 两路都失败才算这次读取失败;只挂一路时另一路照常呈现,未知的那一路自己留白
             liked is HsyResult.Failure && favorited is HsyResult.Failure -> HsyResult.Failure(liked.error)
@@ -58,17 +59,21 @@ class DefaultInteractionRepository @Inject constructor(
         writeGuard.requireCsrf().flatMap { csrf -> api.addCoin(aid, csrf) }
     }
 
-    override suspend fun addFavorite(aid: Long): HsyResult<Unit> = withContext(ioDispatcher) {
-        writeGuard.requireCsrf().flatMap { csrf ->
-            val prefs = accountStore.preferences.first()
-            if (prefs.mid <= 0L) {
-                return@flatMap HsyResult.Failure(AppError.Server(CODE_NOT_LOGGED_IN, "账号未登录"))
-            }
-            api.fetchFolders(prefs.mid).flatMap { folders ->
-                val target = folders.firstOrNull()
-                    ?: return@flatMap HsyResult.Failure(AppError.Decode("账号下没有可用的收藏夹"))
-                api.addFavorite(aid, target.id, csrf)
-            }
-        }
+    override suspend fun addFavorite(aid: Long, folderId: Long): HsyResult<Unit> = withContext(ioDispatcher) {
+        writeGuard.requireCsrf().flatMap { csrf -> api.addFavorite(aid, folderId, csrf) }
     }
+
+    override suspend fun favoritedFolderIds(aid: Long): HsyResult<Set<Long>> = withContext(ioDispatcher) {
+        if (!accountStore.preferences.first().isLoggedIn) {
+            return@withContext HsyResult.Failure(AppError.Server(CODE_NOT_LOGGED_IN, "账号未登录"))
+        }
+        api.fetchCollectedFolderIds(aid)
+    }
+
+    override suspend fun removeFavorite(aid: Long, folderIds: Collection<Long>): HsyResult<Unit> =
+        withContext(ioDispatcher) {
+            val ids = folderIds.filter { it > 0L }
+            if (ids.isEmpty()) return@withContext HsyResult.Success(Unit)
+            writeGuard.requireCsrf().flatMap { csrf -> api.removeFavorite(aid, ids, csrf) }
+        }
 }

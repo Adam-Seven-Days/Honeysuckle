@@ -52,7 +52,7 @@ class FavoriteApi(
             }
     }
 
-    fun fetchPage(folderId: Long, page: Int): HsyResult<FavoritePage> {
+    fun fetchPage(folderId: Long, page: Int, keyword: String = "", sort: String = ""): HsyResult<FavoritePage> {
         if (folderId <= 0L) return HsyResult.Failure(AppError.Decode("收藏夹 id 非法:$folderId"))
         if (page < FIRST_PAGE) return HsyResult.Failure(AppError.Decode("页码非法:$page"))
         val url = resourceListUrl.newBuilder()
@@ -60,6 +60,11 @@ class FavoriteApi(
             .setQueryParameter("pn", page.toString())
             .setQueryParameter("ps", PAGE_SIZE.toString())
             .setQueryParameter("platform", PLATFORM_WEB)
+            .apply {
+                // 空串就是"不筛/不指定顺序",不把空参数发给平台
+                if (keyword.isNotBlank()) setQueryParameter("keyword", keyword.trim())
+                if (sort.isNotBlank()) setQueryParameter("order", sort)
+            }
             .build()
         return jsonSource.getJson(url).flatMap { root ->
             HsyEnvelope.dataOf(root).flatMap { data ->
@@ -115,6 +120,18 @@ class FavoriteApi(
             "type" to TYPE_VIDEO,
             "add_media_ids" to "",
             "del_media_ids" to folderId.toString(),
+        ),
+        csrf,
+    ).flatMap { HsyResult.Success(Unit) }
+
+    /** 夹间移动:目标夹进 add_media_ids、来源夹进 del_media_ids,一次写完成 */
+    fun moveItem(aid: Long, fromFolderId: Long, toFolderId: Long, csrf: String): HsyResult<Unit> = postWithCsrf(
+        resourceDealUrl,
+        listOf(
+            "rid" to aid.toString(),
+            "type" to TYPE_VIDEO,
+            "add_media_ids" to toFolderId.toString(),
+            "del_media_ids" to fromFolderId.toString(),
         ),
         csrf,
     ).flatMap { HsyResult.Success(Unit) }

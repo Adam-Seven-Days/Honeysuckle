@@ -108,6 +108,7 @@ internal fun VideoMeta(state: VideoDetailUiState, detail: VideoDetail, intents: 
                 modifier = Modifier.clickable { intents.onAction(VideoDetailAction.DismissMessage) },
             )
         }
+        if (state.favoritePickerVisible) FavoriteFolderDialog(state = state, intents = intents)
     }
 }
 
@@ -139,8 +140,15 @@ private fun MetaActionRow(state: VideoDetailUiState, detail: VideoDetail, intent
             icon = HsyIcons.star,
             label = favoriteLabel(state),
             active = favorited,
-            enabled = idle && !favorited,
-            onClick = { intents.onAction(VideoDetailAction.AddFavorite) },
+            enabled = idle,
+            onClick = {
+                // 游客先登录:收藏夹要读账号,面板开了也只会是空的
+                if (state.loggedIn) {
+                    intents.onAction(VideoDetailAction.OpenFavoritePicker)
+                } else {
+                    intents.onOpenLogin()
+                }
+            },
         )
         ShareAction(context = context, detail = detail, enabled = idle)
         if (!state.loggedIn) {
@@ -224,31 +232,22 @@ internal fun UpCard(
     detail: VideoDetail,
     state: VideoDetailUiState,
     onToggleFollow: () -> Unit,
+    onOpenSpace: () -> Unit,
     onOpenLogin: () -> Unit,
 ) {
     val loggedIn = state.loggedIn
     val busy = state.followBusy
     val following = state.following
+    val canOpenSpace = detail.ownerMid > 0L
     HsySectionCard(title = "UP 主") {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(enabled = canOpenSpace, onClickLabel = "打开 UP 主空间") { onOpenSpace() }
+                .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(Hsy.colors.surfaceVariant),
-            ) {
-                if (detail.ownerAvatarUrl.isNotBlank()) {
-                    AsyncImage(
-                        model = detail.ownerAvatarUrl,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-            }
+            UpAvatar(detail)
             Column(
                 modifier = Modifier.padding(start = 12.dp).weight(1f),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -280,6 +279,26 @@ internal fun UpCard(
                     },
                 )
             }
+        }
+    }
+}
+
+/** UP 头像:有图才画,没图留一块底色,不让行高随加载状态跳 */
+@Composable
+private fun UpAvatar(detail: VideoDetail) {
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .clip(CircleShape)
+            .background(Hsy.colors.surfaceVariant),
+    ) {
+        if (detail.ownerAvatarUrl.isNotBlank()) {
+            AsyncImage(
+                model = detail.ownerAvatarUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 }

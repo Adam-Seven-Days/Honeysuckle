@@ -31,3 +31,19 @@ data class FavoritePage(
     val moreAvailable: Boolean = false,
     val total: Int = 0,
 )
+
+/**
+ * 夹内列表的排序档。
+ *
+ * 排序交给平台做:只在本地排当前这一页会把"翻页后的顺序"打乱,而用户看到的是一整夹。
+ * [storageId] 是平台 `order` 的取值;空串表示不传,让平台按默认(最近收藏)给。
+ */
+enum class FavoriteSort(val storageId: String) {
+    RECENT("mtime"),
+    MOST_PLAYED("view"),
+    ;
+
+    companion object {
+        val DEFAULT: FavoriteSort = RECENT
+    }
+}

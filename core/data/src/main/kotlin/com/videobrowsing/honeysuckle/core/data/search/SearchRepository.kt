@@ -1,9 +1,11 @@
 package com.videobrowsing.honeysuckle.core.data.search
 
 import com.videobrowsing.honeysuckle.core.common.HsyResult
+import com.videobrowsing.honeysuckle.core.data.remote.UserSearchApi
 import com.videobrowsing.honeysuckle.core.data.remote.VideoSearchApi
 import com.videobrowsing.honeysuckle.core.model.SearchHistoryEntry
 import com.videobrowsing.honeysuckle.core.model.SearchPage
+import com.videobrowsing.honeysuckle.core.model.UserSearchPage
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -21,6 +23,9 @@ interface SearchRepository {
     suspend fun suggestions(keyword: String): HsyResult<List<String>>
 
     suspend fun page(keyword: String, pageIndex: Int = VideoSearchApi.FIRST_PAGE): HsyResult<SearchPage>
+
+    /** 用户搜索;与视频结果分开取,因为卡片形状与翻页游标互不相干 */
+    suspend fun users(keyword: String, pageIndex: Int = UserSearchApi.FIRST_PAGE): HsyResult<UserSearchPage>
 
     /** 搜过的词,按最近倒序取前 [limit] 条 */
     fun history(limit: Int): Flow<List<SearchHistoryEntry>>

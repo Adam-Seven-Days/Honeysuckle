@@ -16,6 +16,8 @@ import com.videobrowsing.honeysuckle.core.data.playback.DefaultPlaybackRepositor
 import com.videobrowsing.honeysuckle.core.data.playback.PlaybackRepository
 import com.videobrowsing.honeysuckle.core.data.search.DefaultSearchRepository
 import com.videobrowsing.honeysuckle.core.data.search.SearchRepository
+import com.videobrowsing.honeysuckle.core.data.user.DefaultUserSpaceRepository
+import com.videobrowsing.honeysuckle.core.data.user.UserSpaceRepository
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -64,4 +66,8 @@ abstract class DataBindingsModule {
     @Binds
     @Singleton
     abstract fun bindCacheRepository(impl: DefaultCacheRepository): CacheRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindUserSpaceRepository(impl: DefaultUserSpaceRepository): UserSpaceRepository
 }

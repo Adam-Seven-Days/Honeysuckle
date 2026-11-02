@@ -182,10 +182,10 @@ private fun PlaybackSection(app: AppPreferences, onAction: (SettingsAction) -> U
     HistoryOptionsCard(app, onAction)
 }
 
-/** 与窗口形态无关、只关播放节奏的那一档 */
+/** 与窗口形态无关的播放行为:自动连播与 AB 循环 */
 @Composable
 private fun PlaybackBehaviorCard(app: AppPreferences, onAction: (SettingsAction) -> Unit) {
-    HsySectionCard(title = "连播") {
+    HsySectionCard(title = "播放行为") {
         HsySettingRow(
             title = "自动连播下一 P",
             supporting = "多分 P 视频播完这一 P 就接下一 P;最后一 P 不会绕回开头",
@@ -193,6 +193,20 @@ private fun PlaybackBehaviorCard(app: AppPreferences, onAction: (SettingsAction)
                 Switch(
                     checked = app.autoPlayNextPart,
                     onCheckedChange = { onAction(SettingsAction.AutoPlayNextPart(it)) },
+                )
+            },
+        )
+        HsySettingRow(
+            title = "AB 循环",
+            supporting = if (app.abLoopEnabled) {
+                "控制条显示 AB 按钮:第一次标 A、第二次标 B、第三次清除,播到 B 点自动跳回 A"
+            } else {
+                "控制条不显示 AB 按钮,已标的 A/B 点也会清掉;需要反复看一段时再打开"
+            },
+            trailing = {
+                Switch(
+                    checked = app.abLoopEnabled,
+                    onCheckedChange = { onAction(SettingsAction.AbLoopEnabled(it)) },
                 )
             },
         )

@@ -26,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -43,6 +44,7 @@ import com.videobrowsing.honeysuckle.core.designsystem.theme.Hsy
 import com.videobrowsing.honeysuckle.core.designsystem.ui.AlertDialog
 import com.videobrowsing.honeysuckle.core.designsystem.ui.AssistChip
 import com.videobrowsing.honeysuckle.core.designsystem.ui.CircularProgressIndicator
+import com.videobrowsing.honeysuckle.core.designsystem.ui.FilterChip
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Icon
 import com.videobrowsing.honeysuckle.core.designsystem.ui.OutlinedTextField
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Text
@@ -65,6 +67,7 @@ fun SearchScreen(
     viewModel: SearchViewModel,
     onBack: () -> Unit,
     onOpenVideo: (String) -> Unit,
+    onOpenSpace: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -81,14 +84,23 @@ fun SearchScreen(
             onQueryChange = { viewModel.onAction(SearchAction.QueryChanged(it)) },
             onSearch = { viewModel.onAction(SearchAction.Submit(state.query)) },
         )
+        TabRow(tab = state.tab, onSelect = { viewModel.onAction(SearchAction.SelectTab(it)) })
 
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             when {
-                state.showingResults -> Results(
-                    state = state,
-                    onOpenVideo = onOpenVideo,
-                    onAction = viewModel::onAction,
-                )
+                state.showingResults -> when (state.tab) {
+                    SearchTab.VIDEO -> Results(
+                        state = state,
+                        onOpenVideo = onOpenVideo,
+                        onAction = viewModel::onAction,
+                    )
+
+                    SearchTab.USER -> UserResults(
+                        state = state,
+                        onOpenSpace = onOpenSpace,
+                        onAction = viewModel::onAction,
+                    )
+                }
 
                 state.showingHistory -> History(
                     state = state,
@@ -139,6 +151,25 @@ private fun SearchBar(query: String, onQueryChange: (String) -> Unit, onSearch: 
             keyboardActions = KeyboardActions(onSearch = { onSearch() }),
         )
         TextButton(onClick = onSearch, enabled = query.isNotBlank()) { Text("搜索") }
+    }
+}
+
+@Composable
+private fun TabRow(tab: SearchTab, onSelect: (SearchTab) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        FilterChip(
+            selected = tab == SearchTab.VIDEO,
+            onClick = { onSelect(SearchTab.VIDEO) },
+            label = { Text("视频") },
+        )
+        FilterChip(
+            selected = tab == SearchTab.USER,
+            onClick = { onSelect(SearchTab.USER) },
+            label = { Text("用户") },
+        )
     }
 }
 
@@ -286,6 +317,6 @@ private fun History(state: SearchUiState, onAction: (SearchAction) -> Unit, onAs
 }
 
 @Composable
-private fun Centered(content: @Composable () -> Unit) {
+internal fun Centered(content: @Composable () -> Unit) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { content() }
 }

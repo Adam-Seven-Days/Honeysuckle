@@ -135,7 +135,8 @@ private fun playbackLine(app: AppPreferences): String {
     val boost = if (app.longPressBoostEnabled) "长按 ${speedLabel(app.longPressBoostSpeed)}" else "长按不提速"
     val pip = if (app.autoPipEnabled) "小窗开" else "小窗关"
     val history = if (app.recordHistory) "记历史" else "不记历史"
-    return "$base · $boost · $pip · $history"
+    val ab = if (app.abLoopEnabled) "AB 开" else "AB 关"
+    return "$base · $boost · $pip · $history · $ab"
 }
 
 private fun navigationLine(app: AppPreferences): String {

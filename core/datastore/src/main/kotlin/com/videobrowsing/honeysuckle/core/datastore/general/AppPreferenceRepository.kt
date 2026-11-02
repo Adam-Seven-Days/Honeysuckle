@@ -36,6 +36,7 @@ private val KEY_LONG_PRESS_BOOST = booleanPreferencesKey("app.longPressBoost")
 private val KEY_LONG_PRESS_BOOST_SPEED = floatPreferencesKey("app.longPressBoostSpeed")
 private val KEY_AUTO_PLAY_NEXT_PART = booleanPreferencesKey("app.autoPlayNextPart")
 private val KEY_RECORD_HISTORY = booleanPreferencesKey("app.recordHistory")
+private val KEY_AB_LOOP = booleanPreferencesKey("app.abLoopEnabled")
 private val KEY_COMMENT_LIKE_READ_ONLY = booleanPreferencesKey("app.commentLikeReadOnly")
 private val KEY_REPLY_LIKES_VISIBLE = booleanPreferencesKey("app.replyLikesVisible")
 
@@ -148,6 +149,10 @@ class AppPreferenceRepository @Inject constructor(@GeneralStore private val data
         dataStore.edit { it[KEY_RECORD_HISTORY] = enabled }
     }
 
+    override suspend fun setAbLoopEnabled(enabled: Boolean) {
+        dataStore.edit { it[KEY_AB_LOOP] = enabled }
+    }
+
     override suspend fun setCommentLikeReadOnly(readOnly: Boolean) {
         dataStore.edit { it[KEY_COMMENT_LIKE_READ_ONLY] = readOnly }
     }
@@ -200,6 +205,7 @@ internal fun Preferences.toAppPreferences(): AppPreferences = AppPreferences(
         .coercePlaybackSpeed(AppPreferences.DEFAULT_LONG_PRESS_BOOST_SPEED),
     autoPlayNextPart = this[KEY_AUTO_PLAY_NEXT_PART] ?: AppPreferences.DEFAULT_AUTO_PLAY_NEXT_PART,
     recordHistory = this[KEY_RECORD_HISTORY] ?: AppPreferences.DEFAULT_RECORD_HISTORY,
+    abLoopEnabled = this[KEY_AB_LOOP] ?: AppPreferences.DEFAULT_AB_LOOP_ENABLED,
     commentLikeReadOnly = this[KEY_COMMENT_LIKE_READ_ONLY] ?: AppPreferences.DEFAULT_COMMENT_LIKE_READ_ONLY,
     replyLikesVisible = this[KEY_REPLY_LIKES_VISIBLE] ?: AppPreferences.DEFAULT_REPLY_LIKES_VISIBLE,
 )

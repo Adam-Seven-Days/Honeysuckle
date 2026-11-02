@@ -20,6 +20,12 @@ interface InteractionRepository {
     /** 投一枚币;硬币不足(-104)是业务失败,不重试 */
     suspend fun addCoin(aid: Long): HsyResult<Unit>
 
-    /** 收藏到用户第一个收藏夹(基础版不做选夹);已收藏时平台会幂等地接受重复写入 */
-    suspend fun addFavorite(aid: Long): HsyResult<Unit>
+    /** 收藏到指定夹;夹 id 必须来自 [folders] */
+    suspend fun addFavorite(aid: Long, folderId: Long): HsyResult<Unit>
+
+    /** 这条稿当前在哪些夹里;读取失败就是"不知道",界面不把它当成"没收藏" */
+    suspend fun favoritedFolderIds(aid: Long): HsyResult<Set<Long>>
+
+    /** 从这些夹里一次移走;空集合是幂等成功,不发请求 */
+    suspend fun removeFavorite(aid: Long, folderIds: Collection<Long>): HsyResult<Unit>
 }

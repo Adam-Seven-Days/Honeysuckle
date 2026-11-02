@@ -25,4 +25,8 @@ dependencies {
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
+
+    // 用户卡要摆头像;底图统一走 Coil,与空间页/详情页同一套缓存
+    implementation(platform(libs.coil.bom))
+    implementation(libs.coil.compose)
 }

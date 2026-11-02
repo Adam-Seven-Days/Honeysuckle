@@ -39,7 +39,7 @@ class InteractionApi(
 ) {
 
     fun fetchLiked(aid: Long): HsyResult<Boolean> = jsonSource.getJson(
-        hasLikeUrl.newBuilder().setQueryParameter("aid", requireAid(aid)).build(),
+        hasLikeUrl.newBuilder().setQueryParameter("aid", requirePositive(aid, "aid")).build(),
     ).flatMap { root ->
         // has/like 的 data 是裸数字 0/1,不是对象 —— 不能用 dataOf
         val data = (root as? JsonObject)?.get("data") as? JsonPrimitive
@@ -49,7 +49,7 @@ class InteractionApi(
     fun setLike(aid: Long, liked: Boolean, csrf: String): HsyResult<Unit> = formSource.postForm(
         likeUrl,
         mapOf(
-            "aid" to requireAid(aid),
+            "aid" to requirePositive(aid, "aid"),
             "like" to if (liked) LIKE_ON else LIKE_OFF,
             "csrf" to requireCsrf(csrf),
         ),
@@ -63,7 +63,7 @@ class InteractionApi(
     fun addCoin(aid: Long, csrf: String): HsyResult<Unit> = formSource.postForm(
         coinUrl,
         mapOf(
-            "aid" to requireAid(aid),
+            "aid" to requirePositive(aid, "aid"),
             "multiply" to COIN_MULTIPLY,
             "csrf" to requireCsrf(csrf),
         ),
@@ -81,28 +81,44 @@ class InteractionApi(
         }
     }
 
-    /** 该稿是否已在某个收藏夹里;列表非空即已收藏。失败时由调用方保留"未知" */
-    fun fetchFavorited(aid: Long): HsyResult<Boolean> = jsonSource.getJson(
+    /** 该稿在哪些收藏夹里;这是"取消收藏 / 换夹"要用的归属,失败时由调用方保留"未知" */
+    fun fetchCollectedFolderIds(aid: Long): HsyResult<Set<Long>> = jsonSource.getJson(
         collectedUrl.newBuilder()
-            .setQueryParameter("rid", requireAid(aid))
+            .setQueryParameter("rid", requirePositive(aid, "aid"))
             .setQueryParameter("type", TYPE_VIDEO)
             .build(),
     ).flatMap { root ->
         val data = (root as? JsonObject)?.get("data")
         val list = (data as? JsonObject)?.arrOr("list")
-        HsyResult.Success(!list.isNullOrEmpty())
+        HsyResult.Success(foldersOf(list).mapTo(mutableSetOf()) { it.id })
     }
 
     fun addFavorite(aid: Long, folderId: Long, csrf: String): HsyResult<Unit> = formSource.postForm(
         favoriteDealUrl,
         mapOf(
-            "rid" to requireAid(aid),
+            "rid" to requirePositive(aid, "aid"),
             "type" to TYPE_VIDEO,
-            "add_media_ids" to requireFolderId(folderId),
+            "add_media_ids" to requirePositive(folderId, "收藏夹 id"),
             "del_media_ids" to "",
             "csrf" to requireCsrf(csrf),
         ),
     ).flatMap { HsyResult.Success(Unit) }
+
+    /** 从若干个夹里移走同一条稿:一个 POST 同时带多个 del_media_ids,不按夹循环发 */
+    fun removeFavorite(aid: Long, folderIds: Collection<Long>, csrf: String): HsyResult<Unit> {
+        val ids = folderIds.filter { it > 0L }.joinToString(",")
+        if (ids.isEmpty()) return HsyResult.Success(Unit)
+        return formSource.postForm(
+            favoriteDealUrl,
+            mapOf(
+                "rid" to requirePositive(aid, "aid"),
+                "type" to TYPE_VIDEO,
+                "add_media_ids" to "",
+                "del_media_ids" to ids,
+                "csrf" to requireCsrf(csrf),
+            ),
+        ).flatMap { HsyResult.Success(Unit) }
+    }
 
     private fun foldersOf(list: JsonArray?): List<FavoriteFolder> = list.orEmpty().mapNotNull { element ->
         val folder = element as? JsonObject ?: return@mapNotNull null
@@ -120,14 +136,9 @@ class InteractionApi(
         )
     }
 
-    private fun requireAid(aid: Long): String {
-        require(aid > 0L) { "aid 非法:$aid" }
-        return aid.toString()
-    }
-
-    private fun requireFolderId(folderId: Long): String {
-        require(folderId > 0L) { "收藏夹 id 非法:$folderId" }
-        return folderId.toString()
+    private fun requirePositive(value: Long, label: String): String {
+        require(value > 0L) { "$label 非法:$value" }
+        return value.toString()
     }
 
     private fun requireCsrf(csrf: String): String {

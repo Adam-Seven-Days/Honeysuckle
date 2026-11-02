@@ -3,12 +3,14 @@ package com.videobrowsing.honeysuckle.core.data.search
 import com.videobrowsing.honeysuckle.core.common.HsyResult
 import com.videobrowsing.honeysuckle.core.data.di.IoDispatcher
 import com.videobrowsing.honeysuckle.core.data.remote.SearchSuggestApi
+import com.videobrowsing.honeysuckle.core.data.remote.UserSearchApi
 import com.videobrowsing.honeysuckle.core.data.remote.VideoSearchApi
 import com.videobrowsing.honeysuckle.core.database.search.SearchHistoryDao
 import com.videobrowsing.honeysuckle.core.database.search.SearchHistoryEntity
 import com.videobrowsing.honeysuckle.core.database.search.toDomain
 import com.videobrowsing.honeysuckle.core.model.SearchHistoryEntry
 import com.videobrowsing.honeysuckle.core.model.SearchPage
+import com.videobrowsing.honeysuckle.core.model.UserSearchPage
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineDispatcher
@@ -26,6 +28,7 @@ import kotlinx.coroutines.withContext
 @Singleton
 class DefaultSearchRepository @Inject constructor(
     private val searchApi: VideoSearchApi,
+    private val userSearchApi: UserSearchApi,
     private val suggestApi: SearchSuggestApi,
     private val historyDao: SearchHistoryDao,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
@@ -36,6 +39,9 @@ class DefaultSearchRepository @Inject constructor(
 
     override suspend fun page(keyword: String, pageIndex: Int): HsyResult<SearchPage> =
         withContext(ioDispatcher) { searchApi.fetch(keyword, pageIndex) }
+
+    override suspend fun users(keyword: String, pageIndex: Int): HsyResult<UserSearchPage> =
+        withContext(ioDispatcher) { userSearchApi.fetch(keyword, pageIndex) }
 
     override fun history(limit: Int): Flow<List<SearchHistoryEntry>> =
         historyDao.observeRecent(limit).map { rows -> rows.map { it.toDomain() } }

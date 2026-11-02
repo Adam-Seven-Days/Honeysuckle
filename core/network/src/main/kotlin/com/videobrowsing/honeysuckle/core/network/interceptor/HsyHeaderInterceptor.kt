@@ -18,6 +18,10 @@ import okhttp3.Response
  */
 object HsyHeaderInjector {
 
+    /** 空间接口的路径前缀:命中即把 Referer 换成对应空间页,换取风控的"来自空间页"印章 */
+    private const val SPACE_PATH_PREFIX = "/x/space/"
+    private const val SPACE_PAGE_BASE = "https://space.bilibili.com/"
+
     /**
      * [url] → 需注入的指纹头。
      * 返回 null 表示该 host 不归本仓通道管理(播放 CDN、BFS 图床等),原样放行。
@@ -32,6 +36,10 @@ object HsyHeaderInjector {
      * OkHttp 的 `header()` 是覆盖写,两个来源各写一次的话,后一个会把前一个整串抹掉。
      * 登录 Cookie 里通常已带平台种下的 buvid3,所以它存在时不再追加自己那枚,免得同名两值
      * 变成一个平台认不出的身份。
+     *
+     * 空间接口是一条独立规则([refererOf]):平台风控要核"这个请求像不像来自空间页",
+     * 拿首页当 Referer 打 `x/space` 开头的路径会直接吃 -352 —— 官方空间页自己发的请求
+     * 都带 `space.bilibili.com/{mid}/`,而 mid 就在业务 query 里,拦截层正好读得到。
      */
     fun headersFor(
         url: HttpUrl,
@@ -40,8 +48,19 @@ object HsyHeaderInjector {
     ): Map<String, String>? {
         val channel = HsyChannel.channelOf(url.host) ?: return null
         val cookie = cookieOf(loginCookies(), buvid3())
-        return HsyHeaderFactory.webHeaders(channel, referer = channel.refererBase) +
+        return HsyHeaderFactory.webHeaders(channel, referer = refererOf(url, channel.refererBase)) +
             listOfNotNull(cookie?.let { "Cookie" to it }).toMap()
+    }
+
+    /**
+     * 空间接口([SPACE_PATH_PREFIX])的 Referer 换成对应的空间页;其余请求沿用各通道基址。
+     * mid 缺失或不是数字就退回空间页根 —— 比带着站内其他页的 Referer 发强;正常业务 URL
+     * 的 mid 都是 Long 拼的,永远落进第一分支。
+     */
+    internal fun refererOf(url: HttpUrl, base: String): String {
+        if (!url.encodedPath.startsWith(SPACE_PATH_PREFIX)) return base
+        val mid = url.queryParameter("mid")?.takeIf { it.toLongOrNull() != null } ?: return SPACE_PAGE_BASE
+        return SPACE_PAGE_BASE + mid + "/"
     }
 
     /** 登录态 + 访客身份 → 一个 Cookie 头;两边都没有就返回 null(不加空 Cookie) */

@@ -13,9 +13,11 @@ import com.videobrowsing.honeysuckle.core.data.remote.dto.stringOr
 import com.videobrowsing.honeysuckle.core.model.AnimeBrief
 import com.videobrowsing.honeysuckle.core.model.AnimeEpisode
 import com.videobrowsing.honeysuckle.core.model.AnimePage
+import com.videobrowsing.honeysuckle.core.model.AnimeRelatedSeason
 import com.videobrowsing.honeysuckle.core.model.AnimeSeason
 import com.videobrowsing.honeysuckle.core.model.AnimeTimelineDay
 import com.videobrowsing.honeysuckle.core.model.AnimeTimelineEpisode
+import com.videobrowsing.honeysuckle.core.network.client.HsyFormSource
 import com.videobrowsing.honeysuckle.core.network.client.HsyJsonSource
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -33,9 +35,12 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
  */
 class AnimeApi(
     private val jsonSource: HsyJsonSource,
+    private val formSource: HsyFormSource,
     private val indexUrl: HttpUrl = INDEX_URL.toHttpUrl(),
     private val timelineUrl: HttpUrl = TIMELINE_URL.toHttpUrl(),
     private val seasonUrl: HttpUrl = SEASON_URL.toHttpUrl(),
+    private val followAddUrl: HttpUrl = FOLLOW_ADD_URL.toHttpUrl(),
+    private val followDelUrl: HttpUrl = FOLLOW_DEL_URL.toHttpUrl(),
 ) {
 
     fun ranking(pageIndex: Int = FIRST_PAGE): HsyResult<AnimePage> {
@@ -77,6 +82,9 @@ class AnimeApi(
                 if (title.isBlank()) {
                     return@flatMap HsyResult.Failure(AppError.Decode("season.result 缺 title"))
                 }
+                val episodes = data.arrOr("episodes").orEmpty().mapNotNull { element ->
+                    (element as? JsonObject)?.let(::episodeOf)
+                }
                 HsyResult.Success(
                     AnimeSeason(
                         seasonId = seasonId,
@@ -84,12 +92,50 @@ class AnimeApi(
                         coverUrl = httpsCover(data.stringOr("cover")),
                         summary = data.stringOr("evaluate"),
                         rating = ratingOf(data.objOr("rating")),
-                        episodes = data.arrOr("episodes").orEmpty().mapNotNull { element ->
-                            (element as? JsonObject)?.let(::episodeOf)
+                        episodes = episodes,
+                        areas = namesOf(data, "areas"),
+                        styles = namesOf(data, "styles"),
+                        publish = data.objOr("publish")?.let { publish ->
+                            publish.stringOr("pub_time_show").ifBlank { publish.stringOr("pub_time") }
+                        }.orEmpty(),
+                        total = data.intOr("total").takeIf { it > 0 } ?: episodes.size,
+                        followers = data.objOr("stat")?.longOr("favorites") ?: 0L,
+                        related = data.arrOr("seasons").orEmpty().mapNotNull { element ->
+                            (element as? JsonObject)?.let(::relatedOf)
                         },
                     ),
                 )
             }
+    }
+
+    /**
+     * 追番开关。走 `x/space/bangumi/follow` 这组老端点:它只要 season_id + csrf,
+     * 不像新版 pgc 接口那样要求额外的一次确认令牌。`follow = false` 即取消追番。
+     */
+    fun setFollow(seasonId: Long, follow: Boolean, csrf: String): HsyResult<Unit> {
+        if (seasonId <= 0L) return HsyResult.Failure(AppError.Decode("seasonId 非法:$seasonId"))
+        if (csrf.isBlank()) return HsyResult.Failure(AppError.Server(CODE_NOT_LOGGED_IN, "缺少 csrf,当前登录态不可写"))
+        return formSource.postForm(
+            if (follow) followAddUrl else followDelUrl,
+            mapOf("season_id" to seasonId.toString(), "csrf" to csrf),
+        ).flatMap { HsyResult.Success(Unit) }
+    }
+
+    /** 数组里每一项都有 `name`;拼成一声"日本 / 奇幻"给人读,而不是把数组原样丢给 UI */
+    private fun namesOf(data: JsonObject, key: String): String = data.arrOr(key).orEmpty()
+        .mapNotNull { element -> (element as? JsonObject)?.stringOr("name")?.takeIf { it.isNotBlank() } }
+        .joinToString(" / ")
+
+    private fun relatedOf(node: JsonObject): AnimeRelatedSeason? {
+        val id = node.longOr("season_id")
+        val title = node.stringOr("title")
+        if (id <= 0L || title.isBlank()) return null
+        return AnimeRelatedSeason(
+            seasonId = id,
+            title = title,
+            coverUrl = httpsCover(node.stringOr("cover")),
+            subtitle = node.stringOr("season_title").ifBlank { node.stringOr("index_show") },
+        )
     }
 
     private fun briefOf(node: JsonObject): AnimeBrief? {
@@ -153,7 +199,11 @@ class AnimeApi(
             "&season_type=1&pagesize=20&type=1"
         const val TIMELINE_URL = "https://api.bilibili.com/pgc/web/timeline?types=1&before=6&after=6"
         const val SEASON_URL = "https://api.bilibili.com/pgc/view/web/season"
+        const val FOLLOW_ADD_URL = "https://api.bilibili.com/x/space/bangumi/follow/add"
+        const val FOLLOW_DEL_URL = "https://api.bilibili.com/x/space/bangumi/follow/del"
 
         const val FIRST_PAGE = 1
+
+        private const val CODE_NOT_LOGGED_IN = -101
     }
 }

@@ -8,5 +8,6 @@ internal class DetailIntents(
     val onEnterPip: (() -> Unit)?,
     val onAction: (VideoDetailAction) -> Unit,
     val onOpenVideo: (String) -> Unit,
+    val onOpenSpace: (Long) -> Unit,
     val onOpenLogin: () -> Unit,
 )

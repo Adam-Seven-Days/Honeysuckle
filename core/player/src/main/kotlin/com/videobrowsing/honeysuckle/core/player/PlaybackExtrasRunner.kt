@@ -25,8 +25,25 @@ class PlaybackExtrasRunner(private val minAbSpanMs: Long = DEFAULT_MIN_AB_SPAN_M
 
     private var sleepDeadlineElapsedMs: Long? = null
 
+    /**
+     * AB 总开关。设置页写盘、引擎订阅后转到这里;关掉的一瞬间要把旧点一起清掉 ——
+     * 再打开时若还留着上一段视频的 A/B,用户会以为按钮坏了。
+     */
+    private var abLoopEnabled = false
+
+    /** 设置页的 AB 开关;关掉时清点,打开时只改开关不动已有点 */
+    fun setAbLoopEnabled(enabled: Boolean) {
+        abLoopEnabled = enabled
+        state = if (enabled) {
+            state.copy(abLoopEnabled = true)
+        } else {
+            state.copy(abLoopEnabled = false, abStartMs = null, abEndMs = null)
+        }
+    }
+
     /** AB:第一次标 A、第二次标 B、第三次清空;第二次落在 A 之后不足 [minAbSpanMs] 时当成撤回 A */
     fun markAbPoint(positionMs: Long) {
+        if (!abLoopEnabled) return
         val current = state
         val start = current.abStartMs
         state = when {
@@ -60,10 +77,10 @@ class PlaybackExtrasRunner(private val minAbSpanMs: Long = DEFAULT_MIN_AB_SPAN_M
         state = state.copy(sleepRemainingMs = totalMs)
     }
 
-    /** 会话结束(用户明确关掉播放):两件事一起清 */
+    /** 会话结束(用户明确关掉播放):两件事一起清;AB 总开关跟设置走,不随会话归零 */
     fun reset() {
         sleepDeadlineElapsedMs = null
-        state = PlaybackExtras()
+        state = PlaybackExtras(abLoopEnabled = abLoopEnabled)
     }
 
     /**
@@ -82,11 +99,11 @@ class PlaybackExtrasRunner(private val minAbSpanMs: Long = DEFAULT_MIN_AB_SPAN_M
         return abSeekAction(positionMs, isPlaying)
     }
 
-    /** AB 到点回跳;环上任何一环不成立(没设全 A/B、停播中、还没到 B 点)都不动播放头 */
+    /** AB 到点回跳;环上任何一环不成立(总开关关、没设全 A/B、停播中、还没到 B 点)都不动播放头 */
     private fun abSeekAction(positionMs: Long, isPlaying: Boolean): TickAction {
         val start = state.abStartMs
         val end = state.abEndMs
-        val loopArmed = start != null && end != null && isPlaying
+        val loopArmed = abLoopEnabled && start != null && end != null && isPlaying
         return if (loopArmed && positionMs >= end) TickAction.SeekTo(start) else TickAction.None
     }
 

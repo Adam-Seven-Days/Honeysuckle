@@ -4,6 +4,7 @@ import com.videobrowsing.honeysuckle.core.common.HsyResult
 import com.videobrowsing.honeysuckle.core.model.FavoriteFolder
 import com.videobrowsing.honeysuckle.core.model.FavoriteItem
 import com.videobrowsing.honeysuckle.core.model.FavoritePage
+import com.videobrowsing.honeysuckle.core.model.FavoriteSort
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -25,7 +26,12 @@ interface FavoriteRepository {
     /** 平台收藏夹;未登录回 -101,界面据此给扫码入口 */
     suspend fun folders(): HsyResult<List<FavoriteFolder>>
 
-    suspend fun page(folderId: Long, page: Int): HsyResult<FavoritePage>
+    suspend fun page(
+        folderId: Long,
+        page: Int,
+        keyword: String = "",
+        sort: FavoriteSort = FavoriteSort.DEFAULT,
+    ): HsyResult<FavoritePage>
 
     suspend fun createFolder(title: String): HsyResult<Long>
 
@@ -34,4 +40,7 @@ interface FavoriteRepository {
     suspend fun deleteFolder(folderId: Long): HsyResult<Unit>
 
     suspend fun removeItem(item: FavoriteItem): HsyResult<Unit>
+
+    /** 夹间移动:一个请求里同时带目标夹与来源夹,不先移走再添加 */
+    suspend fun moveItem(item: FavoriteItem, targetFolderId: Long): HsyResult<Unit>
 }

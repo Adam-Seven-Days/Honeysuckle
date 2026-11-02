@@ -10,6 +10,9 @@ android {
 }
 
 dependencies {
+    // AB 循环的总开关落在应用偏好那块盘;引擎订阅它,不再让页面替引擎记状态
+    implementation(project(":core:datastore"))
+
     // 播放器封装 + 弹幕策略层(限帧/静默/投放速率三控独立于内核)。
     // api:DanmakuEntry 出现在 admit 的入参与产出里。
     // 刻意**不**依赖 :core:danmaku:host —— 策略层只交出"过滤后的时间轴 + 一个毫秒数",

@@ -3,6 +3,7 @@ package com.videobrowsing.honeysuckle.core.player
 import android.content.Context
 import android.content.Intent
 import android.os.SystemClock
+import com.videobrowsing.honeysuckle.core.datastore.general.AppPreferenceStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -13,6 +14,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
@@ -43,7 +46,13 @@ data class PlaybackProgress(val positionMs: Long, val durationMs: Long, val play
  * 它们由引擎执行而不是由播放页执行:页面退到后台/画中画时,AB 循环与定时关闭都得继续算数。
  * [sleepRemainingMs] 是给屏上读数用的剩余毫秒;真正到点判断用 [PlaybackExtrasRunner] 里的单调时钟截止点。
  */
-data class PlaybackExtras(val abStartMs: Long? = null, val abEndMs: Long? = null, val sleepRemainingMs: Long? = null) {
+data class PlaybackExtras(
+    /** 设置里的 AB 循环总开关:关掉时控制条不摆按钮,引擎也不执行回跳 */
+    val abLoopEnabled: Boolean = false,
+    val abStartMs: Long? = null,
+    val abEndMs: Long? = null,
+    val sleepRemainingMs: Long? = null,
+) {
     /** 屏上一句话:AB 未设 / 只标了 A / A-B 都在 */
     val abLabel: String
         get() = when {
@@ -64,7 +73,10 @@ data class PlaybackExtras(val abStartMs: Long? = null, val abEndMs: Long? = null
  * [session]、[progress]、[extras] 是线程安全的 StateFlow,壳层可安全订阅。
  */
 @Singleton
-class PlaybackEngine @Inject constructor(@ApplicationContext private val context: Context) {
+class PlaybackEngine @Inject constructor(
+    @ApplicationContext private val context: Context,
+    appPreferences: AppPreferenceStore,
+) {
 
     private var hostOrNull: HsyPlayerHost? = null
 
@@ -105,6 +117,16 @@ class PlaybackEngine @Inject constructor(@ApplicationContext private val context
     private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     init {
+        // AB 是设置里的总开关:跟随盘上的值,页面退到后台也照这个口径执行
+        engineScope.launch {
+            appPreferences.preferences
+                .map { it.abLoopEnabled }
+                .distinctUntilChanged()
+                .collect { enabled ->
+                    playbackExtras.setAbLoopEnabled(enabled)
+                    mutableExtras.value = playbackExtras.state
+                }
+        }
         engineScope.launch {
             while (true) {
                 delay(ENGINE_TICK_MS)

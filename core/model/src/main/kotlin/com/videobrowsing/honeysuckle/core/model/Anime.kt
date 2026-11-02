@@ -28,7 +28,7 @@ data class AnimeEpisode(
     val durationMs: Long,
 )
 
-/** 番剧详情:简介 + 评分 + 集数 */
+/** 番剧详情:简介 + 评分 + 集数 + 制作信息 + 同系列 */
 data class AnimeSeason(
     val seasonId: Long,
     val title: String,
@@ -36,7 +36,19 @@ data class AnimeSeason(
     val summary: String,
     val rating: String,
     val episodes: List<AnimeEpisode>,
+    /** 地区 / 风格是平台给的名字数组,在数据层折成一句展示串 */
+    val areas: String = "",
+    val styles: String = "",
+    /** 平台给的播出时间(优先 `pub_time_show` 这种已排版的写法) */
+    val publish: String = "",
+    val total: Int = 0,
+    /** 追番人数(平台 `stat.favorites`) */
+    val followers: Long = 0,
+    val related: List<AnimeRelatedSeason> = emptyList(),
 )
+
+/** 同一系列的另一季;详情页底部"相关推荐"直接用它开新的番剧详情 */
+data class AnimeRelatedSeason(val seasonId: Long, val title: String, val coverUrl: String, val subtitle: String = "")
 
 /** 追番时间表的一天 */
 data class AnimeTimelineDay(

@@ -60,20 +60,16 @@ import kotlinx.coroutines.delay
  *  - **进度落盘不在这一屏**:早期由这屏每 5 秒写一次,播放器常驻之后交给 `:app` 的
  *    PlaybackHistoryRecorder(退页、后台、画中画都还在落),这里只留续播那一侧的读。
  *
- * [onOpenVideo] 给相关推荐用(同一实例上换 bvid 会由导航层重新建目的地);
- * [onOpenLogin] 给游客态下的互动按钮:点了会去扫码页,而不是丢一句"未登录"就结束。
+ * [VideoDetailCallbacks.onOpenVideo] 给相关推荐用(同一实例上换 bvid 会由导航层重新建目的地);
+ * [VideoDetailCallbacks.onOpenLogin] 给游客态下的互动按钮:点了会去扫码页,而不是丢一句"未登录"就结束。
  */
 @Composable
 fun VideoDetailScreen(
     viewModel: VideoDetailViewModel,
     commentsViewModel: CommentViewModel,
-    onBack: () -> Unit,
-    onOpenVideo: (String) -> Unit,
-    onOpenLogin: () -> Unit,
+    callbacks: VideoDetailCallbacks,
     modifier: Modifier = Modifier,
     inPip: Boolean = false,
-    /** null = 设置里关掉了画中画,控制条上不摆这一枚按钮 */
-    onEnterPip: (() -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val commentState by commentsViewModel.state.collectAsStateWithLifecycle()
@@ -90,15 +86,16 @@ fun VideoDetailScreen(
     var fullscreen by rememberSaveable { mutableStateOf(false) }
 
     val intents = DetailIntents(
-        onBack = onBack,
+        onBack = callbacks.onBack,
         onToggleFullscreen = { fullscreen = true },
-        onEnterPip = onEnterPip,
+        onEnterPip = callbacks.onEnterPip,
         onAction = viewModel::onAction,
-        onOpenVideo = onOpenVideo,
-        onOpenLogin = onOpenLogin,
+        onOpenVideo = callbacks.onOpenVideo,
+        onOpenSpace = callbacks.onOpenSpace,
+        onOpenLogin = callbacks.onOpenLogin,
     )
 
-    BackHandler { if (fullscreen) fullscreen = false else onBack() }
+    BackHandler { if (fullscreen) fullscreen = false else callbacks.onBack() }
     VideoPageEffects(engine, host, playerUi, state, fullscreen)
     PlayerEndedEffect(host) { viewModel.onAction(VideoDetailAction.PartEnded) }
 
@@ -120,7 +117,7 @@ fun VideoDetailScreen(
                 stage,
                 state,
                 intents,
-                WindowIntents({ fullscreen = false }, { fullscreen = false }, onEnterPip),
+                WindowIntents({ fullscreen = false }, { fullscreen = false }, callbacks.onEnterPip),
                 Modifier.fillMaxSize(),
             )
 
@@ -283,6 +280,7 @@ private fun DetailFeed(
             DetailTab.COMMENTS -> CommentPane(
                 viewModel = comments.viewModel,
                 onOpenLogin = intents.onOpenLogin,
+                onOpenSpace = intents.onOpenSpace,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -314,6 +312,7 @@ private fun IntroFeed(
                     detail = detail,
                     state = state,
                     onToggleFollow = { intents.onAction(VideoDetailAction.ToggleFollow) },
+                    onOpenSpace = { intents.onOpenSpace(detail.ownerMid) },
                     onOpenLogin = intents.onOpenLogin,
                 )
             }
@@ -378,6 +377,7 @@ private fun WideDetailFeed(
             CommentPane(
                 viewModel = comments.viewModel,
                 onOpenLogin = intents.onOpenLogin,
+                onOpenSpace = intents.onOpenSpace,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
             )
         }

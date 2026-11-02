@@ -14,6 +14,7 @@ import com.videobrowsing.honeysuckle.core.datastore.account.AccountPreferenceRep
 import com.videobrowsing.honeysuckle.core.model.FavoriteFolder
 import com.videobrowsing.honeysuckle.core.model.FavoriteItem
 import com.videobrowsing.honeysuckle.core.model.FavoritePage
+import com.videobrowsing.honeysuckle.core.model.FavoriteSort
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineDispatcher
@@ -48,18 +49,28 @@ class DefaultFavoriteRepository @Inject constructor(
         api.fetchFolders(mid)
     }
 
-    override suspend fun page(folderId: Long, page: Int): HsyResult<FavoritePage> =
-        withContext(ioDispatcher) { api.fetchPage(folderId, page) }
+    override suspend fun page(
+        folderId: Long,
+        page: Int,
+        keyword: String,
+        sort: FavoriteSort,
+    ): HsyResult<FavoritePage> = withContext(ioDispatcher) {
+        api.fetchPage(folderId, page, keyword, sort.storageId)
+    }
 
     override suspend fun createFolder(title: String): HsyResult<Long> = withContext(ioDispatcher) {
         val name = title.trim()
-        if (name.isEmpty()) return@withContext emptyTitleFailure()
+        if (name.isEmpty()) {
+            return@withContext HsyResult.Failure(AppError.Decode("收藏夹名字为空"))
+        }
         writeGuard.requireCsrf().flatMap { csrf -> api.createFolder(name, csrf) }
     }
 
     override suspend fun renameFolder(folderId: Long, title: String): HsyResult<Unit> = withContext(ioDispatcher) {
         val name = title.trim()
-        if (name.isEmpty()) return@withContext emptyTitleFailure()
+        if (name.isEmpty()) {
+            return@withContext HsyResult.Failure(AppError.Decode("收藏夹名字为空"))
+        }
         writeGuard.requireCsrf().flatMap { csrf -> api.renameFolder(folderId, name, csrf) }
     }
 
@@ -80,5 +91,16 @@ class DefaultFavoriteRepository @Inject constructor(
         }
     }
 
-    private fun emptyTitleFailure(): HsyResult<Nothing> = HsyResult.Failure(AppError.Decode("收藏夹名字为空"))
+    override suspend fun moveItem(item: FavoriteItem, targetFolderId: Long): HsyResult<Unit> =
+        withContext(ioDispatcher) {
+            when {
+                item.isLocal -> HsyResult.Failure(AppError.Decode("本地收藏不是平台夹,不能直接移动"))
+
+                targetFolderId == item.folderId -> HsyResult.Success(Unit)
+
+                else -> writeGuard.requireCsrf().flatMap { csrf ->
+                    api.moveItem(item.aid, item.folderId, targetFolderId, csrf)
+                }
+            }
+        }
 }

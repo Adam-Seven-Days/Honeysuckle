@@ -53,10 +53,12 @@ import com.videobrowsing.honeysuckle.feature.settings.SETTINGS_SECTION_ARG
 import com.videobrowsing.honeysuckle.feature.settings.SettingsScreen
 import com.videobrowsing.honeysuckle.feature.settings.SettingsSection
 import com.videobrowsing.honeysuckle.feature.settings.SettingsSectionScreen
+import com.videobrowsing.honeysuckle.feature.space.SPACE_MID_ARG
+import com.videobrowsing.honeysuckle.feature.space.SpaceScreen
 import com.videobrowsing.honeysuckle.feature.user.MineScreen
-import com.videobrowsing.honeysuckle.feature.user.MineTarget
 import com.videobrowsing.honeysuckle.feature.user.MineViewModel
 import com.videobrowsing.honeysuckle.feature.videodetail.VIDEO_BVID_ARG
+import com.videobrowsing.honeysuckle.feature.videodetail.VideoDetailCallbacks
 import com.videobrowsing.honeysuckle.feature.videodetail.VideoDetailScreen
 
 /** 底栏五个顶层:只有真能开的屏才进这条栏;中间三格按设置各自取舍 */
@@ -101,14 +103,7 @@ fun HsyNavHost(
     val currentRoute = currentEntry?.destination?.route
     val onVideoRoute = currentRoute?.startsWith(VIDEO_ROUTE_PREFIX) == true
     // 设置里三个开关管的就是中间这三条;首页与我的永远在场
-    val tabs = TOP_LEVEL_TABS.filter { (route, _) ->
-        when (route) {
-            HsyRoute.DYNAMIC -> tabVisibility.dynamic
-            HsyRoute.LIVE -> tabVisibility.live
-            HsyRoute.ANIME -> tabVisibility.anime
-            else -> true
-        }
-    }
+    val tabs = visibleTabs(tabVisibility)
     val showTabs = !inPip && tabs.any { it.first == currentRoute }
 
     // 格子被关掉时正停在那一屏(多窗口里改设置才会撞上):退回首页,别把用户留在一屏没有出口的地方
@@ -123,6 +118,9 @@ fun HsyNavHost(
     LaunchedEffect(onVideoRoute) { onVideoRouteChanged(onVideoRoute) }
 
     val openVideo: (String) -> Unit = { bvid -> navController.navigate(HsyRoute.video(bvid)) }
+    val openSpace: (Long) -> Unit = { mid ->
+        if (mid > 0L) navController.navigate(HsyRoute.space(mid))
+    }
     // 两种壳层共用同一束回调:画中画关着时手动入口直接为 null,详情页据此收起按钮
     val shell = ShellCallbacks(
         inPip = inPip,
@@ -138,13 +136,7 @@ fun HsyNavHost(
             Row(modifier = Modifier.fillMaxSize()) {
                 if (!inPip) HsyNavRail(tabs, currentRoute) { navController.switchTab(it) }
                 Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                    HsyGraph(
-                        navController = navController,
-                        engine = engine,
-                        onVideoRoute = onVideoRoute,
-                        openVideo = openVideo,
-                        shell = shell,
-                    )
+                    HsyGraph(navController, engine, onVideoRoute, NavActions(openVideo, openSpace), shell)
                 }
             }
         } else {
@@ -152,13 +144,7 @@ fun HsyNavHost(
                 bottomBar = { if (showTabs) HsyTabBar(tabs, currentRoute) { navController.switchTab(it) } },
             ) { innerPadding ->
                 Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-                    HsyGraph(
-                        navController = navController,
-                        engine = engine,
-                        onVideoRoute = onVideoRoute,
-                        openVideo = openVideo,
-                        shell = shell,
-                    )
+                    HsyGraph(navController, engine, onVideoRoute, NavActions(openVideo, openSpace), shell)
                 }
             }
         }
@@ -174,6 +160,19 @@ private class ShellCallbacks(
     val pipEnabled: Boolean,
 )
 
+/** 导航图里反复要用的一对"打开"入口:收成一束,免得每加一个入口就给 HsyGraph 添一参 */
+private class NavActions(val openVideo: (String) -> Unit, val openSpace: (Long) -> Unit)
+
+/** 设置里三个开关管的就是中间这三条;首页与我的永远在场 */
+private fun visibleTabs(visibility: TabVisibility): List<Pair<String, Tab>> = TOP_LEVEL_TABS.filter { (route, _) ->
+    when (route) {
+        HsyRoute.DYNAMIC -> visibility.dynamic
+        HsyRoute.LIVE -> visibility.live
+        HsyRoute.ANIME -> visibility.anime
+        else -> true
+    }
+}
+
 /**
  * 导航图 + 小窗。
  *
@@ -185,7 +184,7 @@ private fun HsyGraph(
     navController: NavHostController,
     engine: PlaybackEngine,
     onVideoRoute: Boolean,
-    openVideo: (String) -> Unit,
+    nav: NavActions,
     shell: ShellCallbacks,
 ) {
     // 壳层不替系统做决定,只把"现在是不是详情页"这一格交出去:按 Home 时进不进画中画由 Activity 判
@@ -204,13 +203,13 @@ private fun HsyGraph(
             predictivePopEnterTransition = hsyPredictivePopEnterTransition(TOP_LEVEL_ROUTES, context),
             predictivePopExitTransition = hsyPredictivePopExitTransition(TOP_LEVEL_ROUTES, context),
         ) {
-            tabDestinations(navController, openVideo)
-            pushedDestinations(navController, openVideo, shell.inPip, shell.onEnterPip)
+            tabDestinations(navController, nav.openVideo, nav.openSpace)
+            pushedDestinations(navController, nav.openVideo, nav.openSpace, shell.inPip, shell.onEnterPip)
         }
         if (shell.pipEnabled && !shell.inPip && !onVideoRoute) {
             PlaybackMiniBar(
                 engine = engine,
-                onOpen = openVideo,
+                onOpen = nav.openVideo,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -222,7 +221,11 @@ private fun HsyGraph(
 private const val VIDEO_ROUTE_PREFIX = "video/"
 
 /** 底栏五个顶层的家:首页 / 动态 / 直播 / 番剧 / 我的 */
-private fun NavGraphBuilder.tabDestinations(navController: NavHostController, openVideo: (String) -> Unit) {
+private fun NavGraphBuilder.tabDestinations(
+    navController: NavHostController,
+    openVideo: (String) -> Unit,
+    openSpace: (Long) -> Unit,
+) {
     composable(HsyRoute.HOME) {
         HomeScreen(
             viewModel = hiltViewModel(),
@@ -235,6 +238,7 @@ private fun NavGraphBuilder.tabDestinations(navController: NavHostController, op
         DynamicScreen(
             viewModel = hiltViewModel(),
             onOpenVideo = openVideo,
+            onOpenSpace = openSpace,
             onOpenLogin = { navController.navigate(HsyRoute.LOGIN) },
         )
     }
@@ -254,7 +258,7 @@ private fun NavGraphBuilder.tabDestinations(navController: NavHostController, op
         val mineViewModel: MineViewModel = hiltViewModel()
         MineScreen(
             viewModel = mineViewModel,
-            onNavigate = { target -> navController.navigate(mineRouteOf(target)) },
+            onNavigate = { target -> navController.navigate(HsyRoute.mine(target)) },
             onOpenVideo = openVideo,
             onSignOut = mineViewModel::signOut,
         )
@@ -265,6 +269,7 @@ private fun NavGraphBuilder.tabDestinations(navController: NavHostController, op
 private fun NavGraphBuilder.pushedDestinations(
     navController: NavHostController,
     openVideo: (String) -> Unit,
+    openSpace: (Long) -> Unit,
     inPip: Boolean,
     onEnterPip: (() -> Unit)?,
 ) {
@@ -274,6 +279,7 @@ private fun NavGraphBuilder.pushedDestinations(
             viewModel = hiltViewModel(),
             onBack = { navController.popBackStack() },
             onOpenVideo = openVideo,
+            onOpenSpace = openSpace,
         )
     }
     composable(HsyRoute.LOGIN) {
@@ -290,17 +296,20 @@ private fun NavGraphBuilder.pushedDestinations(
         VideoDetailScreen(
             viewModel = hiltViewModel(),
             commentsViewModel = hiltViewModel(),
-            onBack = { navController.popBackStack() },
-            onOpenVideo = openVideo,
-            onOpenLogin = { navController.navigate(HsyRoute.LOGIN) },
+            callbacks = VideoDetailCallbacks(
+                onBack = { navController.popBackStack() },
+                onOpenVideo = openVideo,
+                onOpenSpace = openSpace,
+                onOpenLogin = { navController.navigate(HsyRoute.LOGIN) },
+                onEnterPip = onEnterPip,
+            ),
             inPip = inPip,
-            onEnterPip = onEnterPip,
         )
     }
     extendedDestinations(navController, openVideo)
 }
 
-/** 扩展屏的二级页:直播间与番剧详情(从各自顶层 tab 深入,返回回上一页) */
+/** 扩展屏的二级页:直播间 / 番剧详情 / UP 主空间(从各处深入,返回回上一页) */
 private fun NavGraphBuilder.extendedDestinations(navController: NavHostController, openVideo: (String) -> Unit) {
     composable(
         route = HsyRoute.LIVE_ROOM_PATTERN,
@@ -319,6 +328,19 @@ private fun NavGraphBuilder.extendedDestinations(navController: NavHostControlle
             viewModel = hiltViewModel(),
             onBack = { navController.popBackStack() },
             onOpenVideo = openVideo,
+            onOpenSeason = { seasonId -> navController.navigate(HsyRoute.animeSeason(seasonId)) },
+            onOpenLogin = { navController.navigate(HsyRoute.LOGIN) },
+        )
+    }
+    composable(
+        route = HsyRoute.SPACE_PATTERN,
+        arguments = listOf(navArgument(SPACE_MID_ARG) { type = NavType.LongType }),
+    ) {
+        SpaceScreen(
+            viewModel = hiltViewModel(),
+            onBack = { navController.popBackStack() },
+            onOpenVideo = openVideo,
+            onOpenLogin = { navController.navigate(HsyRoute.LOGIN) },
         )
     }
 }
@@ -370,17 +392,6 @@ private fun NavGraphBuilder.managementDestinations(navController: NavHostControl
             onBack = { navController.popBackStack() },
         )
     }
-}
-
-/** 我的页的入口 → 路由:路由字面量留在导航层,`feature:user` 不必知道页面怎么被压栈 */
-private fun mineRouteOf(target: MineTarget): String = when (target) {
-    MineTarget.HISTORY -> HsyRoute.HISTORY
-    MineTarget.FAVORITES -> HsyRoute.FAVORITES
-    MineTarget.SEARCH -> HsyRoute.SEARCH
-    MineTarget.CACHE -> HsyRoute.CACHE
-    MineTarget.SETTINGS -> HsyRoute.SETTINGS
-    MineTarget.ABOUT -> HsyRoute.ABOUT
-    MineTarget.LOGIN -> HsyRoute.LOGIN
 }
 
 /**

@@ -9,6 +9,7 @@ import com.videobrowsing.honeysuckle.core.data.auth.AuthRepository
 import com.videobrowsing.honeysuckle.core.data.favorite.FavoriteRepository
 import com.videobrowsing.honeysuckle.core.model.FavoriteFolder
 import com.videobrowsing.honeysuckle.core.model.FavoriteItem
+import com.videobrowsing.honeysuckle.core.model.FavoriteSort
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
@@ -22,6 +23,9 @@ import kotlinx.coroutines.launch
 private const val FIRST_PAGE = 1
 private const val LOCAL_LIMIT = 200
 private const val MESSAGE_LINGER_MS = 4_000L
+
+/** 夹内搜索等用户停手再发:每敲一个字查一次平台,既慢也容易招风控 */
+private const val SEARCH_DEBOUNCE_MS = 350L
 
 /**
  * 收藏页读数。
@@ -46,6 +50,9 @@ data class FavoriteUiState(
     val itemsError: String? = null,
     val busy: Boolean = false,
     val message: String? = null,
+    /** 夹内搜索词与排序;两样都由平台在整夹上生效,不在本地排当前这一页 */
+    val query: String = "",
+    val sort: FavoriteSort = FavoriteSort.DEFAULT,
 )
 
 sealed interface FavoriteAction {
@@ -57,6 +64,9 @@ sealed interface FavoriteAction {
     data class RenameFolder(val title: String) : FavoriteAction
     data object DeleteFolder : FavoriteAction
     data class RemoveItem(val item: FavoriteItem) : FavoriteAction
+    data class MoveItem(val item: FavoriteItem, val target: FavoriteFolder) : FavoriteAction
+    data class QueryChanged(val query: String) : FavoriteAction
+    data class SelectSort(val sort: FavoriteSort) : FavoriteAction
     data object DismissMessage : FavoriteAction
 }
 
@@ -77,9 +87,19 @@ class FavoriteViewModel @Inject constructor(
 
     private var itemsJob: Job? = null
     private var messageJob: Job? = null
+    private var searchJob: Job? = null
 
     init {
-        observeLocal()
+        viewModelScope.launch {
+            favoriteRepository.observeLocal(LOCAL_LIMIT).collect { items ->
+                mutableState.update { it.copy(local = items) }
+            }
+        }
+        viewModelScope.launch {
+            favoriteRepository.observeLocalCount().collect { count ->
+                mutableState.update { it.copy(localCount = count) }
+            }
+        }
         observeLogin(authRepository)
     }
 
@@ -98,41 +118,57 @@ class FavoriteViewModel @Inject constructor(
                         pageIndex = 0,
                         moreAvailable = false,
                         itemsError = null,
+                        query = "",
                     )
                 }
                 loadItems(append = false)
             }
 
             FavoriteAction.CloseFolder -> mutableState.update {
-                it.copy(selected = null, items = emptyList(), itemsError = null, pageIndex = 0, moreAvailable = false)
+                it.copy(
+                    selected = null,
+                    items = emptyList(),
+                    itemsError = null,
+                    pageIndex = 0,
+                    moreAvailable = false,
+                    query = "",
+                )
             }
 
             FavoriteAction.LoadMore -> loadItems(append = true)
 
-            is FavoriteAction.CreateFolder -> createFolder(action.title)
-
-            is FavoriteAction.RenameFolder -> renameSelected(action.title)
-
-            FavoriteAction.DeleteFolder -> deleteSelected()
+            // 建夹 / 改名 / 删除夹共用同一道"写夹"入口:三者都先确认登录态与名字,再各走一条平台写
+            is FavoriteAction.CreateFolder,
+            is FavoriteAction.RenameFolder,
+            FavoriteAction.DeleteFolder,
+            -> writeFolder(action)
 
             is FavoriteAction.RemoveItem -> removeItem(action.item)
+
+            is FavoriteAction.MoveItem -> moveItem(action.item, action.target)
+
+            is FavoriteAction.QueryChanged -> {
+                mutableState.update { it.copy(query = action.query) }
+                searchJob?.cancel()
+                // 搜到一半又清空:立即回整夹,不必等防抖
+                if (action.query.isBlank()) {
+                    loadItems(append = false)
+                } else {
+                    searchJob = viewModelScope.launch {
+                        delay(SEARCH_DEBOUNCE_MS)
+                        loadItems(append = false)
+                    }
+                }
+            }
+
+            is FavoriteAction.SelectSort -> {
+                mutableState.update { it.copy(sort = action.sort) }
+                loadItems(append = false)
+            }
 
             FavoriteAction.DismissMessage -> {
                 messageJob?.cancel()
                 mutableState.update { it.copy(message = null) }
-            }
-        }
-    }
-
-    private fun observeLocal() {
-        viewModelScope.launch {
-            favoriteRepository.observeLocal(LOCAL_LIMIT).collect { items ->
-                mutableState.update { it.copy(local = items) }
-            }
-        }
-        viewModelScope.launch {
-            favoriteRepository.observeLocalCount().collect { count ->
-                mutableState.update { it.copy(localCount = count) }
             }
         }
     }
@@ -193,7 +229,7 @@ class FavoriteViewModel @Inject constructor(
                     moreAvailable = if (append) it.moreAvailable else false,
                 )
             }
-            when (val result = favoriteRepository.page(folder.id, page)) {
+            when (val result = favoriteRepository.page(folder.id, page, current.query.trim(), current.sort)) {
                 is HsyResult.Success -> {
                     val pageData = result.value
                     mutableState.update { state ->
@@ -216,45 +252,44 @@ class FavoriteViewModel @Inject constructor(
         }
     }
 
-    private fun createFolder(title: String) {
+    /** 建夹与改名只差"有没有选中夹":名字校验、忙碌位与刷新夹列表都走同一条路 */
+    private fun writeFolderTitle(title: String) {
         val name = title.trim()
         if (name.isEmpty()) return
+        val folder = mutableState.value.selected
         viewModelScope.launch {
             mutableState.update { it.copy(busy = true) }
-            when (val result = favoriteRepository.createFolder(name)) {
+            val result = if (folder == null) {
+                favoriteRepository.createFolder(name)
+            } else {
+                favoriteRepository.renameFolder(folder.id, name)
+            }
+            when (result) {
                 is HsyResult.Success -> {
-                    mutableState.update { it.copy(busy = false) }
-                    showMessage("收藏夹「$name」建好了")
+                    mutableState.update {
+                        it.copy(
+                            busy = false,
+                            selected = folder?.copy(title = name) ?: it.selected,
+                        )
+                    }
+                    showMessage(if (folder == null) "收藏夹「$name」建好了" else "已改名为「$name」")
                     loadFolders()
                 }
 
                 is HsyResult.Failure -> {
                     mutableState.update { it.copy(busy = false) }
-                    showMessage(writeErrorText("建收藏夹", result.error))
+                    showMessage(writeErrorText(if (folder == null) "建收藏夹" else "改名", result.error))
                 }
             }
         }
     }
 
-    private fun renameSelected(title: String) {
-        val folder = mutableState.value.selected ?: return
-        val name = title.trim()
-        if (name.isEmpty()) return
-        viewModelScope.launch {
-            mutableState.update { it.copy(busy = true) }
-            when (val result = favoriteRepository.renameFolder(folder.id, name)) {
-                is HsyResult.Success -> {
-                    val renamed = folder.copy(title = name)
-                    mutableState.update { it.copy(busy = false, selected = renamed) }
-                    showMessage("已改名为「$name」")
-                    loadFolders()
-                }
-
-                is HsyResult.Failure -> {
-                    mutableState.update { it.copy(busy = false) }
-                    showMessage(writeErrorText("改名", result.error))
-                }
-            }
+    private fun writeFolder(action: FavoriteAction) {
+        when (action) {
+            is FavoriteAction.CreateFolder -> writeFolderTitle(action.title)
+            is FavoriteAction.RenameFolder -> writeFolderTitle(action.title)
+            FavoriteAction.DeleteFolder -> deleteSelected()
+            else -> Unit
         }
     }
 
@@ -290,6 +325,37 @@ class FavoriteViewModel @Inject constructor(
                 }
 
                 is HsyResult.Failure -> showMessage(writeErrorText("移除收藏", result.error))
+            }
+        }
+    }
+
+    /**
+     * 夹间移动:一个平台写请求同时完成"进目标夹 + 出当前夹"。
+     *
+     * 成功后把这一条从当前列表拿掉 —— 它已经不属于这一夹了;目标夹的条数由下一次读夹列表刷新。
+     */
+    private fun moveItem(item: FavoriteItem, target: FavoriteFolder) {
+        if (item.folderId == target.id) return
+        viewModelScope.launch {
+            mutableState.update { it.copy(busy = true) }
+            when (val result = favoriteRepository.moveItem(item, target.id)) {
+                is HsyResult.Success -> {
+                    mutableState.update { state ->
+                        state.copy(
+                            busy = false,
+                            items = state.items.filterNot { it.bvid == item.bvid },
+                            selected = state.selected?.let { folder ->
+                                folder.copy(mediaCount = (folder.mediaCount - 1).coerceAtLeast(0))
+                            },
+                        )
+                    }
+                    showMessage("已移到「${target.title}」")
+                }
+
+                is HsyResult.Failure -> {
+                    mutableState.update { it.copy(busy = false) }
+                    showMessage(writeErrorText("移动收藏", result.error))
+                }
             }
         }
     }

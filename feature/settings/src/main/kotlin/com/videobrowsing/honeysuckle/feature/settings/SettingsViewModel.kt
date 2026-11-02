@@ -65,6 +65,7 @@ sealed interface SettingsAction {
     data class LongPressBoostSpeed(val speed: Float) : SettingsAction
     data class AutoPlayNextPart(val enabled: Boolean) : SettingsAction
     data class RecordHistory(val enabled: Boolean) : SettingsAction
+    data class AbLoopEnabled(val enabled: Boolean) : SettingsAction
     data class CommentLikeReadOnly(val readOnly: Boolean) : SettingsAction
     data class ReplyLikesVisible(val visible: Boolean) : SettingsAction
 }
@@ -146,6 +147,7 @@ class SettingsViewModel @Inject constructor(
             is SettingsAction.LongPressBoostSpeed,
             is SettingsAction.AutoPlayNextPart,
             is SettingsAction.RecordHistory,
+            is SettingsAction.AbLoopEnabled,
             -> writePlayer(action)
 
             is SettingsAction.CommentLikeReadOnly,
@@ -190,6 +192,7 @@ class SettingsViewModel @Inject constructor(
             is SettingsAction.LongPressBoostSpeed -> appPreferences.setLongPressBoostSpeed(action.speed)
             is SettingsAction.AutoPlayNextPart -> appPreferences.setAutoPlayNextPart(action.enabled)
             is SettingsAction.RecordHistory -> appPreferences.setRecordHistory(action.enabled)
+            is SettingsAction.AbLoopEnabled -> appPreferences.setAbLoopEnabled(action.enabled)
             else -> Unit
         }
     }

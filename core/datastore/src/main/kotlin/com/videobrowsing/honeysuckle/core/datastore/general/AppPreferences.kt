@@ -65,6 +65,11 @@ data class AppPreferences(
     /** 是否把观看进度写进本机历史;关掉后不再新增,已有记录照常可看 */
     val recordHistory: Boolean = DEFAULT_RECORD_HISTORY,
     /**
+     * AB 循环:打开后播放器控制条才摆 AB 按钮,引擎也才执行 A-B 回跳。
+     * 默认关 —— 它是少数人的精看工具,不该成为所有人控制条上的常驻按钮。
+     */
+    val abLoopEnabled: Boolean = DEFAULT_AB_LOOP_ENABLED,
+    /**
      * 评论点赞只读:评论行仍摆点赞按钮与数量,但点击只弹一句提醒,不发点赞请求。
      * 默认关 —— 正常状态下点一下就该真点赞。
      */
@@ -96,6 +101,7 @@ data class AppPreferences(
         const val DEFAULT_LONG_PRESS_BOOST_SPEED = 2f
         const val DEFAULT_AUTO_PLAY_NEXT_PART = true
         const val DEFAULT_RECORD_HISTORY = true
+        const val DEFAULT_AB_LOOP_ENABLED = false
         const val DEFAULT_COMMENT_LIKE_READ_ONLY = false
         const val DEFAULT_REPLY_LIKES_VISIBLE = false
 

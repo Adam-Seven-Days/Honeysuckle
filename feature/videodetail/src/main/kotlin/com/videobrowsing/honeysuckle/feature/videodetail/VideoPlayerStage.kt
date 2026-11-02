@@ -262,7 +262,10 @@ private fun PlayerControls(inputs: PlayerStageInputs, intents: PlayerIntents) {
                 QualityMenu(inputs.state, intents.onSelectQuality)
                 SpeedMenu(inputs.state.speed, intents.onSelectSpeed)
                 Spacer(modifier = Modifier.weight(1f))
-                StageTap(inputs.extras.abLabel, intents.onCycleAb)
+                // AB 是设置里的可选项(默认关):关掉时控制条不摆这一枚,引擎也停止回跳
+                if (inputs.extras.abLoopEnabled) {
+                    StageTap(inputs.extras.abLabel, intents.onCycleAb)
+                }
                 SleepMenu(inputs.extras.sleepRemainingMs, intents.onSetSleep)
                 intents.window.onEnterPip?.let { StageTap("画中画", it) }
                 StageTap(if (inputs.fullscreen) "退出全屏" else "全屏", intents.window.onToggleFullscreen)

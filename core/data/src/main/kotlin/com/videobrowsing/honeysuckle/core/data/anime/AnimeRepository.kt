@@ -13,4 +13,7 @@ interface AnimeRepository {
     suspend fun timeline(): HsyResult<List<AnimeTimelineDay>>
 
     suspend fun season(seasonId: Long): HsyResult<AnimeSeason>
+
+    /** 追番开关;写必须登录,csrf 门禁在实现里统一走 */
+    suspend fun setFollow(seasonId: Long, follow: Boolean): HsyResult<Unit>
 }

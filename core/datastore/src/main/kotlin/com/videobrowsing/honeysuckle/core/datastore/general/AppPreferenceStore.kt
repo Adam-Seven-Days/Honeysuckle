@@ -54,6 +54,8 @@ interface AppPreferenceStore {
 
     suspend fun setRecordHistory(enabled: Boolean)
 
+    suspend fun setAbLoopEnabled(enabled: Boolean)
+
     suspend fun setCommentLikeReadOnly(readOnly: Boolean)
 
     suspend fun setReplyLikesVisible(visible: Boolean)

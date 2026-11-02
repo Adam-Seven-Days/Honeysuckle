@@ -1,6 +1,7 @@
 package com.videobrowsing.honeysuckle.feature.videodetail
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -58,7 +59,12 @@ private val ReplyIndent = 48.dp
  *  - **写入口随登录态换形**:游客看到的是"去登录",不是一个点了必然失败的发送按钮。
  */
 @Composable
-internal fun CommentPane(viewModel: CommentViewModel, onOpenLogin: () -> Unit, modifier: Modifier = Modifier) {
+internal fun CommentPane(
+    viewModel: CommentViewModel,
+    onOpenLogin: () -> Unit,
+    onOpenSpace: (Long) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var draft by remember { mutableStateOf("") }
 
@@ -82,7 +88,12 @@ internal fun CommentPane(viewModel: CommentViewModel, onOpenLogin: () -> Unit, m
         SortRow(selected = state.sort, onSelect = { viewModel.onAction(CommentAction.ChangeSort(it)) })
 
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            CommentBody(state = state, onAction = viewModel::onAction, onOpenLogin = onOpenLogin)
+            CommentBody(
+                state = state,
+                onAction = viewModel::onAction,
+                onOpenLogin = onOpenLogin,
+                onOpenSpace = onOpenSpace,
+            )
         }
 
         Composer(
@@ -118,7 +129,12 @@ private fun SortRow(selected: CommentSort, onSelect: (CommentSort) -> Unit) {
 }
 
 @Composable
-private fun CommentBody(state: CommentUiState, onAction: (CommentAction) -> Unit, onOpenLogin: () -> Unit) {
+private fun CommentBody(
+    state: CommentUiState,
+    onAction: (CommentAction) -> Unit,
+    onOpenLogin: () -> Unit,
+    onOpenSpace: (Long) -> Unit,
+) {
     when {
         state.loading && state.comments.isEmpty() -> Centered { CircularProgressIndicator() }
 
@@ -133,12 +149,22 @@ private fun CommentBody(state: CommentUiState, onAction: (CommentAction) -> Unit
             hint = "发第一条,或者换个排序看看",
         )
 
-        else -> CommentList(state = state, onAction = onAction, onOpenLogin = onOpenLogin)
+        else -> CommentList(
+            state = state,
+            onAction = onAction,
+            onOpenLogin = onOpenLogin,
+            onOpenSpace = onOpenSpace,
+        )
     }
 }
 
 @Composable
-private fun CommentList(state: CommentUiState, onAction: (CommentAction) -> Unit, onOpenLogin: () -> Unit) {
+private fun CommentList(
+    state: CommentUiState,
+    onAction: (CommentAction) -> Unit,
+    onOpenLogin: () -> Unit,
+    onOpenSpace: (Long) -> Unit,
+) {
     val listState = rememberLazyListState()
     val atBottom by remember {
         derivedStateOf {
@@ -156,16 +182,26 @@ private fun CommentList(state: CommentUiState, onAction: (CommentAction) -> Unit
 
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
         items(state.comments, key = { it.id }) { comment ->
-            CommentRow(comment = comment, state = state, onAction = onAction)
+            CommentRow(
+                comment = comment,
+                state = state,
+                onAction = onAction,
+                onOpenSpace = onOpenSpace,
+            )
         }
         item(key = "footer") { ListFooter(state = state, onAction = onAction, onOpenLogin = onOpenLogin) }
     }
 }
 
 @Composable
-private fun CommentRow(comment: Comment, state: CommentUiState, onAction: (CommentAction) -> Unit) {
+private fun CommentRow(
+    comment: Comment,
+    state: CommentUiState,
+    onAction: (CommentAction) -> Unit,
+    onOpenSpace: (Long) -> Unit,
+) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        CommentHeader(comment)
+        CommentHeader(comment = comment, onOpenSpace = onOpenSpace)
         Text(
             text = comment.content,
             style = Hsy.typography.bodyMedium,
@@ -200,13 +236,18 @@ private fun CommentRow(comment: Comment, state: CommentUiState, onAction: (Comme
             }
         }
         if (state.expandedRoots.contains(comment.id)) {
-            Replies(comment = comment, state = state, onAction = onAction)
+            Replies(comment = comment, state = state, onAction = onAction, onOpenSpace = onOpenSpace)
         }
     }
 }
 
 @Composable
-private fun Replies(comment: Comment, state: CommentUiState, onAction: (CommentAction) -> Unit) {
+private fun Replies(
+    comment: Comment,
+    state: CommentUiState,
+    onAction: (CommentAction) -> Unit,
+    onOpenSpace: (Long) -> Unit,
+) {
     when {
         state.repliesLoading.contains(comment.id) -> Row(
             modifier = Modifier.fillMaxWidth().padding(start = ReplyIndent, top = 4.dp),
@@ -231,15 +272,20 @@ private fun Replies(comment: Comment, state: CommentUiState, onAction: (CommentA
         )
 
         else -> state.replies.getValue(comment.id).forEach { reply ->
-            ReplyRow(reply = reply, state = state, onAction = onAction)
+            ReplyRow(reply = reply, state = state, onAction = onAction, onOpenSpace = onOpenSpace)
         }
     }
 }
 
 @Composable
-private fun ReplyRow(reply: Comment, state: CommentUiState, onAction: (CommentAction) -> Unit) {
+private fun ReplyRow(
+    reply: Comment,
+    state: CommentUiState,
+    onAction: (CommentAction) -> Unit,
+    onOpenSpace: (Long) -> Unit,
+) {
     Column(modifier = Modifier.fillMaxWidth().padding(start = ReplyIndent, top = 8.dp)) {
-        CommentHeader(reply, avatarSize = 28.dp)
+        CommentHeader(comment = reply, avatarSize = 28.dp, onOpenSpace = onOpenSpace)
         Text(
             text = reply.content,
             style = Hsy.typography.bodySmall,
@@ -261,8 +307,19 @@ private fun ReplyRow(reply: Comment, state: CommentUiState, onAction: (CommentAc
 }
 
 @Composable
-private fun CommentHeader(comment: Comment, avatarSize: androidx.compose.ui.unit.Dp = AvatarSize) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+private fun CommentHeader(
+    comment: Comment,
+    avatarSize: androidx.compose.ui.unit.Dp = AvatarSize,
+    onOpenSpace: (Long) -> Unit,
+) {
+    val canOpenSpace = comment.mid > 0L
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.clickable(
+            enabled = canOpenSpace,
+            onClickLabel = "打开评论者空间",
+        ) { onOpenSpace(comment.mid) },
+    ) {
         Box(
             modifier = Modifier.size(avatarSize).clip(CircleShape)
                 .background(Hsy.colors.surfaceVariant),

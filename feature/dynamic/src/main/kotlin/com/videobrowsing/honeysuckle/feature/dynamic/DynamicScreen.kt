@@ -50,6 +50,7 @@ import com.videobrowsing.honeysuckle.core.model.DynamicItem
 fun DynamicScreen(
     viewModel: DynamicViewModel,
     onOpenVideo: (String) -> Unit,
+    onOpenSpace: (Long) -> Unit,
     onOpenLogin: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -81,13 +82,18 @@ fun DynamicScreen(
                 HsyEmptyState(title = "关注的人还没发动态", hint = "关注几位 UP,这里就会按时间排起来")
             }
 
-            else -> DynamicList(state, onOpenVideo) { viewModel.onAction(it) }
+            else -> DynamicList(state, onOpenVideo, onOpenSpace) { viewModel.onAction(it) }
         }
     }
 }
 
 @Composable
-private fun DynamicList(state: DynamicUiState, onOpenVideo: (String) -> Unit, onAction: (DynamicAction) -> Unit) {
+private fun DynamicList(
+    state: DynamicUiState,
+    onOpenVideo: (String) -> Unit,
+    onOpenSpace: (Long) -> Unit,
+    onAction: (DynamicAction) -> Unit,
+) {
     val listState = rememberLazyListState()
     val atBottom by remember {
         derivedStateOf {
@@ -98,7 +104,7 @@ private fun DynamicList(state: DynamicUiState, onOpenVideo: (String) -> Unit, on
     LaunchedEffect(atBottom) { if (atBottom && state.more) onAction(DynamicAction.LoadMore) }
 
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-        items(state.items, key = { it.id }) { item -> DynamicCard(item, onOpenVideo) }
+        items(state.items, key = { it.id }) { item -> DynamicCard(item, onOpenVideo, onOpenSpace) }
         item(key = "footer") {
             Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
                 when {
@@ -116,14 +122,19 @@ private fun DynamicList(state: DynamicUiState, onOpenVideo: (String) -> Unit, on
 }
 
 @Composable
-private fun DynamicCard(item: DynamicItem, onOpenVideo: (String) -> Unit) {
+private fun DynamicCard(item: DynamicItem, onOpenVideo: (String) -> Unit, onOpenSpace: (Long) -> Unit) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = item.authorName.ifBlank { "未知 UP" },
                 style = Hsy.typography.titleSmall,
                 color = Hsy.colors.onSurface,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(
+                        enabled = item.authorMid > 0L,
+                        onClickLabel = "打开 UP 主空间",
+                    ) { onOpenSpace(item.authorMid) },
             )
             Text(
                 text = item.publishedText,

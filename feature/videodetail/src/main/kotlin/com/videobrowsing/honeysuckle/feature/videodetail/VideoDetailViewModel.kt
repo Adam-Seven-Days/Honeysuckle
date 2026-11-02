@@ -23,6 +23,7 @@ import com.videobrowsing.honeysuckle.core.datastore.danmaku.DanmakuPreferenceRep
 import com.videobrowsing.honeysuckle.core.datastore.danmaku.DanmakuPreferences
 import com.videobrowsing.honeysuckle.core.datastore.general.AppPreferenceRepository
 import com.videobrowsing.honeysuckle.core.datastore.general.AppPreferences
+import com.videobrowsing.honeysuckle.core.model.FavoriteFolder
 import com.videobrowsing.honeysuckle.core.model.FavoriteItem
 import com.videobrowsing.honeysuckle.core.model.FeedItem
 import com.videobrowsing.honeysuckle.core.model.Playback
@@ -51,9 +52,6 @@ private const val DANMAKU_PENDING = "弹幕:待拉取"
 
 /** 一次投币投几枚(与 `InteractionApi` 表单里的 multiply 对齐) */
 private const val COIN_PER_TAP = 1L
-
-/** 详情页收藏成功后本地镜像落在"本地收藏"这一档(平台夹 id 为 0) */
-private const val LOCAL_FOLDER_TITLE = "本地收藏"
 
 /** 弹幕默认色:白(与 DanmakuPostApi 发出去的那一档一致) */
 private const val DANMAKU_WHITE = 0xFFFFFFL
@@ -111,6 +109,12 @@ data class VideoDetailUiState(
     val interaction: VideoInteraction = VideoInteraction(),
     val interactionBusy: Boolean = false,
     val interactionMessage: String? = null,
+    /** 收藏夹选择面板:只有登录态会打开;列表与"这条稿在哪些夹里"分开读 */
+    val favoritePickerVisible: Boolean = false,
+    val favoriteFolders: List<FavoriteFolder> = emptyList(),
+    val favoriteFolderIds: Set<Long> = emptySet(),
+    val favoriteFoldersLoading: Boolean = false,
+    val favoriteFoldersError: String? = null,
     /** 关注状态;`null` = 游客态或还没读回来,界面据此只给"关注"不给"已关注" */
     val following: Boolean? = null,
     val followBusy: Boolean = false,
@@ -146,7 +150,15 @@ sealed interface VideoDetailAction {
     data class SetSpeed(val speed: Float) : VideoDetailAction
     data object ToggleLike : VideoDetailAction
     data object AddCoin : VideoDetailAction
-    data object AddFavorite : VideoDetailAction
+
+    /** 打开收藏夹面板;面板里点某个夹就是"收进它 / 从它移走" */
+    data object OpenFavoritePicker : VideoDetailAction
+    data object CloseFavoritePicker : VideoDetailAction
+    data object RetryFavoriteFolders : VideoDetailAction
+    data class ToggleFavoriteIn(val folderId: Long) : VideoDetailAction
+
+    /** 从所有收藏夹里一次移走(取消收藏) */
+    data object RemoveFavorite : VideoDetailAction
 
     /** 播放器上的弹幕开关:写同一份弹幕偏好,设置页的开关会跟着变 */
     data object ToggleDanmaku : VideoDetailAction
@@ -246,7 +258,11 @@ class VideoDetailViewModel @Inject constructor(
         when (action) {
             VideoDetailAction.ToggleLike -> toggleLike()
             VideoDetailAction.AddCoin -> addCoin()
-            VideoDetailAction.AddFavorite -> addFavorite()
+            VideoDetailAction.OpenFavoritePicker -> openFavoritePicker()
+            VideoDetailAction.CloseFavoritePicker -> mutableState.update { it.copy(favoritePickerVisible = false) }
+            VideoDetailAction.RetryFavoriteFolders -> loadFavoriteFolders()
+            is VideoDetailAction.ToggleFavoriteIn -> toggleFavoriteIn(action.folderId)
+            VideoDetailAction.RemoveFavorite -> removeFavorite()
             VideoDetailAction.ToggleFollow -> toggleFollow()
             is VideoDetailAction.SendDanmaku -> sendDanmaku(action.text, action.progressMs)
             else -> Unit
@@ -547,34 +563,92 @@ class VideoDetailViewModel @Inject constructor(
         return copy(detail = bumped ?: detail, interactionBusy = false)
     }
 
-    private fun addFavorite() {
+    /** 打开面板时才读收藏夹与归属:没点开收藏就不为它多发两条请求 */
+    private fun openFavoritePicker() {
         val current = mutableState.value
-        val detail = current.detail ?: return
-        if (current.interactionBusy || current.interaction.favorited == true) return
+        if (!current.loggedIn) {
+            showMessage("收藏需要登录 · 去登录")
+            return
+        }
+        mutableState.update {
+            it.copy(
+                favoritePickerVisible = true,
+                favoriteFoldersLoading = true,
+                favoriteFoldersError = null,
+            )
+        }
+        loadFavoriteFolders()
+    }
+
+    private fun loadFavoriteFolders() {
+        val detail = mutableState.value.detail ?: return
+        mutableState.update { it.copy(favoriteFoldersLoading = true, favoriteFoldersError = null) }
         viewModelScope.launch {
-            mutableState.update { it.copy(interactionBusy = true) }
-            when (val result = interactionRepository.addFavorite(detail.brief.aid)) {
+            when (val folders = favoriteRepository.folders()) {
                 is HsyResult.Success -> {
+                    val ids = interactionRepository.favoritedFolderIds(detail.brief.aid)
                     mutableState.update {
                         it.copy(
-                            interaction = it.interaction.copy(favorited = true),
+                            favoriteFolders = folders.value,
+                            favoriteFolderIds = (ids as? HsyResult.Success)?.value ?: emptySet(),
+                            favoriteFoldersLoading = false,
+                            favoriteFoldersError = (ids as? HsyResult.Failure)?.let { failure ->
+                                "收藏归属没读到:${failure.error.userMessage()}"
+                            },
+                        )
+                    }
+                }
+
+                is HsyResult.Failure -> mutableState.update {
+                    it.copy(
+                        favoriteFoldersLoading = false,
+                        favoriteFoldersError = folders.error.userMessage(),
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * 面板里点一个夹 = 在它里面翻转这条稿。
+     *
+     * 已收的夹再点一下是"从这个夹移走",不是"取消整个收藏" —— 一条稿可以同时在多个夹里,
+     * 这一点由面板上逐夹的勾选状态表达,不压成一个布尔。
+     */
+    private fun toggleFavoriteIn(folderId: Long) {
+        val current = mutableState.value
+        val detail = current.detail ?: return
+        if (current.interactionBusy || folderId <= 0L) return
+        val contained = current.favoriteFolderIds.contains(folderId)
+        viewModelScope.launch {
+            mutableState.update { it.copy(interactionBusy = true) }
+            val result = if (contained) {
+                interactionRepository.removeFavorite(detail.brief.aid, listOf(folderId))
+            } else {
+                interactionRepository.addFavorite(detail.brief.aid, folderId)
+            }
+            when (result) {
+                is HsyResult.Success -> {
+                    val ids = if (contained) {
+                        current.favoriteFolderIds - folderId
+                    } else {
+                        current.favoriteFolderIds + folderId
+                    }
+                    mutableState.update {
+                        it.copy(
+                            favoriteFolderIds = ids,
+                            interaction = it.interaction.copy(favorited = ids.isNotEmpty()),
                             interactionBusy = false,
                         )
                     }
-                    // 本地留一份镜像:游客/断网时收藏页仍看得见"我收过这条"
-                    favoriteRepository.recordLocal(
-                        FavoriteItem(
-                            bvid = detail.brief.bvid,
-                            aid = detail.brief.aid,
-                            title = detail.brief.title,
-                            coverUrl = detail.brief.coverUrl,
-                            durationSec = detail.brief.durationSec,
-                            upName = detail.brief.upName,
-                            folderTitle = LOCAL_FOLDER_TITLE,
-                            addedAtEpochSec = HsyClock.nowEpochSec(),
-                        ),
-                    )
-                    showMessage("已收藏到第一个收藏夹")
+                    if (contained) {
+                        if (ids.isEmpty()) clearLocalMirror(detail)
+                        showMessage("已从这个收藏夹移走")
+                    } else {
+                        recordLocalMirror(detail, folderId)
+                        showMessage("已收进「${folderTitleOf(folderId)}」")
+                    }
+                    loadFavoriteFolders()
                 }
 
                 is HsyResult.Failure -> {
@@ -584,6 +658,71 @@ class VideoDetailViewModel @Inject constructor(
             }
         }
     }
+
+    /** 面板底部的"取消收藏":把这条稿从它所在的每个夹里一次移走 */
+    private fun removeFavorite() {
+        val current = mutableState.value
+        val detail = current.detail ?: return
+        val ids = current.favoriteFolderIds
+        if (current.interactionBusy || ids.isEmpty()) return
+        viewModelScope.launch {
+            mutableState.update { it.copy(interactionBusy = true) }
+            when (val result = interactionRepository.removeFavorite(detail.brief.aid, ids)) {
+                is HsyResult.Success -> {
+                    mutableState.update {
+                        it.copy(
+                            favoriteFolderIds = emptySet(),
+                            interaction = it.interaction.copy(favorited = false),
+                            interactionBusy = false,
+                            favoritePickerVisible = false,
+                        )
+                    }
+                    clearLocalMirror(detail)
+                    showMessage("已取消收藏")
+                }
+
+                is HsyResult.Failure -> {
+                    mutableState.update { it.copy(interactionBusy = false) }
+                    showMessage(writeErrorText("取消收藏", result.error))
+                }
+            }
+        }
+    }
+
+    private fun recordLocalMirror(detail: VideoDetail, folderId: Long) {
+        viewModelScope.launch {
+            favoriteRepository.recordLocal(
+                FavoriteItem(
+                    bvid = detail.brief.bvid,
+                    aid = detail.brief.aid,
+                    title = detail.brief.title,
+                    coverUrl = detail.brief.coverUrl,
+                    durationSec = detail.brief.durationSec,
+                    upName = detail.brief.upName,
+                    folderId = FavoriteItem.LOCAL_FOLDER_ID,
+                    folderTitle = folderTitleOf(folderId),
+                    addedAtEpochSec = HsyClock.nowEpochSec(),
+                ),
+            )
+        }
+    }
+
+    /** 本地镜像没有平台归属,走 removeItem 的本地分支即可删掉,不用网络 */
+    private fun clearLocalMirror(detail: VideoDetail) {
+        viewModelScope.launch {
+            favoriteRepository.removeItem(
+                FavoriteItem(
+                    bvid = detail.brief.bvid,
+                    aid = detail.brief.aid,
+                    title = detail.brief.title,
+                    folderId = FavoriteItem.LOCAL_FOLDER_ID,
+                ),
+            )
+        }
+    }
+
+    private fun folderTitleOf(folderId: Long): String =
+        mutableState.value.favoriteFolders.firstOrNull { it.id == folderId }?.title.orEmpty()
 
     private fun toggleFollow() {
         val current = mutableState.value

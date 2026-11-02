@@ -81,6 +81,7 @@ dependencies {
     // 扩展屏:直播 / 番剧 / 动态三屏进顶层栏,闪屏盖住冷启动
     implementation(project(":feature:live"))
     implementation(project(":feature:anime"))
+    implementation(project(":feature:space"))
     implementation(project(":feature:dynamic"))
     implementation(project(":feature:splash"))
 

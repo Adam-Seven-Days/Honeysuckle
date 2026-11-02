@@ -3,6 +3,9 @@ package com.videobrowsing.honeysuckle.core.common
 /** 平台风控那一档的 HTTP 码(2026-10-31 设备上真撞到的那一个) */
 private const val HTTP_RISK_CONTROL = 412
 
+/** 平台风控那一档的业务码:wbi 签名/指纹不齐时空间与部分读口会回这一枚 */
+private const val CODE_RISK_REJECT = -352
+
 /**
  * 错误 → 一句人话(文案映射在 UI 层,数据层只出分类)。
  *
@@ -15,10 +18,10 @@ private const val HTTP_RISK_CONTROL = 412
 fun AppError.userMessage(): String = when (this) {
     is AppError.Network -> networkMessage(cause)
 
-    is AppError.Server -> if (code == HTTP_RISK_CONTROL) {
-        "被平台挡回来了 · 歇一会儿再试,连点只会更久"
-    } else {
-        "平台暂时没响应 · 稍后再试"
+    is AppError.Server -> when (code) {
+        HTTP_RISK_CONTROL -> "被平台挡回来了 · 歇一会儿再试,连点只会更久"
+        CODE_RISK_REJECT -> "平台的身份核查没通过 · 稍后再试,挂着页面里的重试会带齐指纹重来"
+        else -> "平台暂时没响应 · 稍后再试"
     }
 
     is AppError.Decode -> "这条路的数据没读出来 · 稍后再试"
