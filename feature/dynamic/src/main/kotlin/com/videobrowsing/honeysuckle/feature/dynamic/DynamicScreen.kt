@@ -5,8 +5,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -18,19 +16,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil3.compose.AsyncImage
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsyEmptyState
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsyErrorState
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsyTopBar
-import com.videobrowsing.honeysuckle.core.designsystem.component.HsyVideoCard
 import com.videobrowsing.honeysuckle.core.designsystem.icon.HsyIcons
 import com.videobrowsing.honeysuckle.core.designsystem.theme.Hsy
 import com.videobrowsing.honeysuckle.core.designsystem.ui.CircularProgressIndicator
@@ -45,16 +43,32 @@ import com.videobrowsing.honeysuckle.core.model.DynamicItem
  *
  * 平台这一端要登录,所以屏上首先回答的是"现在能不能看":游客态给扫码入口,
  * 登录态才发请求;平台回 -101 时同样落回扫码引导,而不是把错误码丢给用户。
+ *
+ * 一条动态的主内容按 [com.videobrowsing.honeysuckle.core.model.DynamicKind] 分流:
+ * 视频进详情、专栏进内置阅读页、图文 / 图集开全屏预览、转发把原文缩进一格再画一遍。
  */
 @Composable
 fun DynamicScreen(
     viewModel: DynamicViewModel,
     onOpenVideo: (String) -> Unit,
     onOpenSpace: (Long) -> Unit,
+    onOpenArticle: (Long) -> Unit,
     onOpenLogin: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val actions = remember(onOpenVideo, onOpenSpace, onOpenArticle) {
+        OpenActions(
+            video = onOpenVideo,
+            space = onOpenSpace,
+            article = onOpenArticle,
+            images = { _, _ -> },
+        )
+    }
+    var preview by remember { mutableStateOf<ImagePreview?>(null) }
+    val liveActions = remember(actions) {
+        actions.copy(images = { urls, index -> preview = ImagePreview(urls, index) })
+    }
 
     Column(modifier = modifier.fillMaxSize()) {
         HsyTopBar(
@@ -82,18 +96,27 @@ fun DynamicScreen(
                 HsyEmptyState(title = "关注的人还没发动态", hint = "关注几位 UP,这里就会按时间排起来")
             }
 
-            else -> DynamicList(state, onOpenVideo, onOpenSpace) { viewModel.onAction(it) }
+            else -> DynamicList(
+                state = state,
+                actions = liveActions,
+                onAction = { viewModel.onAction(it) },
+            )
         }
     }
+    preview?.let { ImagePreviewDialog(preview = it, onDismiss = { preview = null }) }
 }
 
+/** 一组"打开"入口:卡片层级太深,逐个当参数传会一路加到六七个 */
+internal data class OpenActions(
+    val video: (String) -> Unit,
+    val space: (Long) -> Unit,
+    val article: (Long) -> Unit,
+    /** 图片全屏预览:整组 URL + 从第几张开始 */
+    val images: (List<String>, Int) -> Unit,
+)
+
 @Composable
-private fun DynamicList(
-    state: DynamicUiState,
-    onOpenVideo: (String) -> Unit,
-    onOpenSpace: (Long) -> Unit,
-    onAction: (DynamicAction) -> Unit,
-) {
+private fun DynamicList(state: DynamicUiState, actions: OpenActions, onAction: (DynamicAction) -> Unit) {
     val listState = rememberLazyListState()
     val atBottom by remember {
         derivedStateOf {
@@ -104,7 +127,7 @@ private fun DynamicList(
     LaunchedEffect(atBottom) { if (atBottom && state.more) onAction(DynamicAction.LoadMore) }
 
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-        items(state.items, key = { it.id }) { item -> DynamicCard(item, onOpenVideo, onOpenSpace) }
+        items(state.items, key = { it.id }) { item -> DynamicCard(item = item, actions = actions) }
         item(key = "footer") {
             Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
                 when {
@@ -122,26 +145,9 @@ private fun DynamicList(
 }
 
 @Composable
-private fun DynamicCard(item: DynamicItem, onOpenVideo: (String) -> Unit, onOpenSpace: (Long) -> Unit) {
+private fun DynamicCard(item: DynamicItem, actions: OpenActions) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = item.authorName.ifBlank { "未知 UP" },
-                style = Hsy.typography.titleSmall,
-                color = Hsy.colors.onSurface,
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable(
-                        enabled = item.authorMid > 0L,
-                        onClickLabel = "打开 UP 主空间",
-                    ) { onOpenSpace(item.authorMid) },
-            )
-            Text(
-                text = item.publishedText,
-                style = Hsy.typography.bodySmall,
-                color = Hsy.colors.onSurfaceVariant,
-            )
-        }
+        DynamicHeader(item = item, onOpenSpace = actions.space)
         if (item.text.isNotBlank()) {
             Text(
                 text = item.text,
@@ -152,52 +158,9 @@ private fun DynamicCard(item: DynamicItem, onOpenVideo: (String) -> Unit, onOpen
                 modifier = Modifier.padding(top = 6.dp),
             )
         }
-        when {
-            item.videoBvid.isNotBlank() -> HsyVideoCard(
-                title = item.videoTitle,
-                coverUrl = item.videoCoverUrl,
-                durationLabel = item.videoDurationText,
-                upLine = item.authorName,
-                statLine = "动态视频",
-                onClick = { onOpenVideo(item.videoBvid) },
-            )
-
-            item.imageUrls.isNotEmpty() -> DynamicImages(item.imageUrls)
-        }
+        DynamicBody(item = item, actions = actions)
+        DynamicStats(item.stat)
         HorizontalDivider(modifier = Modifier.padding(top = 10.dp))
-    }
-}
-
-@Composable
-private fun DynamicImages(urls: List<String>) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 8.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(Hsy.colors.surfaceVariant),
-    ) {
-        AsyncImage(
-            model = urls.first(),
-            contentDescription = "动态配图",
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxWidth().aspectRatio(IMAGE_ASPECT_RATIO),
-        )
-        if (urls.size > 1) {
-            Text(
-                text = "+${urls.size - 1}",
-                style = Hsy.typography.labelMedium,
-                color = Hsy.colors.inverseOnSurface,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(8.dp)
-                    .background(
-                        Hsy.colors.inverseSurface.copy(alpha = BADGE_SCRIM_ALPHA),
-                        RoundedCornerShape(4.dp),
-                    )
-                    .padding(horizontal = 6.dp, vertical = 1.dp),
-            )
-        }
     }
 }
 
@@ -215,7 +178,7 @@ private fun LoginGuide(onOpenLogin: () -> Unit) {
             color = Hsy.colors.accent,
             modifier = Modifier
                 .clip(RoundedCornerShape(8.dp))
-                .clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onOpenLogin)
+                .clickable(role = Role.Button, onClick = onOpenLogin)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
         )
     }
@@ -227,5 +190,3 @@ private fun Centered(content: @Composable () -> Unit) {
 }
 
 private const val TEXT_PREVIEW_LINES = 4
-private const val IMAGE_ASPECT_RATIO = 1.7778f
-private const val BADGE_SCRIM_ALPHA = 0.7f

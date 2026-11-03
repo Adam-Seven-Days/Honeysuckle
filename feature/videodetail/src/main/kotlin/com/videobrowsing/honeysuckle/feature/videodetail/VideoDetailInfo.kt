@@ -100,6 +100,7 @@ internal fun VideoMeta(state: VideoDetailUiState, detail: VideoDetail, intents: 
             color = Hsy.colors.onSurfaceVariant,
         )
         MetaActionRow(state, detail, intents)
+        OfflineBar(state, intents)
         state.interactionMessage?.let { message ->
             Text(
                 text = message,

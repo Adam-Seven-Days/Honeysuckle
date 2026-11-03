@@ -1,8 +1,10 @@
 package com.videobrowsing.honeysuckle.core.data.di
 
 import com.videobrowsing.honeysuckle.core.data.remote.AnimeApi
+import com.videobrowsing.honeysuckle.core.data.remote.ArticleApi
 import com.videobrowsing.honeysuckle.core.data.remote.DynamicApi
 import com.videobrowsing.honeysuckle.core.data.remote.LiveApi
+import com.videobrowsing.honeysuckle.core.data.remote.MessageApi
 import com.videobrowsing.honeysuckle.core.network.client.HsyFormSource
 import com.videobrowsing.honeysuckle.core.network.client.HsyJsonSource
 import dagger.Module
@@ -24,4 +26,10 @@ object LiveAnimeDynamicApiModule {
 
     @Provides
     fun provideDynamicApi(jsonSource: HsyJsonSource): DynamicApi = DynamicApi(jsonSource)
+
+    @Provides
+    fun provideMessageApi(jsonSource: HsyJsonSource): MessageApi = MessageApi(jsonSource)
+
+    @Provides
+    fun provideArticleApi(jsonSource: HsyJsonSource): ArticleApi = ArticleApi(jsonSource)
 }

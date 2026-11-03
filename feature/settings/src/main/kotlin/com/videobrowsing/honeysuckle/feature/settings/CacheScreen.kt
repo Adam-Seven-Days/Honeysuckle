@@ -30,6 +30,7 @@ import com.videobrowsing.honeysuckle.core.model.CacheUsage
  * 缓存管理页。
  *
  * 只碰 `cacheDir`:历史、收藏、登录凭据都在别的目录/数据库里,一个清理按钮不该让它们消失。
+ * 离线视频也单独列一格、但不在清理范围内 —— 那是用户主动下的内容,不是"又缓存了一遍"。
  * 这一页把"图片"与"其余"分开念,因为用户按下清理时,心里想的多半是"那张封面又下载了一遍"。
  */
 @Composable
@@ -57,6 +58,19 @@ fun CacheScreen(viewModel: CacheViewModel, onBack: () -> Unit, modifier: Modifie
         }
 
         HsySectionCard(title = "本机缓存") { UsageRows(state.usage) }
+
+        HsySectionCard(title = "离线视频") {
+            HsySettingRow(
+                title = "已下载的分 P",
+                supporting = "在视频详情页下载;清理缓存不会删掉它们",
+                trailing = {
+                    Text(
+                        text = if (state.offlineBytes > 0L) formatBytes(state.offlineBytes) else "暂无",
+                        style = Hsy.typography.bodyMedium,
+                    )
+                },
+            )
+        }
 
         HsySectionCard(title = "清理") {
             HsySettingRow(
@@ -105,7 +119,7 @@ private fun ClearCacheDialog(totalBytes: Long, onDismiss: () -> Unit, onConfirm:
         text = {
             Text(
                 "会删掉 ${formatBytes(totalBytes)} 的图片与临时文件。" +
-                    "历史、收藏、登录态不在缓存目录里,不受影响。",
+                    "历史、收藏、登录态与离线视频不在缓存目录里,不受影响。",
             )
         },
         confirmButton = { TextButton(onClick = onConfirm) { Text("清理") } },

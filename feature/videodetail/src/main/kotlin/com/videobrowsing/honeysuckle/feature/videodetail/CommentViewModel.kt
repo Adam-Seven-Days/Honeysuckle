@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 private const val FIRST_PAGE = 1
+private const val SECOND_PAGE = 2
 private const val MESSAGE_LINGER_MS = 4_000L
 private const val LIKE_READ_ONLY_HINT = "评论点赞已关闭 · 在「设置 → 评论」里可以打开"
 
@@ -52,6 +53,9 @@ data class CommentUiState(
     val replies: Map<Long, List<Comment>> = emptyMap(),
     val expandedRoots: Set<Long> = emptySet(),
     val repliesLoading: Set<Long> = emptySet(),
+    /** 这一楼还有下一页回复:楼中楼一次只给 20 条,展开后按页续 */
+    val repliesMore: Set<Long> = emptySet(),
+    val repliesLoadingMore: Set<Long> = emptySet(),
     val repliesError: Map<Long, String> = emptyMap(),
     /** 本地记住"我赞过哪些评论/回复":平台列表只给赞数,取消赞要靠这份记忆 */
     val likedIds: Set<Long> = emptySet(),
@@ -79,6 +83,9 @@ sealed interface CommentAction {
     data class ReplyTo(val comment: Comment?) : CommentAction
     data class ToggleReplies(val comment: Comment) : CommentAction
     data class RetryReplies(val comment: Comment) : CommentAction
+
+    /** 楼中楼往下翻一页(每页 20 条,不是重取第一页) */
+    data class LoadMoreReplies(val comment: Comment) : CommentAction
     data class DismissMessage(val message: String) : CommentAction
     data class ToggleLike(val comment: Comment) : CommentAction
     data object Retry : CommentAction
@@ -110,6 +117,9 @@ class CommentViewModel @Inject constructor(
     private var messageJob: Job? = null
     private val replyJobs = mutableMapOf<Long, Job>()
 
+    /** 每一楼下一次该要第几页;第一页收起后仍保留,展开时不重发第一页 */
+    private val nextReplyPage = mutableMapOf<Long, Int>()
+
     init {
         observeAccount(authRepository, preferences)
     }
@@ -124,6 +134,7 @@ class CommentViewModel @Inject constructor(
         fetchJob?.cancel()
         replyJobs.values.forEach { it.cancel() }
         replyJobs.clear()
+        nextReplyPage.clear()
         mutableState.update {
             CommentUiState(
                 aid = aid,
@@ -161,8 +172,10 @@ class CommentViewModel @Inject constructor(
                         repliesError = it.repliesError - action.comment.id,
                     )
                 }
-                loadReplies(action.comment)
+                loadReplies(action.comment, append = false)
             }
+
+            is CommentAction.LoadMoreReplies -> loadReplies(action.comment, append = true)
 
             is CommentAction.DismissMessage -> {
                 messageJob?.cancel()
@@ -289,33 +302,54 @@ class CommentViewModel @Inject constructor(
             return
         }
         mutableState.update { it.copy(expandedRoots = it.expandedRoots + comment.id) }
-        // 已经拉过且没失败就不再重发
+        // 已经拉过且没失败就不再重发;已翻到第 N 页的进度还在 nextReplyPage 里
         if (current.replies.containsKey(comment.id) && !current.repliesError.containsKey(comment.id)) return
-        loadReplies(comment)
+        loadReplies(comment, append = false)
     }
 
-    private fun loadReplies(comment: Comment) {
+    /**
+     * 楼中楼取数。[append] = false 取第一页并覆盖,true 接着 [nextReplyPage] 往下翻。
+     *
+     * 同一楼同时只跑一个请求:翻页与重试都会进这里,并发会让两页按不可控的顺序回来。
+     * 追加页按 id 去重,平台在边界页重复下发同一条时不至于出现两条一样的回复。
+     */
+    private fun loadReplies(comment: Comment, append: Boolean) {
         val current = mutableState.value
-        if (current.repliesLoading.contains(comment.id)) return
+        if (current.repliesLoading.contains(comment.id) || current.repliesLoadingMore.contains(comment.id)) return
+        if (append && !current.repliesMore.contains(comment.id)) return
+        val page = if (append) nextReplyPage[comment.id] ?: SECOND_PAGE else FIRST_PAGE
         replyJobs[comment.id]?.cancel()
         replyJobs[comment.id] = viewModelScope.launch {
             mutableState.update {
                 it.copy(
-                    repliesLoading = it.repliesLoading + comment.id,
+                    repliesLoading = if (append) it.repliesLoading else it.repliesLoading + comment.id,
+                    repliesLoadingMore = if (append) it.repliesLoadingMore + comment.id else it.repliesLoadingMore,
                     repliesError = it.repliesError - comment.id,
                 )
             }
-            when (val result = commentRepository.replies(current.aid, comment.id, FIRST_PAGE, current.upMid)) {
-                is HsyResult.Success -> mutableState.update {
-                    it.copy(
-                        replies = it.replies + (comment.id to result.value.comments),
-                        repliesLoading = it.repliesLoading - comment.id,
-                    )
+            when (val result = commentRepository.replies(current.aid, comment.id, page, current.upMid)) {
+                is HsyResult.Success -> {
+                    nextReplyPage[comment.id] = page + 1
+                    mutableState.update { state ->
+                        val base = if (append) state.replies[comment.id].orEmpty() else emptyList()
+                        val merged = (base + result.value.comments).distinctBy { it.id }
+                        state.copy(
+                            replies = state.replies + (comment.id to merged),
+                            repliesMore = if (result.value.moreAvailable) {
+                                state.repliesMore + comment.id
+                            } else {
+                                state.repliesMore - comment.id
+                            },
+                            repliesLoading = state.repliesLoading - comment.id,
+                            repliesLoadingMore = state.repliesLoadingMore - comment.id,
+                        )
+                    }
                 }
 
                 is HsyResult.Failure -> mutableState.update {
                     it.copy(
                         repliesLoading = it.repliesLoading - comment.id,
+                        repliesLoadingMore = it.repliesLoadingMore - comment.id,
                         repliesError = it.repliesError + (comment.id to result.error.userMessage()),
                     )
                 }

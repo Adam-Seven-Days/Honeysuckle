@@ -26,10 +26,12 @@ object HsyRoute {
     const val ABOUT = "about"
     const val SEARCH = "search"
     const val LOGIN = "login"
+    const val MESSAGES = "messages"
     const val VIDEO_PATTERN = "video/{bvid}"
     const val LIVE_ROOM_PATTERN = "live/{roomId}"
     const val ANIME_PATTERN = "anime/{seasonId}"
     const val SPACE_PATTERN = "space/{mid}"
+    const val ARTICLE_PATTERN = "article/{articleId}"
 
     /** bvid 只由字母数字组成(如 `BV1xx411c7mD`),不含需要转义的字符 */
     fun video(bvid: String): String = "video/$bvid"
@@ -42,6 +44,9 @@ object HsyRoute {
 
     /** UP 主空间只带 mid;昵称与投稿由空间端取 */
     fun space(mid: Long): String = "space/$mid"
+
+    /** 专栏只带 cvid;标题、作者与正文由 `x/article/view` 取 */
+    fun article(articleId: Long): String = "article/$articleId"
 
     /** 设置二级页只带一个英文组名(appearance / playback / danmaku),不含需转义的字符 */
     fun settingsSection(section: String): String = "settings/$section"

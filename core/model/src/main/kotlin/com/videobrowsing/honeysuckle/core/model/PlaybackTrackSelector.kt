@@ -1,7 +1,4 @@
-package com.videobrowsing.honeysuckle.core.player
-
-import com.videobrowsing.honeysuckle.core.model.MediaTrack
-import com.videobrowsing.honeysuckle.core.model.Playback
+package com.videobrowsing.honeysuckle.core.model
 
 /** 选轨的结果:一次播放要的一对轨(DASH 音视频分轨,少一路就播不出完整画面) */
 data class MediaTrackSelection(val video: MediaTrack, val audio: MediaTrack)
@@ -19,7 +16,9 @@ data class MediaTrackSelection(val video: MediaTrack, val audio: MediaTrack)
  * **不做自适应**:平台这里给的是一份裸轨清单而不是 MPD,`media3-exoplayer-dash` 用不上。
  * 逐码率自适应要自己拼 Manifest 或换 `ProgressiveMediaSource` 的手动换轨,当前这一层不做。
  *
- * 纯函数、无 Android 依赖 —— 规则本身可以直接在 JVM 里推演,不必开模拟器。
+ * 纯函数、无 Android 依赖 —— 规则本身可以直接在 JVM 里推演,不必开模拟器;
+ * 因此它住在 `:core:model` 而不是播放器模块:离线下载也要问"该下哪一对轨",
+ * 而下载属于数据层,不该反过来依赖播放器。
  */
 object PlaybackTrackSelector {
 

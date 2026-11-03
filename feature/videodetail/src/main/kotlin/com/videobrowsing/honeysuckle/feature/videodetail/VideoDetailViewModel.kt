@@ -17,20 +17,24 @@ import com.videobrowsing.honeysuckle.core.data.detail.VideoDetailRepository
 import com.videobrowsing.honeysuckle.core.data.favorite.FavoriteRepository
 import com.videobrowsing.honeysuckle.core.data.history.HistoryRepository
 import com.videobrowsing.honeysuckle.core.data.interaction.InteractionRepository
+import com.videobrowsing.honeysuckle.core.data.offline.OfflineRepository
 import com.videobrowsing.honeysuckle.core.data.playback.PlaybackRepository
 import com.videobrowsing.honeysuckle.core.data.relation.RelationRepository
 import com.videobrowsing.honeysuckle.core.datastore.danmaku.DanmakuPreferenceRepository
 import com.videobrowsing.honeysuckle.core.datastore.danmaku.DanmakuPreferences
 import com.videobrowsing.honeysuckle.core.datastore.general.AppPreferenceRepository
 import com.videobrowsing.honeysuckle.core.datastore.general.AppPreferences
+import com.videobrowsing.honeysuckle.core.model.DownloadRequest
+import com.videobrowsing.honeysuckle.core.model.DownloadTask
 import com.videobrowsing.honeysuckle.core.model.FavoriteFolder
 import com.videobrowsing.honeysuckle.core.model.FavoriteItem
 import com.videobrowsing.honeysuckle.core.model.FeedItem
+import com.videobrowsing.honeysuckle.core.model.OfflineSource
 import com.videobrowsing.honeysuckle.core.model.Playback
+import com.videobrowsing.honeysuckle.core.model.PlaybackTrackSelector
 import com.videobrowsing.honeysuckle.core.model.VideoDetail
 import com.videobrowsing.honeysuckle.core.model.VideoInteraction
 import com.videobrowsing.honeysuckle.core.model.VideoPart
-import com.videobrowsing.honeysuckle.core.player.PlaybackTrackSelector
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
@@ -101,6 +105,10 @@ data class VideoDetailUiState(
     val playbackError: String? = null,
     val playback: Playback? = null,
     val playbackCid: Long = 0L,
+    /** 这一 P 有完成的离线文件时不再取在线流;播放页把两条本地路径交给播放器合并 */
+    val offlineSource: OfflineSource? = null,
+    /** 当前视频全部分 P 的离线任务;屏上按 [playbackCid] 取当前那一条 */
+    val downloads: List<DownloadTask> = emptyList(),
     val qualities: List<QualityOption> = emptyList(),
     val selectedQualityId: Int = PlaybackTrackSelector.AUTO_QUALITY,
     val speed: Float = AppPreferences.DEFAULT_PLAYBACK_SPEED,
@@ -169,6 +177,12 @@ sealed interface VideoDetailAction {
     /** 这一 P 播完了:还有下一 P 就自动接上(多 P 连播) */
     data object PartEnded : VideoDetailAction
 
+    /** 离线:开始 / 暂停 / 继续 / 删除当前分 P 的下载 */
+    data object StartDownload : VideoDetailAction
+    data object PauseDownload : VideoDetailAction
+    data object ResumeDownload : VideoDetailAction
+    data object DeleteDownload : VideoDetailAction
+
     data object DismissMessage : VideoDetailAction
 }
 
@@ -199,6 +213,7 @@ class VideoDetailViewModel @Inject constructor(
     private val danmakuPostRepository: DanmakuPostRepository,
     private val favoriteRepository: FavoriteRepository,
     private val authRepository: AuthRepository,
+    private val offlineRepository: OfflineRepository,
     private val appPreferences: AppPreferenceRepository,
     private val danmakuPreferences: DanmakuPreferenceRepository,
 ) : ViewModel() {
@@ -219,6 +234,7 @@ class VideoDetailViewModel @Inject constructor(
     init {
         observePreferences()
         observeLogin()
+        observeDownloads()
         load()
     }
 
@@ -236,7 +252,66 @@ class VideoDetailViewModel @Inject constructor(
             // 弹幕开关只改偏好,不碰播放与写链路;摆在 onAction 这支,handleAction 的复杂度才不会越堆越高
             VideoDetailAction.ToggleDanmaku -> toggleDanmaku()
 
+            VideoDetailAction.StartDownload -> startDownload()
+
+            VideoDetailAction.PauseDownload -> currentDownload()?.let { offlineRepository.pause(it.key) }
+
+            VideoDetailAction.ResumeDownload -> currentDownload()?.let { offlineRepository.resume(it.key) }
+
+            VideoDetailAction.DeleteDownload -> currentDownload()?.let { offlineRepository.remove(it.key) }
+
             else -> handleAction(action)
+        }
+    }
+
+    /** 任务表是单例里的那条 Flow:下载进度、暂停与完成都从这一次回流到屏上 */
+    private fun observeDownloads() {
+        viewModelScope.launch {
+            offlineRepository.downloads.collect { tasks ->
+                val mine = tasks.filter { it.bvid == bvid }
+                mutableState.update { it.copy(downloads = mine) }
+            }
+        }
+    }
+
+    /** 当前分 P 的那一条任务;分 P 还没解析出来(cid=0)时没有可操作对象 */
+    private fun currentDownload(): DownloadTask? {
+        val current = mutableState.value
+        if (current.playbackCid <= 0L) return null
+        return current.downloads.firstOrNull { it.cid == current.playbackCid }
+    }
+
+    /**
+     * 下载当前分 P。
+     *
+     * 只交出"这是什么内容",取流地址由仓库自己解析 —— 那条 URL 有签名与有效期,
+     * 提前解析等于让它在排队阶段就过期。标题在多 P 视频里带上分 P 名,
+     * 否则离线列表里几条任务的标题会一模一样、分不出下的是哪一段。
+     */
+    private fun startDownload() {
+        val current = mutableState.value
+        val detail = current.detail
+        val part = current.selectedPart
+        when {
+            detail == null || part == null -> Unit
+
+            part.cid <= 0L -> showMessage("这一 P 还没取到流,先别急着下")
+
+            else -> {
+                val title = if (detail.parts.size > 1) "${detail.brief.title} · ${part.title}" else detail.brief.title
+                viewModelScope.launch {
+                    offlineRepository.enqueue(
+                        DownloadRequest(
+                            bvid = detail.brief.bvid,
+                            cid = part.cid,
+                            title = title,
+                            upName = detail.brief.upName,
+                            coverUrl = detail.brief.coverUrl,
+                            durationMs = part.durationSec * MS_PER_SECOND,
+                        ),
+                    )
+                }
+            }
         }
     }
 
@@ -348,8 +423,16 @@ class VideoDetailViewModel @Inject constructor(
                     loadPart(0)
                 }
 
-                is HsyResult.Failure ->
-                    mutableState.update { it.copy(detailLoading = false, detailError = result.error.userMessage()) }
+                is HsyResult.Failure -> {
+                    val offline = offlineDetailOf(bvid, offlineRepository.downloads.value)
+                    if (offline == null) {
+                        mutableState.update { it.copy(detailLoading = false, detailError = result.error.userMessage()) }
+                    } else {
+                        mutableState.update { it.copy(detail = offline, detailLoading = false, detailError = null) }
+                        showMessage("没网 · 正在放本机缓存")
+                        loadPart(0)
+                    }
+                }
             }
         }
     }
@@ -439,6 +522,7 @@ class VideoDetailViewModel @Inject constructor(
                     playbackLoading = true,
                     playbackError = null,
                     playback = null,
+                    offlineSource = null,
                     playbackCid = part.cid,
                     qualities = emptyList(),
                     selectedQualityId = PlaybackTrackSelector.AUTO_QUALITY,
@@ -456,6 +540,17 @@ class VideoDetailViewModel @Inject constructor(
                 0
             }
             mutableState.update { it.copy(resumePositionSec = resume) }
+
+            // 离线优先:盘上有这一 P 的完整两条轨就不再取在线流 ——
+            // 取流地址是有有效期的签名 URL,而离线存在的意义正是"没网也能看"。
+            val offline = offlineRepository.source(bvid, part.cid)
+            if (offline != null) {
+                mutableState.update {
+                    it.copy(offlineSource = offline, playbackLoading = false, qualities = emptyList())
+                }
+                collectDanmaku(part.cid, offline.durationMs)
+                return@launch
+            }
 
             when (val result = playbackRepository.playback(bvid, part.cid)) {
                 is HsyResult.Success -> {

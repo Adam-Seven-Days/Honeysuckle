@@ -38,6 +38,8 @@ import com.videobrowsing.honeysuckle.core.player.PlaybackEngine
 import com.videobrowsing.honeysuckle.feature.anime.ANIME_SEASON_ID_ARG
 import com.videobrowsing.honeysuckle.feature.anime.AnimeDetailScreen
 import com.videobrowsing.honeysuckle.feature.anime.AnimeScreen
+import com.videobrowsing.honeysuckle.feature.dynamic.ARTICLE_ID_ARG
+import com.videobrowsing.honeysuckle.feature.dynamic.ArticleScreen
 import com.videobrowsing.honeysuckle.feature.dynamic.DynamicScreen
 import com.videobrowsing.honeysuckle.feature.favorite.FavoriteScreen
 import com.videobrowsing.honeysuckle.feature.history.HistoryScreen
@@ -46,6 +48,7 @@ import com.videobrowsing.honeysuckle.feature.live.LIVE_ROOM_ID_ARG
 import com.videobrowsing.honeysuckle.feature.live.LiveRoomScreen
 import com.videobrowsing.honeysuckle.feature.live.LiveScreen
 import com.videobrowsing.honeysuckle.feature.login.LoginScreen
+import com.videobrowsing.honeysuckle.feature.message.MessageScreen
 import com.videobrowsing.honeysuckle.feature.search.SearchScreen
 import com.videobrowsing.honeysuckle.feature.settings.AboutScreen
 import com.videobrowsing.honeysuckle.feature.settings.CacheScreen
@@ -231,6 +234,7 @@ private fun NavGraphBuilder.tabDestinations(
             viewModel = hiltViewModel(),
             onOpenVideo = openVideo,
             onOpenSearch = { navController.navigate(HsyRoute.SEARCH) },
+            onOpenMessages = { navController.navigate(HsyRoute.MESSAGES) },
             onOpenLogin = { navController.navigate(HsyRoute.LOGIN) },
         )
     }
@@ -239,6 +243,7 @@ private fun NavGraphBuilder.tabDestinations(
             viewModel = hiltViewModel(),
             onOpenVideo = openVideo,
             onOpenSpace = openSpace,
+            onOpenArticle = { articleId -> navController.navigate(HsyRoute.article(articleId)) },
             onOpenLogin = { navController.navigate(HsyRoute.LOGIN) },
         )
     }
@@ -343,6 +348,15 @@ private fun NavGraphBuilder.extendedDestinations(navController: NavHostControlle
             onOpenLogin = { navController.navigate(HsyRoute.LOGIN) },
         )
     }
+    composable(
+        route = HsyRoute.ARTICLE_PATTERN,
+        arguments = listOf(navArgument(ARTICLE_ID_ARG) { type = NavType.LongType }),
+    ) {
+        ArticleScreen(
+            viewModel = hiltViewModel(),
+            onBack = { navController.popBackStack() },
+        )
+    }
 }
 
 /** 管理类二三级页(历史 / 收藏 / 设置 / 缓存 / 关于):它们只从「我的」或设置页深入,与播放链无关 */
@@ -390,6 +404,14 @@ private fun NavGraphBuilder.managementDestinations(navController: NavHostControl
         AboutScreen(
             viewModel = hiltViewModel(),
             onBack = { navController.popBackStack() },
+        )
+    }
+    composable(HsyRoute.MESSAGES) {
+        MessageScreen(
+            viewModel = hiltViewModel(),
+            onBack = { navController.popBackStack() },
+            onOpenVideo = openVideo,
+            onOpenLogin = { navController.navigate(HsyRoute.LOGIN) },
         )
     }
 }

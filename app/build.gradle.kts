@@ -28,8 +28,8 @@ android {
         applicationId = "com.videobrowsing.honeysuckle"
         // targetSdk 暂留 36:抬到 37 会改变运行时行为口径,属产品决策,不随 compileSdk 被动跟版
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 8
+        versionName = "0.8.0"
     }
 
     signingConfigs {
@@ -83,6 +83,7 @@ dependencies {
     implementation(project(":feature:anime"))
     implementation(project(":feature:space"))
     implementation(project(":feature:dynamic"))
+    implementation(project(":feature:message"))
     implementation(project(":feature:splash"))
 
     // 首屏与"我的/历史"两条链的 Hilt 绑定都住在 :core:data(DataBindingsModule / DispatchersModule /

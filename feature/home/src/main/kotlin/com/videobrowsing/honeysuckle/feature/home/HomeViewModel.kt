@@ -7,6 +7,7 @@ import com.videobrowsing.honeysuckle.core.common.HsyResult
 import com.videobrowsing.honeysuckle.core.common.userMessage
 import com.videobrowsing.honeysuckle.core.data.auth.AuthRepository
 import com.videobrowsing.honeysuckle.core.data.feed.HomeFeedRepository
+import com.videobrowsing.honeysuckle.core.data.message.MessageRepository
 import com.videobrowsing.honeysuckle.core.datastore.general.AppPreferenceStore
 import com.videobrowsing.honeysuckle.core.model.FeedItem
 import com.videobrowsing.honeysuckle.core.model.FeedPage
@@ -50,6 +51,8 @@ data class HomeUiState(
     val skipped: Int = 0,
     /** 关注档在游客态:不取流,屏上给扫码入口 */
     val loginRequired: Boolean = false,
+    /** 消息角标:三类未读的合计;游客态拿不到就保持 0,不摆假红点 */
+    val unreadCount: Int = 0,
     val errorMessage: String? = null,
 ) {
     /** 骨架只在"第一批还没回来"时摆;刷新与翻页都保留已有列表,否则每刷一次屏就闪一回灰块 */
@@ -64,6 +67,9 @@ sealed interface HomeAction {
     /** 只在 [HomeFeedSource.NEWEST] 下有意义;其余档位屏上不摆分区选择 */
     data class SelectRegion(val rid: Int) : HomeAction
     data object LoadMore : HomeAction
+
+    /** 回到首页时问一次未读;失败保持原值,不为一次角标请求打断主列表 */
+    data object RefreshUnread : HomeAction
 }
 
 /**
@@ -81,6 +87,7 @@ class HomeViewModel @Inject constructor(
     private val homeFeed: HomeFeedRepository,
     private val appPreferences: AppPreferenceStore,
     private val authRepository: AuthRepository,
+    private val messageRepository: MessageRepository,
 ) : ViewModel() {
 
     private val mutableState = MutableStateFlow(HomeUiState(busy = HomeBusy.FIRST))
@@ -94,6 +101,7 @@ class HomeViewModel @Inject constructor(
     init {
         observePreferredSource()
         observeLogin()
+        refreshUnread()
     }
 
     /**
@@ -166,6 +174,22 @@ class HomeViewModel @Inject constructor(
             is HomeAction.SelectSource -> selectSource(current.source, action.source)
             is HomeAction.SelectRegion -> selectRegion(current, action.rid)
             HomeAction.LoadMore -> loadMore(current)
+            HomeAction.RefreshUnread -> refreshUnread()
+        }
+    }
+
+    /**
+     * 未读合计。
+     *
+     * 角标是"顺带读一眼"的东西,不能占主列表的取数通道:失败就保持上一次的值 ——
+     * 一次网络抖动让红点消失,用户会以为消息已经读完了。
+     */
+    private fun refreshUnread() {
+        viewModelScope.launch {
+            when (val result = messageRepository.unread()) {
+                is HsyResult.Success -> mutableState.update { it.copy(unreadCount = result.value.total) }
+                is HsyResult.Failure -> Unit
+            }
         }
     }
 

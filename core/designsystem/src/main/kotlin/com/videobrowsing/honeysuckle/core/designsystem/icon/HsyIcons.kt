@@ -456,6 +456,55 @@ object HsyIcons {
         }
     }
 
+    /** 消息:铃铛轮廓 + 底下一颗小锤 */
+    val bell: ImageVector by lazy {
+        icon("HsyIcons.Bell") {
+            strokePath(lineWidth = 1.6f) {
+                moveTo(6f, 16.5f)
+                verticalLineTo(11f)
+                curveTo(6f, 7.6f, 8.7f, 5f, 12f, 5f)
+                curveTo(15.3f, 5f, 18f, 7.6f, 18f, 11f)
+                verticalLineTo(16.5f)
+                moveTo(4.5f, 16.5f)
+                horizontalLineTo(19.5f)
+                moveTo(10f, 19f)
+                quadTo(10f, 21f, 12f, 21f)
+                quadTo(14f, 21f, 14f, 19f)
+                moveTo(12f, 2.5f)
+                verticalLineTo(4.5f)
+            }
+        }
+    }
+
+    /** 离线下载:向下箭头落进一个托盘 */
+    val download: ImageVector by lazy {
+        icon("HsyIcons.Download") {
+            strokePath(lineWidth = 1.7f) {
+                moveTo(12f, 3.5f)
+                verticalLineTo(15f)
+                moveTo(7.5f, 10.5f)
+                lineTo(12f, 15f)
+                lineTo(16.5f, 10.5f)
+                moveTo(4.5f, 17.5f)
+                verticalLineTo(20.5f)
+                horizontalLineTo(19.5f)
+                verticalLineTo(17.5f)
+            }
+        }
+    }
+
+    /** 暂停:两条竖杠 */
+    val pause: ImageVector by lazy {
+        icon("HsyIcons.Pause") {
+            strokePath(lineWidth = 1.8f) {
+                moveTo(9f, 5f)
+                verticalLineTo(19f)
+                moveTo(15f, 5f)
+                verticalLineTo(19f)
+            }
+        }
+    }
+
     /** 警告:三角 + 感叹号 */
     val warning: ImageVector by lazy {
         icon("HsyIcons.Warning") {

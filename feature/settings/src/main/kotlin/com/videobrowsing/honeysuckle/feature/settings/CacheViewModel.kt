@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.videobrowsing.honeysuckle.core.common.formatBytes
 import com.videobrowsing.honeysuckle.core.data.cache.CacheRepository
+import com.videobrowsing.honeysuckle.core.data.offline.OfflineRepository
 import com.videobrowsing.honeysuckle.core.model.CacheUsage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -20,6 +21,8 @@ private const val MESSAGE_LINGER_MS = 3_000L
 data class CacheUiState(
     val loaded: Boolean = false,
     val usage: CacheUsage = CacheUsage(),
+    /** 离线视频的实际占用;单独一格,清理缓存不会动它 */
+    val offlineBytes: Long = 0L,
     val busy: Boolean = false,
     val message: String? = null,
 )
@@ -37,7 +40,10 @@ sealed interface CacheAction {
  * 一个"上次算的"只会让用户对着一个对不上的数找文件。
  */
 @HiltViewModel
-class CacheViewModel @Inject constructor(private val cacheRepository: CacheRepository) : ViewModel() {
+class CacheViewModel @Inject constructor(
+    private val cacheRepository: CacheRepository,
+    private val offlineRepository: OfflineRepository,
+) : ViewModel() {
 
     private val mutableState = MutableStateFlow(CacheUiState())
     val state: StateFlow<CacheUiState> = mutableState.asStateFlow()
@@ -65,7 +71,10 @@ class CacheViewModel @Inject constructor(private val cacheRepository: CacheRepos
         viewModelScope.launch {
             mutableState.update { it.copy(busy = true) }
             val usage = cacheRepository.usage()
-            mutableState.update { it.copy(loaded = true, busy = false, usage = usage) }
+            val offlineBytes = offlineRepository.usageBytes()
+            mutableState.update {
+                it.copy(loaded = true, busy = false, usage = usage, offlineBytes = offlineBytes)
+            }
         }
     }
 
@@ -73,7 +82,9 @@ class CacheViewModel @Inject constructor(private val cacheRepository: CacheRepos
         viewModelScope.launch {
             mutableState.update { it.copy(busy = true) }
             val usage = cacheRepository.clear()
-            mutableState.update { it.copy(busy = false, usage = usage) }
+            // 清理只动 cacheDir:离线文件与它的占用读数都原样保留
+            val offlineBytes = offlineRepository.usageBytes()
+            mutableState.update { it.copy(busy = false, usage = usage, offlineBytes = offlineBytes) }
             showMessage("缓存清完了,当前占用 ${formatBytes(usage.totalBytes)}")
         }
     }

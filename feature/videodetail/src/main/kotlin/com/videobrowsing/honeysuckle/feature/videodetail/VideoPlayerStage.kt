@@ -151,8 +151,11 @@ internal class WindowIntents(
 @OptIn(UnstableApi::class)
 @Composable
 internal fun PlayerStage(inputs: PlayerStageInputs, intents: PlayerIntents, modifier: Modifier = Modifier) {
+    // 离线播放时 [VideoDetailUiState.playback] 为空(两条本地轨代替了在线取流),
+    // 但画面与手势照常要挂 —— 判"有没有东西可播"用这两项一起看。
+    val hasVideo = inputs.state.playback != null || inputs.state.offlineSource != null
     Box(modifier = modifier.background(Color.Black)) {
-        if (inputs.state.playback != null) {
+        if (hasVideo) {
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
                 factory = { context ->
@@ -170,7 +173,7 @@ internal fun PlayerStage(inputs: PlayerStageInputs, intents: PlayerIntents, modi
             )
         }
 
-        GestureLayer(inputs.host, inputs.ui, inputs.state.playback != null, inputs.gestureOptions)
+        GestureLayer(inputs.host, inputs.ui, hasVideo, inputs.gestureOptions)
 
         GestureHud(inputs.ui.gestureLabel)
 

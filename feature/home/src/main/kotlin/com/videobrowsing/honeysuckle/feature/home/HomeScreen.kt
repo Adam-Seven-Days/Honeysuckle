@@ -22,6 +22,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.videobrowsing.honeysuckle.core.common.HsyClock
 import com.videobrowsing.honeysuckle.core.common.formatClock
@@ -58,17 +60,28 @@ fun HomeScreen(
     viewModel: HomeViewModel,
     onOpenVideo: (String) -> Unit,
     onOpenSearch: () -> Unit,
+    onOpenMessages: () -> Unit,
     onOpenLogin: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+
+    // 从消息页回到首页 / 应用回前台时问一次未读:已读或新提醒都只在这一刻知道,
+    // 让首页自己轮询等于为了一个角标长期占一条连接
+    LifecycleEventEffect(Lifecycle.Event.ON_START) {
+        viewModel.onAction(HomeAction.RefreshUnread)
+    }
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(Hsy.colors.background),
     ) {
-        HomeSearchBar(onOpenSearch = onOpenSearch)
+        HomeSearchBar(
+            onOpenSearch = onOpenSearch,
+            onOpenMessages = onOpenMessages,
+            unreadCount = state.unreadCount,
+        )
         SourceRow(selected = state.source, onSelect = { viewModel.onAction(HomeAction.SelectSource(it)) })
         if (state.source == HomeFeedSource.NEWEST) {
             RegionRow(selected = state.regionRid, onSelect = { viewModel.onAction(HomeAction.SelectRegion(it)) })

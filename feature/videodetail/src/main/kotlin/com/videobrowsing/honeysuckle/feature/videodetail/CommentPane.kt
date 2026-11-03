@@ -48,7 +48,7 @@ import com.videobrowsing.honeysuckle.core.model.Comment
 import com.videobrowsing.honeysuckle.core.model.CommentSort
 
 private val AvatarSize = 36.dp
-private val ReplyIndent = 48.dp
+internal val ReplyIndent = 48.dp
 
 /**
  * 评论区(详情页的"评论"分页):列表 → 发表 → 回复,按页拉全量。
@@ -242,72 +242,7 @@ private fun CommentRow(
 }
 
 @Composable
-private fun Replies(
-    comment: Comment,
-    state: CommentUiState,
-    onAction: (CommentAction) -> Unit,
-    onOpenSpace: (Long) -> Unit,
-) {
-    when {
-        state.repliesLoading.contains(comment.id) -> Row(
-            modifier = Modifier.fillMaxWidth().padding(start = ReplyIndent, top = 4.dp),
-        ) { CircularProgressIndicator(modifier = Modifier.size(18.dp)) }
-
-        state.repliesError.containsKey(comment.id) -> Column(
-            modifier = Modifier.fillMaxWidth().padding(start = ReplyIndent, top = 4.dp),
-        ) {
-            Text(
-                text = "回复没取回来:${state.repliesError[comment.id]}",
-                style = Hsy.typography.bodySmall,
-                color = Hsy.colors.error,
-            )
-            TextButton(onClick = { onAction(CommentAction.RetryReplies(comment)) }) { Text("重试") }
-        }
-
-        state.replies[comment.id].isNullOrEmpty() -> Text(
-            text = "这一楼暂时没有回复",
-            style = Hsy.typography.bodySmall,
-            color = Hsy.colors.onSurfaceVariant,
-            modifier = Modifier.padding(start = ReplyIndent, top = 4.dp),
-        )
-
-        else -> state.replies.getValue(comment.id).forEach { reply ->
-            ReplyRow(reply = reply, state = state, onAction = onAction, onOpenSpace = onOpenSpace)
-        }
-    }
-}
-
-@Composable
-private fun ReplyRow(
-    reply: Comment,
-    state: CommentUiState,
-    onAction: (CommentAction) -> Unit,
-    onOpenSpace: (Long) -> Unit,
-) {
-    Column(modifier = Modifier.fillMaxWidth().padding(start = ReplyIndent, top = 8.dp)) {
-        CommentHeader(comment = reply, avatarSize = 28.dp, onOpenSpace = onOpenSpace)
-        Text(
-            text = reply.content,
-            style = Hsy.typography.bodySmall,
-            color = Hsy.colors.onSurface,
-            modifier = Modifier.padding(start = ReplyIndent, top = 2.dp),
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(start = ReplyIndent),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            TextButton(onClick = { onAction(CommentAction.ReplyTo(reply)) }) { Text("回复") }
-            // 回复行的主轴是"回谁",点赞只在设置里打开时才占右端
-            if (state.replyLikesVisible) {
-                Spacer(modifier = Modifier.weight(1f))
-                CommentLikeAction(comment = reply, state = state, onAction = onAction)
-            }
-        }
-    }
-}
-
-@Composable
-private fun CommentHeader(
+internal fun CommentHeader(
     comment: Comment,
     avatarSize: androidx.compose.ui.unit.Dp = AvatarSize,
     onOpenSpace: (Long) -> Unit,

@@ -12,6 +12,8 @@ import com.videobrowsing.honeysuckle.core.data.history.DefaultHistoryRepository
 import com.videobrowsing.honeysuckle.core.data.history.HistoryRepository
 import com.videobrowsing.honeysuckle.core.data.interaction.DefaultInteractionRepository
 import com.videobrowsing.honeysuckle.core.data.interaction.InteractionRepository
+import com.videobrowsing.honeysuckle.core.data.offline.DefaultOfflineRepository
+import com.videobrowsing.honeysuckle.core.data.offline.OfflineRepository
 import com.videobrowsing.honeysuckle.core.data.playback.DefaultPlaybackRepository
 import com.videobrowsing.honeysuckle.core.data.playback.PlaybackRepository
 import com.videobrowsing.honeysuckle.core.data.search.DefaultSearchRepository
@@ -70,4 +72,8 @@ abstract class DataBindingsModule {
     @Binds
     @Singleton
     abstract fun bindUserSpaceRepository(impl: DefaultUserSpaceRepository): UserSpaceRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindOfflineRepository(impl: DefaultOfflineRepository): OfflineRepository
 }
