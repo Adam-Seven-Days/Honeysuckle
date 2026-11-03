@@ -144,8 +144,15 @@ class PlaybackEngine @Inject constructor(
      * 开播并确保前台服务在场。
      *
      * 返回 null 表示选轨凑不齐(与播放页时期同口径),此时不记会话、不起服务。
+     * [autoStart] 是设置里"自动播放"那一档的结论:`false` 会把这一段备到能播但停住,
+     * 会话与通知照常记下 —— 用户按播放键、点通知或从小窗接管,都接的是同一只播放器。
      */
-    fun play(selection: MediaTrackSelection?, startAtMs: Long, session: PlaybackSession): MediaTrackSelection? {
+    fun play(
+        selection: MediaTrackSelection?,
+        startAtMs: Long,
+        session: PlaybackSession,
+        autoStart: Boolean = true,
+    ): MediaTrackSelection? {
         val seated = host.play(
             selection = selection,
             startAtMs = startAtMs,
@@ -154,6 +161,7 @@ class PlaybackEngine @Inject constructor(
                 artist = session.upName,
                 artworkUrl = session.coverUrl,
             ),
+            autoStart = autoStart,
         ) ?: return null
         if (mutableSession.value?.let { it.bvid == session.bvid && it.cid == session.cid } != true) {
             playbackExtras.clearAbPoints()

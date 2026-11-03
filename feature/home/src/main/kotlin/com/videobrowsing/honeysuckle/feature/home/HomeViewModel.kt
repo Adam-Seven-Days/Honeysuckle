@@ -12,6 +12,7 @@ import com.videobrowsing.honeysuckle.core.datastore.general.AppPreferenceStore
 import com.videobrowsing.honeysuckle.core.model.FeedItem
 import com.videobrowsing.honeysuckle.core.model.FeedPage
 import com.videobrowsing.honeysuckle.core.model.HomeFeedSource
+import com.videobrowsing.honeysuckle.core.model.HomeLayout
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
@@ -53,6 +54,12 @@ data class HomeUiState(
     val loginRequired: Boolean = false,
     /** 消息角标:三类未读的合计;游客态拿不到就保持 0,不摆假红点 */
     val unreadCount: Int = 0,
+    /**
+     * 一行摆几张卡:盘上"设置 → 外观与首页 → 排布"那一档。
+     *
+     * 默认双列,与这一向的 Bento 版一致;首条通栏在两档下都保留 —— 单列时它只是"也是满宽"。
+     */
+    val layout: HomeLayout = HomeLayout.DEFAULT,
     val errorMessage: String? = null,
 ) {
     /** 骨架只在"第一批还没回来"时摆;刷新与翻页都保留已有列表,否则每刷一次屏就闪一回灰块 */
@@ -100,8 +107,22 @@ class HomeViewModel @Inject constructor(
 
     init {
         observePreferredSource()
+        observeLayout()
         observeLogin()
         refreshUnread()
+    }
+
+    /**
+     * 排布那一档跟着盘走,首拍也照收:它只改"一行摆几张",不发请求、不重取列表,
+     * 所以不需要 [observePreferredSource] 那套 `first()` / `drop(1)` 去避免多走一趟。
+     */
+    private fun observeLayout() {
+        viewModelScope.launch {
+            appPreferences.preferences
+                .map { HomeLayout.fromStorageId(it.homeLayoutId) }
+                .distinctUntilChanged()
+                .collect { layout -> mutableState.update { it.copy(layout = layout) } }
+        }
     }
 
     /**

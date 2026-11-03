@@ -1,18 +1,10 @@
 package com.videobrowsing.honeysuckle.feature.videodetail
 
-import android.app.Activity
-import android.content.Context
-import android.content.ContextWrapper
-import android.content.pm.ActivityInfo
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import com.videobrowsing.honeysuckle.core.common.HsyClock
 import com.videobrowsing.honeysuckle.core.common.formatCount
 import com.videobrowsing.honeysuckle.core.common.formatRelativeTime
@@ -21,34 +13,8 @@ import com.videobrowsing.honeysuckle.core.model.VideoDetail
 import com.videobrowsing.honeysuckle.core.model.VideoStat
 import kotlin.math.roundToInt
 
-/** 全屏期间锁横屏并藏状态栏;离开这一页或退出全屏都恢复原状 */
-@Composable
-internal fun FullscreenWindowEffect(fullscreen: Boolean, activity: Activity?) {
-    LaunchedEffect(fullscreen, activity) {
-        if (activity == null) return@LaunchedEffect
-        if (fullscreen) {
-            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            systemBarsController(activity).hide(WindowInsetsCompat.Type.systemBars())
-        } else {
-            restoreWindow(activity)
-        }
-    }
-}
-
-internal fun restoreWindow(activity: Activity?) {
-    if (activity == null) return
-    activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-    systemBarsController(activity).show(WindowInsetsCompat.Type.systemBars())
-}
-
-private fun systemBarsController(activity: Activity): WindowInsetsControllerCompat =
-    WindowCompat.getInsetsController(activity.window, activity.window.decorView)
-
-internal fun Context.findActivity(): Activity? = when (this) {
-    is Activity -> this
-    is ContextWrapper -> baseContext.findActivity()
-    else -> null
-}
+// 播放页把读数折成一句话的那些地方:倍速标签、统计行、元信息行。
+// 它们只读 state,不碰播放器也不碰窗口;压在 Activity 窗口上的那几个 effect 在 `VideoPageWindow`。
 
 @Composable
 internal fun Centered(content: @Composable () -> Unit) {

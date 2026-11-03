@@ -46,8 +46,23 @@ data class CommentPage(
 private const val MODE_HOT = 3
 private const val MODE_TIME = 2
 
-/** 评论排序:游标接口的 `mode`,热门=3、最新=2 */
-enum class CommentSort(val mode: Int) {
-    HOT(MODE_HOT),
-    TIME(MODE_TIME),
+/**
+ * 评论排序:游标接口的 `mode`,热门=3、最新=2。
+ *
+ * [storageId] 与 [displayName] 是"设置 → 评论 → 默认排序"那一格用的:盘上落英文名、屏上摆中文,
+ * 对照表只在这一处 —— 评论区那两颗粒子与设置页的选择器都引它,免得两处各写一份"最热 / 最新"。
+ */
+enum class CommentSort(val mode: Int, val storageId: String, val displayName: String) {
+    HOT(MODE_HOT, "hot", "最热"),
+    TIME(MODE_TIME, "time", "最新"),
+    ;
+
+    companion object {
+
+        /** 没设过与旧档名读不回来都落"最热":这一向是评论区的默认口径 */
+        val DEFAULT = HOT
+
+        /** 认不出的存档退默认,与弹幕、画中画那几档同一条口径 */
+        fun fromStorageId(id: String): CommentSort = entries.firstOrNull { it.storageId == id } ?: DEFAULT
+    }
 }

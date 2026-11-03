@@ -3,9 +3,9 @@ package com.videobrowsing.honeysuckle.core.datastore.general
 import com.videobrowsing.honeysuckle.core.datastore.TIER_ID_UNSET
 
 /**
- * 应用级偏好快照(设置页"外观"与"历史"两区共用的那一份)。
+ * 应用级偏好快照(设置页除"弹幕"那五组之外的全部读数都落在这一份上)。
  *
- * 与弹幕偏好分家:那一块盘的内容由播放页每帧消费,这一块只被设置页与
+ * 与弹幕偏好分家:那一块盘的内容由播放页每帧消费,这一块只被设置页、播放页与
  * `:app` 的主题装配消费,读写节奏完全不同,挤在一起只会让下一次排查多问一句"是谁写的"。
  *
  * [themeModeId] 存的是 `"dark"` 这类英文名而不是枚举名,空串 = 没设过;
@@ -79,6 +79,39 @@ data class AppPreferences(
      * 默认把它摆在每条回复右边会让楼中楼显得比主评论还重。
      */
     val replyLikesVisible: Boolean = DEFAULT_REPLY_LIKES_VISIBLE,
+    /**
+     * 进详情页与换分 P 时的自动播放策略的英文名(`always` / `unmetered` / `never`);
+     * `""` = 没设过,读侧退"总是自动播"。判词表在 `:core:player` 的 `AutoPlayPolicy`。
+     */
+    val autoPlayPolicyId: String = DEFAULT_AUTO_PLAY_POLICY_ID,
+    /** 播放默认清晰度的英文名(`auto` / `1080p` / `720p` / `480p`);`""` = 没设过,退自动 */
+    val defaultQualityId: String = DEFAULT_PLAYBACK_QUALITY_ID,
+    /** 播放时保持屏幕常亮;默认开 —— 看片看到一半屏幕自己睡过去,没人会当成正常行为 */
+    val keepScreenOnEnabled: Boolean = DEFAULT_KEEP_SCREEN_ON_ENABLED,
+    /** 详情页评论的默认排序(`hot` / `time`);`""` = 没设过,退最热 */
+    val commentSortId: String = DEFAULT_COMMENT_SORT_ID,
+    /** 只在 Wi-Fi 下缓存视频;默认开,与"仅 Wi-Fi 自动播"是两把键 —— 一个是看,一个是存 */
+    val wifiOnlyDownload: Boolean = DEFAULT_WIFI_ONLY_DOWNLOAD,
+    /** 允许后台播放;默认开,这一向就是切走继续放声音 */
+    val backgroundPlayEnabled: Boolean = DEFAULT_BACKGROUND_PLAY_ENABLED,
+    /** 全屏方向的英文名(`landscape` / `sensor`);`""` = 没设过,退锁定横屏 */
+    val fullscreenOrientationId: String = DEFAULT_FULLSCREEN_ORIENTATION_ID,
+    /** 下载清晰度的英文名(含 `follow` = 跟随当前播放档);`""` = 没设过,退跟随 */
+    val downloadQualityId: String = DEFAULT_DOWNLOAD_QUALITY_ID,
+    /** 首页排布的英文名(`two_column` / `single_column`);`""` = 没设过,退双列 */
+    val homeLayoutId: String = DEFAULT_HOME_LAYOUT_ID,
+    /**
+     * 记住播放亮度:开启后把这一次拖到的窗口亮度记进盘,下次进播放页直接回到那一格。
+     * 默认关 —— 亮度是"这一晚被窝里"的临时读数,把它带进白天会让用户以为系统亮度坏了。
+     */
+    val rememberBrightnessEnabled: Boolean = DEFAULT_REMEMBER_BRIGHTNESS_ENABLED,
+    /**
+     * 记下来的那份窗口亮度(0f..1f);`[DEFAULT_REMEMBERED_BRIGHTNESS]` = 还没记过。
+     *
+     * 存的是**本应用窗口的**亮度倍率,不是系统设置里的亮度数值:改窗口亮度不需要权限,
+     * 也不会替用户动系统设置。
+     */
+    val rememberedBrightness: Float = DEFAULT_REMEMBERED_BRIGHTNESS,
 ) {
     companion object {
         /** 与弹幕那块盘同一个口径:空串不是档名,是"没设过"(定义在 `TIER_ID_UNSET`) */
@@ -104,6 +137,29 @@ data class AppPreferences(
         const val DEFAULT_AB_LOOP_ENABLED = false
         const val DEFAULT_COMMENT_LIKE_READ_ONLY = false
         const val DEFAULT_REPLY_LIKES_VISIBLE = false
+
+        /**
+         * 档位那几把键的缺省值仍是"没设过"(空串),而不是把 `always` / `auto` 这些字面量抄进存储层:
+         * 词表归各自策略层(`:core:player` 的 `AutoPlayPolicy`、`:core:model` 的 `QualityTier` 等),
+         * 读侧对不上词表才退默认档 —— 与主题、小窗画幅同一条口径。
+         */
+        const val DEFAULT_AUTO_PLAY_POLICY_ID = TIER_ID_UNSET
+        const val DEFAULT_PLAYBACK_QUALITY_ID = TIER_ID_UNSET
+        const val DEFAULT_COMMENT_SORT_ID = TIER_ID_UNSET
+        const val DEFAULT_FULLSCREEN_ORIENTATION_ID = TIER_ID_UNSET
+        const val DEFAULT_DOWNLOAD_QUALITY_ID = TIER_ID_UNSET
+        const val DEFAULT_HOME_LAYOUT_ID = TIER_ID_UNSET
+        const val DEFAULT_KEEP_SCREEN_ON_ENABLED = true
+        const val DEFAULT_WIFI_ONLY_DOWNLOAD = true
+        const val DEFAULT_BACKGROUND_PLAY_ENABLED = true
+        const val DEFAULT_REMEMBER_BRIGHTNESS_ENABLED = false
+
+        /** 还没记过亮度:`-1f` 与 Android 窗口亮度"跟着系统走"是同一个取值,不必再翻一层 */
+        const val DEFAULT_REMEMBERED_BRIGHTNESS = -1f
+
+        /** 窗口亮度倍率的合法区间;越界与 `NaN` 一律退回"没记过" */
+        const val MIN_REMEMBERED_BRIGHTNESS = 0f
+        const val MAX_REMEMBERED_BRIGHTNESS = 1f
 
         /** 平台播放器允许的倍速区间;低于/高于它的值一定是盘上残留或旧版本写的 */
         const val MIN_PLAYBACK_SPEED = 0.5f

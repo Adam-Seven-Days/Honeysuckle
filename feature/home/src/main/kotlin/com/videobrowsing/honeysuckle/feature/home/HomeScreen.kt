@@ -39,10 +39,11 @@ import com.videobrowsing.honeysuckle.core.designsystem.ui.PullToRefreshBox
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Text
 import com.videobrowsing.honeysuckle.core.model.FeedItem
 import com.videobrowsing.honeysuckle.core.model.HomeFeedSource
+import com.videobrowsing.honeysuckle.core.model.HomeLayout
 
 private const val SKELETON_ROWS = 5
 
-/** 磁贴的最小宽度:窄屏两列、平板与横屏自然成三到四列;首条跨满一行做 Bento 的主视觉 */
+/** 双列那一档的磁贴最小宽度:窄屏两列、平板与横屏自然成三到四列;首条跨满一行做 Bento 的主视觉 */
 private val CARD_MIN_WIDTH = 160.dp
 
 /**
@@ -100,7 +101,7 @@ fun HomeScreen(
                     LoginGuide(onOpenLogin = onOpenLogin)
                 }
 
-                state.showSkeleton -> SkeletonList()
+                state.showSkeleton -> SkeletonList(state.layout)
 
                 error != null && state.items.isEmpty() -> CenteredInViewport {
                     HsyErrorState(
@@ -147,7 +148,7 @@ private fun VideoList(
     LaunchedEffect(atBottom) { if (atBottom && state.moreAvailable) onLoadMore() }
 
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = CARD_MIN_WIDTH),
+        columns = gridColumnsOf(state.layout),
         state = gridState,
         modifier = modifier.fillMaxSize(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -259,11 +260,15 @@ private fun CenteredInViewport(content: @Composable () -> Unit) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { content() }
 }
 
-/** 取数在飞的第一屏:五行同款占位,高度与真卡片一致,数据到达时列表不跳 */
+/**
+ * 取数在飞的第一屏:五行同款占位,高度与真卡片一致,数据到达时列表不跳。
+ *
+ * 格子数跟设置里那一档走:骨架用双列、真数据到达变单列,等于每刷一次都整屏抖一下。
+ */
 @Composable
-private fun SkeletonList() {
+private fun SkeletonList(layout: HomeLayout) {
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = CARD_MIN_WIDTH),
+        columns = gridColumnsOf(layout),
         modifier = Modifier.fillMaxSize(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -275,3 +280,15 @@ private fun SkeletonList() {
         items(count = SKELETON_ROWS, key = { "skeleton-$it" }) { HsyVideoTileSkeleton() }
     }
 }
+
+/**
+ * 排布那一档落到格子数上:双列按宽度自适应(窄屏两列、平板与横屏自然三到四列),
+ * 单列就是一行一条 —— 首条通栏在两档下都是"满宽",不需要特判。
+ */
+private fun gridColumnsOf(layout: HomeLayout): GridCells = when (layout) {
+    HomeLayout.TWO_COLUMN -> GridCells.Adaptive(minSize = CARD_MIN_WIDTH)
+    HomeLayout.SINGLE_COLUMN -> GridCells.Fixed(SINGLE_COLUMN_COUNT)
+}
+
+/** 单列 = 一行一张;`1` 在这里是那一档的名字而不是量出来的数,所以给它一个名字 */
+private const val SINGLE_COLUMN_COUNT = 1

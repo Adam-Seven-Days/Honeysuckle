@@ -27,7 +27,10 @@ data class DownloadTask(
     val title: String,
     val upName: String,
     val coverUrl: String,
-    /** 平台清晰度代号;0 = 还没解析出来 */
+    /**
+     * 平台清晰度代号。入队时是"设置 → 播放 → 下载"那一档换算出来的请求档(`0` = 自动),
+     * 真正取到流之后被仓库换成实际给的那一档;还没开始取流时屏上不念它。
+     */
     val qualityId: Int = 0,
     /** 屏上标注的实际清晰度(如 `1080P`);还没解析出来时为空 */
     val qualityLabel: String = "",
@@ -52,7 +55,12 @@ data class DownloadTask(
     val isPlayable: Boolean get() = state == DownloadState.COMPLETED
 }
 
-/** 发起一次下载要凑齐的元信息;取流地址由仓库自己解析,不从这里进 */
+/**
+ * 发起一次下载要凑齐的元信息;取流地址由仓库自己解析,不从这里进。
+ *
+ * [qualityId] 是"设置 → 播放 → 下载"那一档换算出来的平台档号(`0` = 自动)。
+ * 仓库拿它去 [PlaybackTrackSelector.select] 挑轨,挑不出这一档就退自动 —— 下错画质比下不成好受。
+ */
 data class DownloadRequest(
     val bvid: String,
     val cid: Long,
@@ -60,6 +68,7 @@ data class DownloadRequest(
     val upName: String,
     val coverUrl: String,
     val durationMs: Long,
+    val qualityId: Int = PlaybackTrackSelector.AUTO_QUALITY,
 )
 
 /** 离线播放要的一对本地文件;路径是应用私有目录下的绝对路径 */

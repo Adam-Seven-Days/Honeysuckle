@@ -44,11 +44,18 @@ import kotlinx.coroutines.delay
  * 长按归"长按画面加速"。
  */
 @Composable
-internal fun GestureLayer(host: HsyPlayerHost, ui: PlayerUi, interactive: Boolean, options: GestureOptions) {
+internal fun GestureLayer(
+    host: HsyPlayerHost,
+    ui: PlayerUi,
+    interactive: Boolean,
+    options: GestureOptions,
+    onBrightness: (Float) -> Unit,
+) {
     if (!interactive) return
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
     val audio = remember(context) { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+    val vertical = VerticalGestureTargets(ui, activity, audio, context, onBrightness)
 
     LaunchedEffect(ui.gestureLabel) {
         if (ui.gestureLabel != null) {
@@ -89,7 +96,7 @@ internal fun GestureLayer(host: HsyPlayerHost, ui: PlayerUi, interactive: Boolea
             )
             .then(
                 if (options.verticalEnabled) {
-                    Modifier.verticalGesture(ui, activity, audio, context, options.volumeOnRight)
+                    Modifier.verticalGesture(vertical, options.volumeOnRight)
                 } else {
                     Modifier
                 },
@@ -99,24 +106,42 @@ internal fun GestureLayer(host: HsyPlayerHost, ui: PlayerUi, interactive: Boolea
     }
 }
 
-/** 竖向手势单独成一层:一侧亮度、另一侧音量,起点在按下那一刻取 */
+/**
+ * 竖向手势那一层要碰的四件东西 + 松手时把亮度交给谁。
+ *
+ * 收成一束而不是五个散参数:这一层的签名本来只该说"拖哪一侧、拖给谁",
+ * 而读数与系统是每次都要的那四件 —— detekt 的签名阈值正好卡在"用户要数的东西"上。
+ */
+private class VerticalGestureTargets(
+    val ui: PlayerUi,
+    val activity: Activity?,
+    val audio: AudioManager,
+    val context: Context,
+    val onBrightness: (Float) -> Unit,
+)
+
+/**
+ * 竖向手势单独成一层:一侧亮度、另一侧音量,起点在按下那一刻取。
+ *
+ * [onBrightness] 只在**松手那一下**交最后一次算出来的数:拖动过程中每帧都写盘等于用一根手指
+ * 把 DataStore 打成几百次写,而用户要的只是"停在我松手看到的那一格"。
+ */
 @Composable
-private fun Modifier.verticalGesture(
-    ui: PlayerUi,
-    activity: Activity?,
-    audio: AudioManager,
-    context: Context,
-    volumeOnRight: Boolean,
-): Modifier {
+private fun Modifier.verticalGesture(targets: VerticalGestureTargets, volumeOnRight: Boolean): Modifier {
+    val ui = targets.ui
+    val activity = targets.activity
+    val audio = targets.audio
     var startVolume by remember { mutableStateOf(0) }
     var startBrightness by remember { mutableStateOf(DEFAULT_BRIGHTNESS) }
+    var lastBrightness by remember { mutableStateOf<Float?>(null) }
     var volumeSide by remember { mutableStateOf(false) }
     return pointerInput(volumeOnRight) {
         detectVerticalDragGestures(
             onDragStart = { offset ->
                 volumeSide = PlayerGesture.isVolumeSide(offset.x, size.width, volumeOnRight)
                 startVolume = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
-                startBrightness = currentBrightness(activity, context)
+                startBrightness = currentBrightness(activity, targets.context)
+                lastBrightness = null
             },
             onVerticalDrag = { change, dragAmount ->
                 change.consume()
@@ -124,10 +149,13 @@ private fun Modifier.verticalGesture(
                 if (volumeSide) {
                     applyVolume(audio, ui, startVolume, dragAmount, size.height)
                 } else {
-                    applyBrightness(activity, ui, startBrightness, dragAmount, size.height)
+                    lastBrightness = applyBrightness(activity, ui, startBrightness, dragAmount, size.height)
                 }
             },
-            onDragEnd = { /* 读数由 LaunchedEffect 在停手后收走 */ },
+            onDragEnd = {
+                // 读数由 LaunchedEffect 在停手后收走;亮度只有这一支真的拖过才交出去
+                lastBrightness?.let(targets.onBrightness)
+            },
             onDragCancel = { ui.gestureLabel = null },
         )
     }
@@ -160,12 +188,14 @@ private fun applyVolume(audio: AudioManager, ui: PlayerUi, start: Int, dragDy: F
     ui.gestureLabel = if (max <= 0) "音量" else "音量 ${target * PERCENT_SCALE / max}%"
 }
 
-private fun applyBrightness(activity: Activity?, ui: PlayerUi, start: Float, dragDy: Float, height: Int) {
+/** 把窗口亮度推到算出来的那一格,并把那一格交回去 —— 松手时由调用方决定要不要记进盘 */
+private fun applyBrightness(activity: Activity?, ui: PlayerUi, start: Float, dragDy: Float, height: Int): Float {
     val target = PlayerGesture.clampBrightness(start + PlayerGesture.brightnessDelta(dragDy, height))
     activity?.window?.let { window ->
         window.attributes = window.attributes.apply { screenBrightness = target }
     }
     ui.gestureLabel = "亮度 ${(target * PERCENT_SCALE).roundToInt()}%"
+    return target
 }
 
 @Composable

@@ -59,4 +59,42 @@ interface AppPreferenceStore {
     suspend fun setCommentLikeReadOnly(readOnly: Boolean)
 
     suspend fun setReplyLikesVisible(visible: Boolean)
+
+    suspend fun setAutoPlayPolicyId(id: String)
+
+    suspend fun setDefaultQualityId(id: String)
+
+    suspend fun setKeepScreenOnEnabled(enabled: Boolean)
+
+    suspend fun setCommentSortId(id: String)
+
+    suspend fun setWifiOnlyDownload(enabled: Boolean)
+
+    suspend fun setBackgroundPlayEnabled(enabled: Boolean)
+
+    suspend fun setFullscreenOrientationId(id: String)
+
+    suspend fun setDownloadQualityId(id: String)
+
+    suspend fun setHomeLayoutId(id: String)
+
+    suspend fun setRememberBrightnessEnabled(enabled: Boolean)
+
+    suspend fun setRememberedBrightness(brightness: Float)
+
+    /**
+     * 把设置首页某一组退回出厂档:「外观与首页」。
+     *
+     * 四组复位口各自只碰自己那几把键 —— 用户在播放页点一次"恢复默认"不该把主题色与底栏三格一起抹掉。
+     */
+    suspend fun resetAppearanceHome()
+
+    /** 「导航栏」那一组 */
+    suspend fun resetNavigation()
+
+    /** 「播放」那一组(含画中画、手势、历史与下载) */
+    suspend fun resetPlayback()
+
+    /** 「评论」那一组 */
+    suspend fun resetComments()
 }

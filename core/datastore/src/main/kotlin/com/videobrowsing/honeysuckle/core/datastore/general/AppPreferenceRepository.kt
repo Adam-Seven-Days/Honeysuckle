@@ -39,9 +39,74 @@ private val KEY_RECORD_HISTORY = booleanPreferencesKey("app.recordHistory")
 private val KEY_AB_LOOP = booleanPreferencesKey("app.abLoopEnabled")
 private val KEY_COMMENT_LIKE_READ_ONLY = booleanPreferencesKey("app.commentLikeReadOnly")
 private val KEY_REPLY_LIKES_VISIBLE = booleanPreferencesKey("app.replyLikesVisible")
+private val KEY_AUTO_PLAY_POLICY = stringPreferencesKey("app.autoPlayPolicy")
+private val KEY_DEFAULT_QUALITY = stringPreferencesKey("app.defaultQuality")
+private val KEY_KEEP_SCREEN_ON = booleanPreferencesKey("app.keepScreenOn")
+private val KEY_COMMENT_SORT = stringPreferencesKey("app.commentSort")
+private val KEY_WIFI_ONLY_DOWNLOAD = booleanPreferencesKey("app.wifiOnlyDownload")
+private val KEY_BACKGROUND_PLAY = booleanPreferencesKey("app.backgroundPlay")
+private val KEY_FULLSCREEN_ORIENTATION = stringPreferencesKey("app.fullscreenOrientation")
+private val KEY_DOWNLOAD_QUALITY = stringPreferencesKey("app.downloadQuality")
+private val KEY_HOME_LAYOUT = stringPreferencesKey("app.homeLayout")
+private val KEY_REMEMBER_BRIGHTNESS = booleanPreferencesKey("app.rememberBrightness")
+private val KEY_REMEMBERED_BRIGHTNESS = floatPreferencesKey("app.rememberedBrightness")
 
 /** 旧版"中间三格一起关"的键:只读不写,给已经关过三格的用户迁移用 */
 private val KEY_MIDDLE_TABS_VISIBLE_LEGACY = booleanPreferencesKey("app.middleTabsVisible")
+
+/**
+ * 设置首页四个分组各自管哪几把键(「弹幕」在另一块盘上,见 `DanmakuPreferenceRepository`)。
+ *
+ * 这份分组表**只服务"恢复本组默认"**:读侧的缺省仍然一把键一行写在 [toAppPreferences] 里,
+ * 两处各写一遍默认值迟早会漂移。新增设置只要落进某一组,复位就自动覆盖它。
+ */
+private val GROUP_APPEARANCE_HOME = listOf<Preferences.Key<*>>(
+    KEY_THEME_MODE,
+    KEY_THEME_ACCENT,
+    KEY_HOME_FEED_SOURCE,
+    KEY_HOME_LAYOUT,
+)
+
+private val GROUP_NAVIGATION = listOf<Preferences.Key<*>>(
+    KEY_DYNAMIC_TAB_VISIBLE,
+    KEY_LIVE_TAB_VISIBLE,
+    KEY_ANIME_TAB_VISIBLE,
+    // 旧那把"三格总开关"一起删:留着它,三格的新键被删空之后又会从它身上迁移回"全关",
+    // 用户点的是"恢复默认",看到的却是上一版的偏好
+    KEY_MIDDLE_TABS_VISIBLE_LEGACY,
+)
+
+private val GROUP_PLAYBACK = listOf<Preferences.Key<*>>(
+    KEY_PLAYBACK_SPEED,
+    KEY_AUTO_PLAY_POLICY,
+    KEY_DEFAULT_QUALITY,
+    KEY_KEEP_SCREEN_ON,
+    KEY_AUTO_PIP,
+    KEY_PIP_ONLY_WHILE_PLAYING,
+    KEY_PIP_ASPECT,
+    KEY_PIP_DANMAKU,
+    KEY_PLAYER_GESTURES,
+    KEY_SEEK_GESTURE,
+    KEY_GESTURE_SIDE_SWAPPED,
+    KEY_LONG_PRESS_BOOST,
+    KEY_LONG_PRESS_BOOST_SPEED,
+    KEY_AUTO_PLAY_NEXT_PART,
+    KEY_AB_LOOP,
+    KEY_BACKGROUND_PLAY,
+    KEY_FULLSCREEN_ORIENTATION,
+    KEY_REMEMBER_BRIGHTNESS,
+    KEY_REMEMBERED_BRIGHTNESS,
+    KEY_RECORD_HISTORY,
+    KEY_CLEAR_HISTORY_WHEN_FINISHED,
+    KEY_WIFI_ONLY_DOWNLOAD,
+    KEY_DOWNLOAD_QUALITY,
+)
+
+private val GROUP_COMMENTS = listOf<Preferences.Key<*>>(
+    KEY_COMMENT_LIKE_READ_ONLY,
+    KEY_REPLY_LIKES_VISIBLE,
+    KEY_COMMENT_SORT,
+)
 
 /**
  * 应用偏好的读写口(第二块盘)。
@@ -160,6 +225,76 @@ class AppPreferenceRepository @Inject constructor(@GeneralStore private val data
     override suspend fun setReplyLikesVisible(visible: Boolean) {
         dataStore.edit { it[KEY_REPLY_LIKES_VISIBLE] = visible }
     }
+
+    /** 自动播放策略落的是英文名(`always` / `unmetered` / `never`),词表在 `:core:player` */
+    override suspend fun setAutoPlayPolicyId(id: String) {
+        dataStore.edit { it[KEY_AUTO_PLAY_POLICY] = id.sanitizeStorageId() }
+    }
+
+    /** 播放默认清晰度同样只落英文名,`""` 由读侧退"自动" */
+    override suspend fun setDefaultQualityId(id: String) {
+        dataStore.edit { it[KEY_DEFAULT_QUALITY] = id.sanitizeStorageId() }
+    }
+
+    override suspend fun setKeepScreenOnEnabled(enabled: Boolean) {
+        dataStore.edit { it[KEY_KEEP_SCREEN_ON] = enabled }
+    }
+
+    override suspend fun setCommentSortId(id: String) {
+        dataStore.edit { it[KEY_COMMENT_SORT] = id.sanitizeStorageId() }
+    }
+
+    override suspend fun setWifiOnlyDownload(enabled: Boolean) {
+        dataStore.edit { it[KEY_WIFI_ONLY_DOWNLOAD] = enabled }
+    }
+
+    override suspend fun setBackgroundPlayEnabled(enabled: Boolean) {
+        dataStore.edit { it[KEY_BACKGROUND_PLAY] = enabled }
+    }
+
+    override suspend fun setFullscreenOrientationId(id: String) {
+        dataStore.edit { it[KEY_FULLSCREEN_ORIENTATION] = id.sanitizeStorageId() }
+    }
+
+    override suspend fun setDownloadQualityId(id: String) {
+        dataStore.edit { it[KEY_DOWNLOAD_QUALITY] = id.sanitizeStorageId() }
+    }
+
+    override suspend fun setHomeLayoutId(id: String) {
+        dataStore.edit { it[KEY_HOME_LAYOUT] = id.sanitizeStorageId() }
+    }
+
+    override suspend fun setRememberBrightnessEnabled(enabled: Boolean) {
+        dataStore.edit { it[KEY_REMEMBER_BRIGHTNESS] = enabled }
+    }
+
+    /**
+     * 记下这一次拖到的窗口亮度。
+     *
+     * 写侧夹一次:越界与 `NaN` 落成"没记过"而不是"记下了一个播放器不认的数"——
+     * 这一份值接下来会被直接顶进 `WindowManager.LayoutParams.screenBrightness`。
+     */
+    override suspend fun setRememberedBrightness(brightness: Float) {
+        dataStore.edit { it[KEY_REMEMBERED_BRIGHTNESS] = brightness.coerceRememberedBrightness() }
+    }
+
+    override suspend fun resetAppearanceHome() = resetKeys(GROUP_APPEARANCE_HOME)
+
+    override suspend fun resetNavigation() = resetKeys(GROUP_NAVIGATION)
+
+    override suspend fun resetPlayback() = resetKeys(GROUP_PLAYBACK)
+
+    override suspend fun resetComments() = resetKeys(GROUP_COMMENTS)
+
+    /**
+     * 一组键整批删掉 = 读侧的 `?: 缺省` 全部顶上,屏上立刻回到出厂档。
+     *
+     * 删而不写默认值:"这一把键等于用户没动过"与"用户亲手把它调回默认"在盘上是同一份干净状态;
+     * 写默认值反而会让以后改默认档时,这些老用户读到一个已经被冻住的旧数。
+     */
+    private suspend fun resetKeys(group: List<Preferences.Key<*>>) {
+        dataStore.edit { prefs -> group.forEach { prefs.remove(it) } }
+    }
 }
 
 /**
@@ -175,6 +310,22 @@ internal fun Float.coercePlaybackSpeed(fallback: Float = AppPreferences.DEFAULT_
     } else {
         this
     }
+
+/**
+ * 记住的那份窗口亮度的唯一边界。
+ *
+ * `[DEFAULT_REMEMBERED_BRIGHTNESS]`(-1)是一个**合法取值而不是坏值**:它正是 Android 用来表达
+ * "没设过,跟系统走"的那个数,所以原样交回去;除它以外只收 0..1,`NaN`/无穷/越界都退回"没记过"。
+ * 写与读各走一遍,与倍速那条同口径 —— 盘上的值可能来自旧版本或手改。
+ */
+internal fun Float.coerceRememberedBrightness(): Float {
+    // -1 就是"跟系统走"那个合法取值,原样交回去
+    if (this == AppPreferences.DEFAULT_REMEMBERED_BRIGHTNESS) return this
+    val unusable = !isFinite() ||
+        this < AppPreferences.MIN_REMEMBERED_BRIGHTNESS ||
+        this > AppPreferences.MAX_REMEMBERED_BRIGHTNESS
+    return if (unusable) AppPreferences.DEFAULT_REMEMBERED_BRIGHTNESS else this
+}
 
 /**
  * 盘上那一份读成内存里那一份:一把键一行,缺省就地写出来。
@@ -208,6 +359,18 @@ internal fun Preferences.toAppPreferences(): AppPreferences = AppPreferences(
     abLoopEnabled = this[KEY_AB_LOOP] ?: AppPreferences.DEFAULT_AB_LOOP_ENABLED,
     commentLikeReadOnly = this[KEY_COMMENT_LIKE_READ_ONLY] ?: AppPreferences.DEFAULT_COMMENT_LIKE_READ_ONLY,
     replyLikesVisible = this[KEY_REPLY_LIKES_VISIBLE] ?: AppPreferences.DEFAULT_REPLY_LIKES_VISIBLE,
+    autoPlayPolicyId = this[KEY_AUTO_PLAY_POLICY].sanitizeStorageId(),
+    defaultQualityId = this[KEY_DEFAULT_QUALITY].sanitizeStorageId(),
+    keepScreenOnEnabled = this[KEY_KEEP_SCREEN_ON] ?: AppPreferences.DEFAULT_KEEP_SCREEN_ON_ENABLED,
+    commentSortId = this[KEY_COMMENT_SORT].sanitizeStorageId(),
+    wifiOnlyDownload = this[KEY_WIFI_ONLY_DOWNLOAD] ?: AppPreferences.DEFAULT_WIFI_ONLY_DOWNLOAD,
+    backgroundPlayEnabled = this[KEY_BACKGROUND_PLAY] ?: AppPreferences.DEFAULT_BACKGROUND_PLAY_ENABLED,
+    fullscreenOrientationId = this[KEY_FULLSCREEN_ORIENTATION].sanitizeStorageId(),
+    downloadQualityId = this[KEY_DOWNLOAD_QUALITY].sanitizeStorageId(),
+    homeLayoutId = this[KEY_HOME_LAYOUT].sanitizeStorageId(),
+    rememberBrightnessEnabled = this[KEY_REMEMBER_BRIGHTNESS] ?: AppPreferences.DEFAULT_REMEMBER_BRIGHTNESS_ENABLED,
+    rememberedBrightness = (this[KEY_REMEMBERED_BRIGHTNESS] ?: AppPreferences.DEFAULT_REMEMBERED_BRIGHTNESS)
+        .coerceRememberedBrightness(),
 )
 
 /** 三格的读序:自己的新键 → 旧版"三格总开关" → 默认(全开) */

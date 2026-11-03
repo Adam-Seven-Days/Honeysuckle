@@ -6,7 +6,8 @@ import com.videobrowsing.honeysuckle.core.datastore.TIER_ID_UNSET
 /**
  * 弹幕偏好快照(设置页与播放页共用的那一份)。
  *
- * 可调项全是原始类型:三个数值 + 一个开关 + 一份词表 + **两个档位的英文名**。
+ * 可调项全是原始类型:三个数值 + 四个开关(总开关与滚动/顶部/底部三格) + 一份词表 +
+ * **三个档位的英文名**(密度、限帧、速度)。
  * 档位不落枚举(本模块也不依赖 `core:player`),落的是 `"standard"` 这类英文 id:
  *  - 盘上写的是用户认得的那个名字,不是"3 条每秒"这种会随重定标改变的工程值;
  *  - id → 档位的翻译只在 `core:player` 一处(`DanmakuDensity.fromStorageId` / `DanmakuFramePace.fromStorageId`),
@@ -27,6 +28,18 @@ data class DanmakuPreferences(
     val densityId: String = DEFAULT_DENSITY_ID,
     /** 限帧档的英文名,口径同 [densityId] */
     val framePaceId: String = DEFAULT_FRAME_PACE_ID,
+    /** 速度档的英文名(`slow` / `standard` / `fast`),口径同 [densityId] */
+    val speedId: String = DEFAULT_SPEED_ID,
+    /**
+     * 三种弹幕类型各自画不画(设置 → 弹幕 → 类型)。
+     *
+     * 三把键分开而不是一个"只显示滚动":顶部与底部那两条是定住的,有人只想收掉它们、
+     * 保留滚动的热闹;合成一档就只剩"全画"和"全不画"两个选择。
+     * mode7 的关键帧弹幕不在这三格管辖里 —— 它是内容本身,不是排版方式。
+     */
+    val scrollVisible: Boolean = DEFAULT_SCROLL_VISIBLE,
+    val topVisible: Boolean = DEFAULT_TOP_VISIBLE,
+    val bottomVisible: Boolean = DEFAULT_BOTTOM_VISIBLE,
     /** 屏蔽词原样(清洗后的集合,见仓库侧的 sanitize);词 → 规则的翻译归 `core:player` */
     val blockedWords: Set<String> = DEFAULT_BLOCKED_WORDS,
 ) {
@@ -44,6 +57,12 @@ data class DanmakuPreferences(
         /** 盘上"没设过"的取值是空串(定义在 `TIER_ID_UNSET`,两块盘共用一个),它不是词表里的一个档名 */
         const val DEFAULT_DENSITY_ID = TIER_ID_UNSET
         const val DEFAULT_FRAME_PACE_ID = TIER_ID_UNSET
+        const val DEFAULT_SPEED_ID = TIER_ID_UNSET
+
+        /** 三种类型默认全画:关掉某一格是用户的决定,不是我们在第一帧替他决定 */
+        const val DEFAULT_SCROLL_VISIBLE = true
+        const val DEFAULT_TOP_VISIBLE = true
+        const val DEFAULT_BOTTOM_VISIBLE = true
 
         /** 可用区间:写与读都按这组数夹。UI 滑条自己的下限(例如不许拖到全透明)是另一回事,不混在这里 */
         const val OPACITY_MIN = 0f

@@ -20,8 +20,13 @@ import com.videobrowsing.honeysuckle.core.designsystem.theme.Hsy
 import com.videobrowsing.honeysuckle.core.designsystem.theme.HsyAccent
 import com.videobrowsing.honeysuckle.core.designsystem.theme.HsyThemeMode
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Icon
+import com.videobrowsing.honeysuckle.core.model.CommentSort
 import com.videobrowsing.honeysuckle.core.model.HomeFeedSource
+import com.videobrowsing.honeysuckle.core.model.HomeLayout
+import com.videobrowsing.honeysuckle.core.model.QualityTier
+import com.videobrowsing.honeysuckle.core.player.AutoPlayPolicy
 import com.videobrowsing.honeysuckle.core.player.danmaku.DanmakuDensity
+import com.videobrowsing.honeysuckle.core.player.danmaku.DanmakuSpeed
 
 /**
  * 设置首页:只摆五行入口,每一行把盘上现状折成一句副题。
@@ -127,16 +132,22 @@ private fun appearanceLine(app: AppPreferences): String {
     val theme = HsyThemeMode.fromStorageId(app.themeModeId).displayName
     val accent = HsyAccent.fromStorageId(app.themeAccentId).displayName
     val source = sourceLabel(HomeFeedSource.fromStorageId(app.homeFeedSourceId))
-    return "主题$theme · $accent · 首页$source"
+    val layout = HomeLayout.fromStorageId(app.homeLayoutId).displayName
+    return "主题$theme · $accent · 首页$source · $layout"
 }
 
+/**
+ * 播放那一组的入口副题只念"每天都会被用到"的五格:自动播、画质、倍速、小窗、历史。
+ *
+ * 组里现在有十几把键,全写在这一行会折成四五屏,反而读不出重点 —— 长按加速、AB、方向、亮度
+ * 这些进页就看得见,副题不重复它们。
+ */
 private fun playbackLine(app: AppPreferences): String {
-    val base = "打开时 ${speedLabel(app.playbackSpeed)}"
-    val boost = if (app.longPressBoostEnabled) "长按 ${speedLabel(app.longPressBoostSpeed)}" else "长按不提速"
+    val policy = AutoPlayPolicy.fromStorageId(app.autoPlayPolicyId).displayName
+    val quality = QualityTier.fromStorageId(app.defaultQualityId).displayName
     val pip = if (app.autoPipEnabled) "小窗开" else "小窗关"
     val history = if (app.recordHistory) "记历史" else "不记历史"
-    val ab = if (app.abLoopEnabled) "AB 开" else "AB 关"
-    return "$base · $boost · $pip · $history · $ab"
+    return "$policy · 画质$quality · 打开时 ${speedLabel(app.playbackSpeed)} · $pip · $history"
 }
 
 private fun navigationLine(app: AppPreferences): String {
@@ -148,14 +159,26 @@ private fun navigationLine(app: AppPreferences): String {
     return if (shown.isEmpty()) "三段已收起 · 只剩首页与我的" else "显示 ${shown.joinToString(" / ")}"
 }
 
+/** 弹幕副题要把"关掉的那几类"念出来:三种都开着是常态,只有关掉才需要用户在入口就看见 */
 private fun danmakuLine(danmaku: DanmakuPreferences): String = if (!danmaku.enabled) {
     "已关闭 · 播放页一条都不画"
 } else {
-    "已开启 · ${densityLabel(DanmakuDensity.fromStorageId(danmaku.densityId))}"
+    val density = densityLabel(DanmakuDensity.fromStorageId(danmaku.densityId))
+    val speed = DanmakuSpeed.fromStorageId(danmaku.speedId).displayName
+    val hidden = hiddenDanmakuModes(danmaku)
+    "已开启 · $density · 速度$speed · " + if (hidden.isEmpty()) "三种全开" else "已收 $hidden"
 }
 
+/** 被关掉的那几类弹幕;三种都开着时给空串,由上一行落成"三种全开" */
+private fun hiddenDanmakuModes(danmaku: DanmakuPreferences): String = listOfNotNull(
+    "滚动".takeIf { !danmaku.scrollVisible },
+    "顶部".takeIf { !danmaku.topVisible },
+    "底部".takeIf { !danmaku.bottomVisible },
+).joinToString("/")
+
 private fun commentLine(app: AppPreferences): String {
+    val sort = CommentSort.fromStorageId(app.commentSortId).displayName
     val like = if (app.commentLikeReadOnly) "点赞只读" else "点赞可点"
     val replies = if (app.replyLikesVisible) "回复可赞" else "回复不摆点赞"
-    return "$like · $replies"
+    return "排序$sort · $like · $replies"
 }

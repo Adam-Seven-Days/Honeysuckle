@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import com.videobrowsing.honeysuckle.core.common.formatBytes
 import com.videobrowsing.honeysuckle.core.designsystem.icon.HsyIcons
 import com.videobrowsing.honeysuckle.core.designsystem.theme.Hsy
+import com.videobrowsing.honeysuckle.core.designsystem.ui.AlertDialog
 import com.videobrowsing.honeysuckle.core.designsystem.ui.DropdownMenu
 import com.videobrowsing.honeysuckle.core.designsystem.ui.DropdownMenuItem
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Icon
@@ -140,3 +141,25 @@ private fun downloadingNote(task: DownloadTask): String {
 
 private fun qualityPrefixOf(task: DownloadTask): String =
     task.qualityLabel.takeIf { it.isNotBlank() }?.let { "$it · " }.orEmpty()
+
+/**
+ * "现在是移动网络,仍要缓存吗?"
+ *
+ * 这一句只在设置里那一格真的拦下时才出现,平时一个字都不摆:把"仅 Wi-Fi"做成默认直接不下,
+ * 用户会以为下载坏了;什么都不问就烧流量,又是另一种背叛。问一次是这两者之间唯一说得通的位置。
+ */
+@Composable
+internal fun DownloadNetworkDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("用移动网络缓存?") },
+        text = {
+            Text(
+                "现在走的是移动网络,这一段会按流量下下来。" +
+                    "想只在 Wi-Fi 下缓存,可以在「设置 → 播放 → 下载」里留着那一格。",
+            )
+        },
+        confirmButton = { TextButton(onClick = onConfirm) { Text("仍要缓存") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("先不下") } },
+    )
+}

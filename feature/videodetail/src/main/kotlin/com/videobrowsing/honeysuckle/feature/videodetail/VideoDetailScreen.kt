@@ -39,6 +39,7 @@ import com.videobrowsing.honeysuckle.core.designsystem.theme.Hsy
 import com.videobrowsing.honeysuckle.core.designsystem.ui.CircularProgressIndicator
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Text
 import com.videobrowsing.honeysuckle.core.designsystem.ui.TextButton
+import com.videobrowsing.honeysuckle.core.player.FullscreenOrientation
 import com.videobrowsing.honeysuckle.core.player.HsyPlayerHost
 import com.videobrowsing.honeysuckle.core.player.PlaybackEngine
 import com.videobrowsing.honeysuckle.core.player.PlaybackExtras
@@ -124,6 +125,14 @@ fun VideoDetailScreen(
             else -> DetailColumn(state, intents, stage, continuingOnEntry, CommentZone(commentsViewModel, commentState))
         }
     }
+
+    // 确认框摆在最外层而不塞进某一栏:窄屏、宽屏与全屏三种布局都可能被"只在 Wi-Fi 下缓存"拦下
+    if (state.downloadNeedsConfirm && !inPip) {
+        DownloadNetworkDialog(
+            onConfirm = { viewModel.onAction(VideoDetailAction.ConfirmDownload) },
+            onDismiss = { viewModel.onAction(VideoDetailAction.CancelDownloadConfirm) },
+        )
+    }
 }
 
 /** 详情页递给播放舞台的上下文:同一只引擎的宿主机、读数、弹幕层与 AB/定时读数收成一束 */
@@ -146,6 +155,8 @@ private fun playerIntentsOf(engine: PlaybackEngine, intents: DetailIntents, wind
     onToggleDanmaku = { intents.onAction(VideoDetailAction.ToggleDanmaku) },
     onCycleAb = engine::markAbPoint,
     onSetSleep = engine::setSleepTimer,
+    // 亮度拖完那一下交出去:落不落盘由 ViewModel 按设置里那一格判,这一层不替用户决定记不记
+    onBrightness = { intents.onAction(VideoDetailAction.RememberBrightness(it)) },
     window = window,
 )
 
@@ -176,7 +187,7 @@ private fun DetachedStage(
     )
 }
 
-/** 屏上所有副作用:窗口形态、播放器错误、取流落座、倍速、时钟,以及控制条的自动隐身 */
+/** 屏上所有副作用:窗口形态、亮度记忆、播放器错误、取流落座、倍速、时钟,以及控制条的自动隐身 */
 @Composable
 private fun VideoPageEffects(
     engine: PlaybackEngine,
@@ -188,7 +199,13 @@ private fun VideoPageEffects(
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
 
-    FullscreenWindowEffect(fullscreen, activity)
+    FullscreenWindowEffect(
+        fullscreen = fullscreen,
+        activity = activity,
+        orientation = FullscreenOrientation.fromStorageId(state.fullscreenOrientationId),
+    )
+    // 亮度单独一条效果:它跟着"这一屏在不在"走,不跟着全屏走 —— 退全屏不该顺手把亮度还回系统
+    RememberedBrightnessEffect(state.rememberBrightnessEnabled, state.rememberedBrightness, activity)
     DisposableEffect(Unit) {
         // 离开页面只恢复窗口形态;播放器归进程级引擎管,后台播放从这一行起才成立
         onDispose { restoreWindow(activity) }

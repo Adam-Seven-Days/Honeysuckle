@@ -66,6 +66,14 @@ class MainActivity : ComponentActivity() {
     private var pipOnlyWhilePlaying by mutableStateOf(true)
     private var pipAspect by mutableStateOf(PipAspect.DEFAULT)
 
+    /**
+     * 后台播放那一格的镜像:`onStop` 不在组合里,读不到 Compose 状态。
+     *
+     * 它管的是"人走了声音要不要跟着走"——`onUserLeaveHint` 那一条只管小窗,
+     * 没进小窗又关掉后台播放的人,声音该停在这一刻,而不是等通知栏把他提醒一次。
+     */
+    private var backgroundPlayEnabled by mutableStateOf(true)
+
     private val notificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* 拒绝也只是不展示通知 */ }
 
@@ -81,10 +89,12 @@ class MainActivity : ComponentActivity() {
             val autoPip by appViewModel.autoPipEnabled.collectAsStateWithLifecycle()
             val pipOnlyPlaying by appViewModel.pipOnlyWhilePlaying.collectAsStateWithLifecycle()
             val aspect by appViewModel.pipAspect.collectAsStateWithLifecycle()
+            val background by appViewModel.backgroundPlayEnabled.collectAsStateWithLifecycle()
             SideEffect {
                 autoPipEnabled = autoPip
                 pipOnlyWhilePlaying = pipOnlyPlaying
                 pipAspect = aspect
+                backgroundPlayEnabled = background
             }
 
             val dark = themeMode.resolveDark(systemDark = isSystemInDarkTheme())
@@ -126,6 +136,19 @@ class MainActivity : ComponentActivity() {
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         pipMode = isInPictureInPictureMode
+    }
+
+    /**
+     * 关掉"允许后台播放"之后,退回桌面或切去别的应用就把声音停在这一刻。
+     *
+     * 小窗不算"后台":进了画中画还暂停,那块小窗就成了一块冻住的画面,而用户要的正是"边干别的边看"。
+     * 只暂停不释放 —— 用户在通知栏或锁屏上按播放,接的还是同一只播放器、同一个进度。
+     */
+    override fun onStop() {
+        super.onStop()
+        if (backgroundPlayEnabled || pipMode || isInPictureInPictureMode) return
+        // 走 activeHost 而不是 host:没有会话时这里不该凭空建出一只 ExoPlayer
+        engine.activeHost?.takeIf { it.isPlaying }?.pause()
     }
 
     /**

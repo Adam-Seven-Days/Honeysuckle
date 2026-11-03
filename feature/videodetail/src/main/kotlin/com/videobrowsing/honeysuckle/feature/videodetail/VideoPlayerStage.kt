@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.keepScreenOn
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -37,6 +38,8 @@ import com.videobrowsing.honeysuckle.core.danmaku.host.DanmakuHostState
 import com.videobrowsing.honeysuckle.core.danmaku.host.DanmakuPresentation
 import com.videobrowsing.honeysuckle.core.danmaku.host.rememberDanmakuHostState
 import com.videobrowsing.honeysuckle.core.danmaku.model.DanmakuEntry
+import com.videobrowsing.honeysuckle.core.danmaku.model.DanmakuMode
+import com.videobrowsing.honeysuckle.core.datastore.danmaku.DanmakuPreferences
 import com.videobrowsing.honeysuckle.core.designsystem.icon.HsyIcons
 import com.videobrowsing.honeysuckle.core.designsystem.theme.Hsy
 import com.videobrowsing.honeysuckle.core.designsystem.ui.CircularProgressIndicator
@@ -52,6 +55,7 @@ import com.videobrowsing.honeysuckle.core.player.PlaybackExtras
 import com.videobrowsing.honeysuckle.core.player.danmaku.DanmakuDensity
 import com.videobrowsing.honeysuckle.core.player.danmaku.DanmakuFramePace
 import com.videobrowsing.honeysuckle.core.player.danmaku.DanmakuScreener
+import com.videobrowsing.honeysuckle.core.player.danmaku.DanmakuSpeed
 
 /** 播放器的读数都收在这里:它们每 200ms 变一次,进 ViewModel 的状态会让整页跟着重组 */
 internal class PlayerUi {
@@ -62,6 +66,15 @@ internal class PlayerUi {
     var dragging by mutableStateOf(false)
     var dragPositionMs by mutableStateOf(0L)
     var error by mutableStateOf<String?>(null)
+
+    /**
+     * 这一屏里画面真的自己动过一次(用户按的、通知栏按的、小窗按的都算)。
+     *
+     * 它是"自动播放"那一档的第二半个判据:设置说"不自动播",说的是**第一次进这一段**别自己动;
+     * 用户已经按过播放、接着换清晰度或换分 P 时被拦在第二帧不动,那不是他要的效果。
+     * 读数挂在 [PlayerUi] 而不是 ViewModel:它跟着这一处渲染面的生命周期走,退页就作废。
+     */
+    var startedByUser by mutableStateOf(false)
 
     /** 竖向手势的屏上读数(亮度 / 音量);null = 没有正在说的事 */
     var gestureLabel by mutableStateOf<String?>(null)
@@ -88,22 +101,32 @@ internal class DanmakuScreen(
 /**
  * [inPip] 折进两件事:小窗里限到不快过省电档(口径见 [DanmakuFramePace.effectiveIntervalMs]),
  * 以及小窗弹幕开关关掉时交一张空表(设置 → 播放 → 画中画)。密度与屏蔽是内容口径,窗口变小不改放行什么。
+ *
+ * 设置 → 弹幕 → 类型那三格也在这一层收口:被关掉的那一类**不进宿主**,而不是进了再按帧跳过 ——
+ * 与"小窗关弹幕交空表"同一条做法,少一类条目就少一次测量、少一批轨道位,顶上那格关掉时
+ * 滚动能用的行位也随之全交给滚动(内核按 [Lane] 各自分轨,不占别人额度)。
  */
 @Composable
 internal fun danmakuScreen(state: VideoDetailUiState, inPip: Boolean = false): DanmakuScreen {
     val prefs = state.danmakuPreferences
     val density = remember(prefs.densityId) { DanmakuDensity.fromStorageId(prefs.densityId) }
     val framePace = remember(prefs.framePaceId) { DanmakuFramePace.fromStorageId(prefs.framePaceId) }
+    val speed = remember(prefs.speedId) { DanmakuSpeed.fromStorageId(prefs.speedId) }
     val screener = remember(prefs.blockedWords) { DanmakuScreener(prefs.blockedWords) }
-    val timeline = remember(state.timeline, density, screener, inPip, state.pipDanmakuVisible) {
+    val timeline = remember(state.timeline, density, screener, inPip, state.pipDanmakuVisible, prefs) {
         // 小窗里关掉弹幕就交空表:宿主层不必再按帧判断"这一条要不要画"
-        if (inPip && !state.pipDanmakuVisible) emptyList() else screener.screen(state.timeline, density).passed
+        if (inPip && !state.pipDanmakuVisible) {
+            emptyList()
+        } else {
+            screener.screen(state.timeline, density).passed.filterVisibleModes(prefs)
+        }
     }
-    val presentation = remember(prefs, framePace, inPip) {
+    val presentation = remember(prefs, framePace, speed, inPip) {
         DanmakuPresentation(
             opacity = prefs.effectiveOpacity,
             fontSize = prefs.fontSize,
             scrollAreaFraction = prefs.scrollAreaFraction,
+            speedDpPerSec = speed.dpPerSec,
             minFrameIntervalMs = framePace.effectiveIntervalMs(compactStage = inPip),
         )
     }
@@ -112,6 +135,21 @@ internal fun danmakuScreen(state: VideoDetailUiState, inPip: Boolean = false): D
         presentation = presentation,
         hostState = rememberDanmakuHostState(),
     )
+}
+
+/**
+ * 只留设置里还开着的那几类。
+ *
+ * [DanmakuMode.FREE_LOCATE] 不在这三格里:它是 mode7 关键帧弹幕,是内容而不是排版方式,
+ * 设置页没有那一格,这里也就不替用户做第四个决定。
+ */
+private fun List<DanmakuEntry>.filterVisibleModes(prefs: DanmakuPreferences): List<DanmakuEntry> = filter { entry ->
+    when (entry.mode) {
+        DanmakuMode.SCROLL -> prefs.scrollVisible
+        DanmakuMode.TOP -> prefs.topVisible
+        DanmakuMode.BOTTOM -> prefs.bottomVisible
+        DanmakuMode.FREE_LOCATE -> true
+    }
 }
 
 /** 播放器一屏要读的读数:宿主机、播放器读数、页面状态、弹幕层与是否全屏 */
@@ -137,6 +175,8 @@ internal class PlayerIntents(
     val onToggleDanmaku: () -> Unit,
     val onCycleAb: () -> Unit,
     val onSetSleep: (Int?) -> Unit,
+    /** 画面上竖向拖完亮度之后那一个数(0..1);落不落盘由设置里"记住播放亮度"说了算 */
+    val onBrightness: (Float) -> Unit,
     val window: WindowIntents,
 )
 
@@ -154,7 +194,15 @@ internal fun PlayerStage(inputs: PlayerStageInputs, intents: PlayerIntents, modi
     // 离线播放时 [VideoDetailUiState.playback] 为空(两条本地轨代替了在线取流),
     // 但画面与手势照常要挂 —— 判"有没有东西可播"用这两项一起看。
     val hasVideo = inputs.state.playback != null || inputs.state.offlineSource != null
-    Box(modifier = modifier.background(Color.Black)) {
+    Box(
+        modifier = modifier
+            .background(Color.Black)
+            // 常亮挂在"这一屏真的有画面要放"的那一刻:设置里那一格关着、或这一 P 还没取到流,
+            // 都不该替用户按住屏幕 —— 交回系统自己的息屏时间
+            .then(
+                if (inputs.state.keepScreenOnEnabled && hasVideo) Modifier.keepScreenOn() else Modifier,
+            ),
+    ) {
         if (hasVideo) {
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
@@ -173,7 +221,7 @@ internal fun PlayerStage(inputs: PlayerStageInputs, intents: PlayerIntents, modi
             )
         }
 
-        GestureLayer(inputs.host, inputs.ui, hasVideo, inputs.gestureOptions)
+        GestureLayer(inputs.host, inputs.ui, hasVideo, inputs.gestureOptions, intents.onBrightness)
 
         GestureHud(inputs.ui.gestureLabel)
 

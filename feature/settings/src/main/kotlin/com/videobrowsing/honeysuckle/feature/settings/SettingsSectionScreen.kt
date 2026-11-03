@@ -16,15 +16,18 @@ import com.videobrowsing.honeysuckle.core.datastore.general.AppPreferences
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsySectionCard
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsySettingRow
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsyTopBar
+import com.videobrowsing.honeysuckle.core.designsystem.icon.HsyIcons
 import com.videobrowsing.honeysuckle.core.designsystem.theme.Hsy
 import com.videobrowsing.honeysuckle.core.designsystem.theme.HsyAccent
 import com.videobrowsing.honeysuckle.core.designsystem.theme.HsyThemeMode
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Switch
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Text
+import com.videobrowsing.honeysuckle.core.model.CommentSort
 import com.videobrowsing.honeysuckle.core.model.HomeFeedSource
-import com.videobrowsing.honeysuckle.core.player.PipAspect
+import com.videobrowsing.honeysuckle.core.model.HomeLayout
 import com.videobrowsing.honeysuckle.core.player.danmaku.DanmakuDensity
 import com.videobrowsing.honeysuckle.core.player.danmaku.DanmakuFramePace
+import com.videobrowsing.honeysuckle.core.player.danmaku.DanmakuSpeed
 import kotlin.math.roundToInt
 
 /** 设置二级页的路由参数名;`HsyRoute.SETTINGS_SECTION_PATTERN` 里那个占位符必须与此一致 */
@@ -80,12 +83,36 @@ fun SettingsSectionScreen(
             return@Column
         }
 
+        state.message?.let { message ->
+            Text(
+                text = message,
+                style = Hsy.typography.bodySmall,
+                color = Hsy.colors.accent,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+            )
+        }
+
         when (section) {
             SettingsSection.APPEARANCE -> AppearanceSection(state.app, viewModel::onAction)
             SettingsSection.NAVIGATION -> NavigationSection(state.app, viewModel::onAction)
             SettingsSection.PLAYBACK -> PlaybackSection(state.app, viewModel::onAction)
             SettingsSection.DANMAKU -> DanmakuSection(state.danmaku, viewModel::onAction)
             SettingsSection.COMMENTS -> CommentsSection(state.app, viewModel::onAction)
+        }
+
+        // 每一组末尾都是同一行"恢复本组默认",而不是五处各写一遍:复位要说的那句话只有一份,
+        // 抄五遍迟早会长出五种说法。唯一要说清差别的是弹幕那一组 —— 它管着一份用户自己攒的词表。
+        HsySectionCard(title = "这一组") {
+            HsySettingRow(
+                title = "恢复本组默认",
+                icon = HsyIcons.refresh,
+                supporting = if (section == SettingsSection.DANMAKU) {
+                    "只退这一组,别处不动;你自己加的屏蔽词也会一起清掉"
+                } else {
+                    "只退这一组,别处不动"
+                },
+                onClick = { viewModel.onAction(SettingsAction.ResetSection(section)) },
+            )
         }
     }
 }
@@ -113,6 +140,14 @@ private fun AppearanceSection(app: AppPreferences, onAction: (SettingsAction) ->
             name = { sourceLabel(it) },
             supporting = "打开应用时落在哪一档;首页顶上仍可随时换",
             onSelect = { onAction(SettingsAction.HomeFeedSource(it.storageId)) },
+        )
+        TierRow(
+            label = "排布",
+            options = HomeLayout.entries.toList(),
+            selected = HomeLayout.fromStorageId(app.homeLayoutId),
+            name = { it.displayName },
+            supporting = "双列一屏多几条、首条通栏;单列一行一条,封面与字都更大",
+            onSelect = { onAction(SettingsAction.HomeLayout(it.storageId)) },
         )
     }
 }
@@ -164,205 +199,22 @@ private fun NavigationSection(app: AppPreferences, onAction: (SettingsAction) ->
     )
 }
 
-@Composable
-private fun PlaybackSection(app: AppPreferences, onAction: (SettingsAction) -> Unit) {
-    HsySectionCard(title = "速度") {
-        TierRow(
-            label = "默认倍速",
-            options = AppPreferences.PLAYBACK_SPEED_OPTIONS,
-            selected = app.playbackSpeed,
-            name = { speedLabel(it) },
-            supporting = "打开播放页时的起始倍速,播放中仍可在画面上改",
-            onSelect = { onAction(SettingsAction.PlaybackSpeed(it)) },
-        )
-    }
-    PipOptionsCard(app, onAction)
-    GestureOptionsCard(app, onAction)
-    PlaybackBehaviorCard(app, onAction)
-    HistoryOptionsCard(app, onAction)
-}
-
-/** 与窗口形态无关的播放行为:自动连播与 AB 循环 */
-@Composable
-private fun PlaybackBehaviorCard(app: AppPreferences, onAction: (SettingsAction) -> Unit) {
-    HsySectionCard(title = "播放行为") {
-        HsySettingRow(
-            title = "自动连播下一 P",
-            supporting = "多分 P 视频播完这一 P 就接下一 P;最后一 P 不会绕回开头",
-            trailing = {
-                Switch(
-                    checked = app.autoPlayNextPart,
-                    onCheckedChange = { onAction(SettingsAction.AutoPlayNextPart(it)) },
-                )
-            },
-        )
-        HsySettingRow(
-            title = "AB 循环",
-            supporting = if (app.abLoopEnabled) {
-                "控制条显示 AB 按钮:第一次标 A、第二次标 B、第三次清除,播到 B 点自动跳回 A"
-            } else {
-                "控制条不显示 AB 按钮,已标的 A/B 点也会清掉;需要反复看一段时再打开"
-            },
-            trailing = {
-                Switch(
-                    checked = app.abLoopEnabled,
-                    onCheckedChange = { onAction(SettingsAction.AbLoopEnabled(it)) },
-                )
-            },
-        )
-    }
-}
-
-/** 画中画四档:开关、只在播放时、画幅、小窗里的弹幕 */
-@Composable
-private fun PipOptionsCard(app: AppPreferences, onAction: (SettingsAction) -> Unit) {
-    HsySectionCard(title = "画中画") {
-        HsySettingRow(
-            title = "启用画中画",
-            supporting = if (app.autoPipEnabled) {
-                "切走时自动缩成小窗继续放;详情页里也能手动进入,应用内会保留一条小窗"
-            } else {
-                "切走时不缩成小窗,应用内也不保留小窗;声音仍在后台继续,通知栏可控制"
-            },
-            trailing = {
-                Switch(
-                    checked = app.autoPipEnabled,
-                    onCheckedChange = { onAction(SettingsAction.AutoPipEnabled(it)) },
-                )
-            },
-        )
-        // 只在"自动"成立时才有这一档:手动按钮不受它约束,摆出来只会多一条看不懂的开关
-        if (app.autoPipEnabled) {
-            HsySettingRow(
-                title = "仅在播放时",
-                supporting = "暂停时切走不弹小窗;想留着小窗就让它继续播",
-                trailing = {
-                    Switch(
-                        checked = app.pipOnlyWhilePlaying,
-                        onCheckedChange = { onAction(SettingsAction.PipOnlyWhilePlaying(it)) },
-                    )
-                },
-            )
-        }
-        TierRow(
-            label = "小窗画幅",
-            options = PipAspect.entries.toList(),
-            selected = PipAspect.fromStorageId(app.pipAspectId),
-            name = { it.displayName },
-            supporting = "跟随视频时,竖屏片源不会被裁掉两侧",
-            onSelect = { onAction(SettingsAction.PipAspect(it.storageId)) },
-        )
-        HsySettingRow(
-            title = "小窗显示弹幕",
-            supporting = if (app.pipDanmakuVisible) {
-                "小窗里照常画弹幕;关掉后只剩画面,主播放页不受影响"
-            } else {
-                "小窗里不画弹幕;回到主播放页仍按弹幕总开关显示"
-            },
-            trailing = {
-                Switch(
-                    checked = app.pipDanmakuVisible,
-                    onCheckedChange = { onAction(SettingsAction.PipDanmakuVisible(it)) },
-                )
-            },
-        )
-    }
-}
-
-/** 手势四档:亮度音量、左右对调、横向拖动进度、长按加速(加它的那一档倍速) */
-@Composable
-private fun GestureOptionsCard(app: AppPreferences, onAction: (SettingsAction) -> Unit) {
-    HsySectionCard(title = "手势") {
-        HsySettingRow(
-            title = "亮度与音量手势",
-            supporting = "画面左半屏上下滑调亮度、右半屏调音量;关掉后只剩单击与横滑",
-            trailing = {
-                Switch(
-                    checked = app.playerGesturesEnabled,
-                    onCheckedChange = { onAction(SettingsAction.PlayerGesturesEnabled(it)) },
-                )
-            },
-        )
-        // 对调只管左右两侧的竖向手势;总开关关掉时这一条没有作用,就不摆
-        if (app.playerGesturesEnabled) {
-            HsySettingRow(
-                title = "左右对调",
-                supporting = "左半屏改成音量、右半屏改成亮度;习惯用左手的人更顺",
-                trailing = {
-                    Switch(
-                        checked = app.gestureSideSwapped,
-                        onCheckedChange = { onAction(SettingsAction.GestureSideSwapped(it)) },
-                    )
-                },
-            )
-        }
-        HsySettingRow(
-            title = "横向拖动调节进度",
-            supporting = "左右拖动先预览、松手才跳转;关掉后只能点进度条",
-            trailing = {
-                Switch(
-                    checked = app.seekGestureEnabled,
-                    onCheckedChange = { onAction(SettingsAction.SeekGestureEnabled(it)) },
-                )
-            },
-        )
-        // 长按加速这一档是"开不开 + 开到哪档"两维:关掉开关后那一档没人读,就不摆出来
-        HsySettingRow(
-            title = "长按画面加速",
-            supporting = if (app.longPressBoostEnabled) "按住画面就按下面那一档快进,松手回到原档;默认倍速不被改掉" else "按住画面不提速;单击与横滑照常",
-            trailing = {
-                Switch(
-                    checked = app.longPressBoostEnabled,
-                    onCheckedChange = { onAction(SettingsAction.LongPressBoostEnabled(it)) },
-                )
-            },
-        )
-        if (app.longPressBoostEnabled) {
-            TierRow(
-                label = "长按时的倍速",
-                options = AppPreferences.LONG_PRESS_BOOST_SPEED_OPTIONS,
-                selected = app.longPressBoostSpeed,
-                name = { speedLabel(it) },
-                supporting = "已经在播这一档或更快时长按不改速度 —— 长按是要跳过一段,不是要慢下来",
-                onSelect = { onAction(SettingsAction.LongPressBoostSpeed(it)) },
-            )
-        }
-    }
-}
-
-/** 历史的两个开关:记不记、看完清不清 */
-@Composable
-private fun HistoryOptionsCard(app: AppPreferences, onAction: (SettingsAction) -> Unit) {
-    HsySectionCard(title = "历史") {
-        HsySettingRow(
-            title = "记录观看历史",
-            supporting = if (app.recordHistory) {
-                "边看边记进度,首页小窗与「我的 → 观看历史」都能接着看"
-            } else {
-                "不再新增记录;已经留在历史里的条目照常可看,也可以手动清掉"
-            },
-            trailing = {
-                Switch(
-                    checked = app.recordHistory,
-                    onCheckedChange = { onAction(SettingsAction.RecordHistory(it)) },
-                )
-            },
-        )
-        HsySettingRow(
-            title = "看完即清",
-            supporting = "播到片尾就不留这行历史,续播起点也随之消失",
-            trailing = {
-                Switch(
-                    checked = app.clearHistoryWhenFinished,
-                    onCheckedChange = { onAction(SettingsAction.ClearHistoryWhenFinished(it)) },
-                )
-            },
-        )
-    }
-}
-
+/**
+ * 「弹幕」二级页:先摆"画不画、画成什么样",再摆类型三格、档位与屏蔽词。
+ *
+ * 拆成三张卡而不是一个长函数:这一组现在有十来个控件,挤在一个函数里读一次
+ * "速度那一档接到哪儿"要上下滚半屏。
+ */
 @Composable
 private fun DanmakuSection(danmaku: DanmakuPreferences, onAction: (SettingsAction) -> Unit) {
+    DanmakuShowCard(danmaku, onAction)
+    DanmakuTypeCard(danmaku, onAction)
+    DanmakuTierCard(danmaku, onAction)
+}
+
+/** 总开关与它下面的三档读数:透明度、字体大小、滚动区域 */
+@Composable
+private fun DanmakuShowCard(danmaku: DanmakuPreferences, onAction: (SettingsAction) -> Unit) {
     HsySectionCard(title = "显示") {
         HsySettingRow(
             title = "显示弹幕",
@@ -393,8 +245,60 @@ private fun DanmakuSection(danmaku: DanmakuPreferences, onAction: (SettingsActio
             onCommit = { onAction(SettingsAction.ScrollArea(it)) },
         )
     }
+}
 
+/**
+ * 三格类型各一个开关。分开而不是一格"只显示滚动":顶部与底部那两条是定住的,
+ * 有人只想收掉它们、留住滚动的热闹。关掉的那一类根本不进屏幕,行位也一并交还给还开着的那些。
+ */
+@Composable
+private fun DanmakuTypeCard(danmaku: DanmakuPreferences, onAction: (SettingsAction) -> Unit) {
+    HsySectionCard(title = "类型") {
+        HsySettingRow(
+            title = "滚动弹幕",
+            supporting = "从右往左穿过画面的一条",
+            trailing = {
+                Switch(
+                    checked = danmaku.scrollVisible,
+                    onCheckedChange = { onAction(SettingsAction.DanmakuScrollVisible(it)) },
+                )
+            },
+        )
+        HsySettingRow(
+            title = "顶部弹幕",
+            supporting = "贴在画面上方、定住几秒的一条",
+            trailing = {
+                Switch(
+                    checked = danmaku.topVisible,
+                    onCheckedChange = { onAction(SettingsAction.DanmakuTopVisible(it)) },
+                )
+            },
+        )
+        HsySettingRow(
+            title = "底部弹幕",
+            supporting = "贴在画面下方、定住几秒的一条",
+            trailing = {
+                Switch(
+                    checked = danmaku.bottomVisible,
+                    onCheckedChange = { onAction(SettingsAction.DanmakuBottomVisible(it)) },
+                )
+            },
+        )
+    }
+}
+
+/** 密度、流畅度、速度与屏蔽词:决定"放多少条、多久重画一次、走多快、哪些词不进" */
+@Composable
+private fun DanmakuTierCard(danmaku: DanmakuPreferences, onAction: (SettingsAction) -> Unit) {
     HsySectionCard(title = "档位") {
+        TierRow(
+            label = "弹幕速度",
+            options = DanmakuSpeed.entries.toList(),
+            selected = DanmakuSpeed.fromStorageId(danmaku.speedId),
+            name = { it.displayName },
+            supporting = "一条滚动弹幕横穿画面的快慢;只改滚动,顶部与底部那两条仍是定住几秒再走。",
+            onSelect = { onAction(SettingsAction.DanmakuSpeed(it.storageId)) },
+        )
         TierRow(
             label = "弹幕密度",
             options = DanmakuDensity.entries.toList(),
@@ -417,6 +321,16 @@ private fun DanmakuSection(danmaku: DanmakuPreferences, onAction: (SettingsActio
 
 @Composable
 private fun CommentsSection(app: AppPreferences, onAction: (SettingsAction) -> Unit) {
+    HsySectionCard(title = "排序") {
+        TierRow(
+            label = "默认排序",
+            options = CommentSort.entries.toList(),
+            selected = CommentSort.fromStorageId(app.commentSortId),
+            name = { it.displayName },
+            supporting = "进详情页的评论区先按这一档取;评论区顶上仍可当场换",
+            onSelect = { onAction(SettingsAction.CommentSort(it.storageId)) },
+        )
+    }
     HsySectionCard(title = "点赞") {
         HsySettingRow(
             title = "点赞只读",

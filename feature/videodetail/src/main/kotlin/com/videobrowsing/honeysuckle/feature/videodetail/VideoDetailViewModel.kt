@@ -3,7 +3,6 @@ package com.videobrowsing.honeysuckle.feature.videodetail
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.videobrowsing.honeysuckle.core.common.HsyClock
 import com.videobrowsing.honeysuckle.core.common.HsyResult
 import com.videobrowsing.honeysuckle.core.common.userMessage
 import com.videobrowsing.honeysuckle.core.common.writeErrorText
@@ -17,6 +16,7 @@ import com.videobrowsing.honeysuckle.core.data.detail.VideoDetailRepository
 import com.videobrowsing.honeysuckle.core.data.favorite.FavoriteRepository
 import com.videobrowsing.honeysuckle.core.data.history.HistoryRepository
 import com.videobrowsing.honeysuckle.core.data.interaction.InteractionRepository
+import com.videobrowsing.honeysuckle.core.data.network.NetworkReader
 import com.videobrowsing.honeysuckle.core.data.offline.OfflineRepository
 import com.videobrowsing.honeysuckle.core.data.playback.PlaybackRepository
 import com.videobrowsing.honeysuckle.core.data.relation.RelationRepository
@@ -24,17 +24,17 @@ import com.videobrowsing.honeysuckle.core.datastore.danmaku.DanmakuPreferenceRep
 import com.videobrowsing.honeysuckle.core.datastore.danmaku.DanmakuPreferences
 import com.videobrowsing.honeysuckle.core.datastore.general.AppPreferenceRepository
 import com.videobrowsing.honeysuckle.core.datastore.general.AppPreferences
-import com.videobrowsing.honeysuckle.core.model.DownloadRequest
 import com.videobrowsing.honeysuckle.core.model.DownloadTask
 import com.videobrowsing.honeysuckle.core.model.FavoriteFolder
-import com.videobrowsing.honeysuckle.core.model.FavoriteItem
 import com.videobrowsing.honeysuckle.core.model.FeedItem
 import com.videobrowsing.honeysuckle.core.model.OfflineSource
 import com.videobrowsing.honeysuckle.core.model.Playback
 import com.videobrowsing.honeysuckle.core.model.PlaybackTrackSelector
+import com.videobrowsing.honeysuckle.core.model.QualityTier
 import com.videobrowsing.honeysuckle.core.model.VideoDetail
 import com.videobrowsing.honeysuckle.core.model.VideoInteraction
 import com.videobrowsing.honeysuckle.core.model.VideoPart
+import com.videobrowsing.honeysuckle.core.player.AutoPlayPolicy
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
@@ -43,6 +43,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -72,6 +73,10 @@ private data class PlayerToggles(
     val longPressBoostSpeed: Float,
     val autoNext: Boolean,
     val pipDanmaku: Boolean,
+    val keepScreenOn: Boolean,
+    val fullscreenOrientationId: String,
+    val rememberBrightness: Boolean,
+    val rememberedBrightness: Float,
 ) {
     companion object {
         fun of(app: AppPreferences) = PlayerToggles(
@@ -82,6 +87,10 @@ private data class PlayerToggles(
             longPressBoostSpeed = app.longPressBoostSpeed,
             autoNext = app.autoPlayNextPart,
             pipDanmaku = app.pipDanmakuVisible,
+            keepScreenOn = app.keepScreenOnEnabled,
+            fullscreenOrientationId = app.fullscreenOrientationId,
+            rememberBrightness = app.rememberBrightnessEnabled,
+            rememberedBrightness = app.rememberedBrightness,
         )
     }
 }
@@ -143,6 +152,27 @@ data class VideoDetailUiState(
     val longPressBoostSpeed: Float = AppPreferences.DEFAULT_LONG_PRESS_BOOST_SPEED,
     val autoPlayNextPart: Boolean = AppPreferences.DEFAULT_AUTO_PLAY_NEXT_PART,
     val pipDanmakuVisible: Boolean = AppPreferences.DEFAULT_PIP_DANMAKU_VISIBLE,
+    /**
+     * 这一段落座时该不该自己开播:设置里"自动播放"那一档 × 此刻的网络。
+     *
+     * 只有 [playback] 或 [offlineSource] 到手那一刻重算一次,之后不在盘上读数变化时重算 ——
+     * 用户看着看着改设置,不该把手上这一支重新按停。默认真是"该播",与不设这一档时的行为一致。
+     */
+    val playbackAutoStart: Boolean = true,
+    /** 播放时保持屏幕常亮(设置 → 播放 → 开播) */
+    val keepScreenOnEnabled: Boolean = AppPreferences.DEFAULT_KEEP_SCREEN_ON_ENABLED,
+    /** 全屏方向的英文名,词表在 `:core:player` 的 `FullscreenOrientation` */
+    val fullscreenOrientationId: String = AppPreferences.DEFAULT_FULLSCREEN_ORIENTATION_ID,
+    /** 记住播放亮度:开则把拖到的亮度落盘,并在进播放页时把它顶回窗口 */
+    val rememberBrightnessEnabled: Boolean = AppPreferences.DEFAULT_REMEMBER_BRIGHTNESS_ENABLED,
+    /** 上次记下的窗口亮度;`-1f` = 还没记过,窗口跟系统走 */
+    val rememberedBrightness: Float = AppPreferences.DEFAULT_REMEMBERED_BRIGHTNESS,
+    /**
+     * "只在 Wi-Fi 下缓存"拦下了这一次下载,等用户点头。
+     *
+     * 这是一次待答的问题而不是设置读数:屏上的确认框只在它为真时出现,按下"下载"或"取消"就回到假。
+     */
+    val downloadNeedsConfirm: Boolean = false,
 ) {
     val parts: List<VideoPart> get() = detail?.parts.orEmpty()
     val selectedPart: VideoPart? get() = parts.getOrNull(partIndex)
@@ -179,9 +209,16 @@ sealed interface VideoDetailAction {
 
     /** 离线:开始 / 暂停 / 继续 / 删除当前分 P 的下载 */
     data object StartDownload : VideoDetailAction
+
+    /** "只在 Wi-Fi 下缓存"问完那一句之后的两个答案 */
+    data object ConfirmDownload : VideoDetailAction
+    data object CancelDownloadConfirm : VideoDetailAction
     data object PauseDownload : VideoDetailAction
     data object ResumeDownload : VideoDetailAction
     data object DeleteDownload : VideoDetailAction
+
+    /** 画面上竖向拖到的亮度:设置里"记住播放亮度"开着才落盘 */
+    data class RememberBrightness(val brightness: Float) : VideoDetailAction
 
     data object DismissMessage : VideoDetailAction
 }
@@ -214,6 +251,7 @@ class VideoDetailViewModel @Inject constructor(
     private val favoriteRepository: FavoriteRepository,
     private val authRepository: AuthRepository,
     private val offlineRepository: OfflineRepository,
+    private val networkReader: NetworkReader,
     private val appPreferences: AppPreferenceRepository,
     private val danmakuPreferences: DanmakuPreferenceRepository,
 ) : ViewModel() {
@@ -252,7 +290,41 @@ class VideoDetailViewModel @Inject constructor(
             // 弹幕开关只改偏好,不碰播放与写链路;摆在 onAction 这支,handleAction 的复杂度才不会越堆越高
             VideoDetailAction.ToggleDanmaku -> toggleDanmaku()
 
-            VideoDetailAction.StartDownload -> startDownload()
+            // 离线那一支六个动作合成一处:它们只在"下不下这一 P"这件事上打转,与读侧写侧都不同轴
+            VideoDetailAction.StartDownload,
+            VideoDetailAction.ConfirmDownload,
+            VideoDetailAction.CancelDownloadConfirm,
+            VideoDetailAction.PauseDownload,
+            VideoDetailAction.ResumeDownload,
+            VideoDetailAction.DeleteDownload,
+            -> handleOfflineAction(action)
+
+            // 亮度只在这一格设置开着时才落盘:关掉它就该回到"这一次看完就忘"
+            is VideoDetailAction.RememberBrightness -> rememberBrightness(action.brightness)
+
+            else -> handleAction(action)
+        }
+    }
+
+    /** 把画面上拖到的亮度写进盘;设置里那格关着时什么都不做 */
+    private fun rememberBrightness(brightness: Float) {
+        if (!mutableState.value.rememberBrightnessEnabled) return
+        viewModelScope.launch { appPreferences.setRememberedBrightness(brightness) }
+    }
+
+    /** 离线那一支:入队、确认框的两个答案、以及暂停 / 继续 / 删除当前那一条任务 */
+    private fun handleOfflineAction(action: VideoDetailAction) {
+        when (action) {
+            VideoDetailAction.StartDownload -> startDownload(forced = false)
+
+            // 确认框里点了"仍要下载":这一次不再问网络,直接入队
+            VideoDetailAction.ConfirmDownload -> {
+                mutableState.update { it.copy(downloadNeedsConfirm = false) }
+                startDownload(forced = true)
+            }
+
+            VideoDetailAction.CancelDownloadConfirm ->
+                mutableState.update { it.copy(downloadNeedsConfirm = false) }
 
             VideoDetailAction.PauseDownload -> currentDownload()?.let { offlineRepository.pause(it.key) }
 
@@ -260,7 +332,7 @@ class VideoDetailViewModel @Inject constructor(
 
             VideoDetailAction.DeleteDownload -> currentDownload()?.let { offlineRepository.remove(it.key) }
 
-            else -> handleAction(action)
+            else -> Unit
         }
     }
 
@@ -274,21 +346,20 @@ class VideoDetailViewModel @Inject constructor(
         }
     }
 
-    /** 当前分 P 的那一条任务;分 P 还没解析出来(cid=0)时没有可操作对象 */
-    private fun currentDownload(): DownloadTask? {
-        val current = mutableState.value
-        if (current.playbackCid <= 0L) return null
-        return current.downloads.firstOrNull { it.cid == current.playbackCid }
-    }
+    /** 当前分 P 的那一条任务;换算都在文件末尾那个扩展函数里,这里只把屏上那份读数递过去 */
+    private fun currentDownload(): DownloadTask? = mutableState.value.currentDownload()
 
     /**
      * 下载当前分 P。
      *
      * 只交出"这是什么内容",取流地址由仓库自己解析 —— 那条 URL 有签名与有效期,
-     * 提前解析等于让它在排队阶段就过期。标题在多 P 视频里带上分 P 名,
-     * 否则离线列表里几条任务的标题会一模一样、分不出下的是哪一段。
+     * 提前解析等于让它在排队阶段就过期。
+     *
+     * 两道设置在入队前各问一次:
+     *  - **只在 Wi-Fi 下缓存**:此刻是计费网络就先问一句,[forced] 只来自确认框里那一下"仍要下载";
+     *  - **缓存清晰度**:按设置换算成平台档号交给仓库,这片子没有那一档时仓库自己退自动。
      */
-    private fun startDownload() {
+    private fun startDownload(forced: Boolean) {
         val current = mutableState.value
         val detail = current.detail
         val part = current.selectedPart
@@ -297,20 +368,13 @@ class VideoDetailViewModel @Inject constructor(
 
             part.cid <= 0L -> showMessage("这一 P 还没取到流,先别急着下")
 
-            else -> {
-                val title = if (detail.parts.size > 1) "${detail.brief.title} · ${part.title}" else detail.brief.title
-                viewModelScope.launch {
-                    offlineRepository.enqueue(
-                        DownloadRequest(
-                            bvid = detail.brief.bvid,
-                            cid = part.cid,
-                            title = title,
-                            upName = detail.brief.upName,
-                            coverUrl = detail.brief.coverUrl,
-                            durationMs = part.durationSec * MS_PER_SECOND,
-                        ),
-                    )
+            else -> viewModelScope.launch {
+                val prefs = appPreferences.preferences.first()
+                if (prefs.wifiOnlyDownload && !forced && networkReader.isMetered()) {
+                    mutableState.update { it.copy(downloadNeedsConfirm = true) }
+                    return@launch
                 }
+                offlineRepository.enqueue(current.downloadRequestOf(detail, part, prefs))
             }
         }
     }
@@ -360,6 +424,10 @@ class VideoDetailViewModel @Inject constructor(
                         longPressBoostSpeed = toggles.longPressBoostSpeed,
                         autoPlayNextPart = toggles.autoNext,
                         pipDanmakuVisible = toggles.pipDanmaku,
+                        keepScreenOnEnabled = toggles.keepScreenOn,
+                        fullscreenOrientationId = toggles.fullscreenOrientationId,
+                        rememberBrightnessEnabled = toggles.rememberBrightness,
+                        rememberedBrightness = toggles.rememberedBrightness,
                         danmakuPreferences = danmaku,
                     )
                 }
@@ -516,21 +584,10 @@ class VideoDetailViewModel @Inject constructor(
         playbackJob?.cancel()
         danmakuJob?.cancel()
         playbackJob = viewModelScope.launch {
-            mutableState.update {
-                it.copy(
-                    partIndex = index,
-                    playbackLoading = true,
-                    playbackError = null,
-                    playback = null,
-                    offlineSource = null,
-                    playbackCid = part.cid,
-                    qualities = emptyList(),
-                    selectedQualityId = PlaybackTrackSelector.AUTO_QUALITY,
-                    resumePositionSec = 0,
-                    timeline = emptyList(),
-                    danmakuNote = DANMAKU_PENDING,
-                )
-            }
+            // 开播那一档与默认画质都在这一刻现读盘:进这一屏之前用户可能刚改过设置,
+            // 而 state 里那一份是上一次回流,拿它当"现在"会让新设置慢一次才生效
+            val prefs = appPreferences.preferences.first()
+            mutableState.update { it.resetForPart(index = index, cid = part.cid, prefs = prefs) }
             val resume = if (resumeFromHistory) {
                 historyRepository.resumeEntry(bvid)
                     ?.takeIf { it.cid == part.cid }
@@ -555,11 +612,17 @@ class VideoDetailViewModel @Inject constructor(
             when (val result = playbackRepository.playback(bvid, part.cid)) {
                 is HsyResult.Success -> {
                     val playback = result.value
+                    // 默认画质按这一支实际下发的候选换算:这片没那一档时退到不高于它的可用档,
+                    // 换算就住在 `QualityTier.resolve`,这里不问平台档号
+                    val qualityId = QualityTier.fromStorageId(prefs.defaultQualityId).resolve(playback)
                     mutableState.update {
                         it.copy(
                             playback = playback,
                             playbackLoading = false,
                             qualities = qualityOptionsOf(playback),
+                            selectedQualityId = qualityId,
+                            // 计费网络只在这一支真的要走网络时才问
+                            playbackAutoStart = autoStartOf(prefs, metered = networkReader.isMetered()),
                         )
                     }
                     collectDanmaku(part.cid, playback.durationMs)
@@ -583,12 +646,7 @@ class VideoDetailViewModel @Inject constructor(
 
     private fun selectQuality(qualityId: Int) {
         val current = mutableState.value
-        if (qualityId == current.selectedQualityId) return
-        if (qualityId != PlaybackTrackSelector.AUTO_QUALITY &&
-            current.qualities.none { it.id == qualityId }
-        ) {
-            return
-        }
+        if (!current.acceptsQuality(qualityId)) return
         mutableState.update { it.copy(selectedQualityId = qualityId) }
     }
 
@@ -652,12 +710,6 @@ class VideoDetailViewModel @Inject constructor(
         viewModelScope.launch { danmakuPreferences.setEnabled(target) }
     }
 
-    /** 投币成功后的那一拍:读数加一、解除忙态;详情还没回来时只解忙态 */
-    private fun VideoDetailUiState.withCoinBumped(): VideoDetailUiState {
-        val bumped = detail?.let { it.copy(stat = it.stat.copy(coin = it.stat.coin + COIN_PER_TAP)) }
-        return copy(detail = bumped ?: detail, interactionBusy = false)
-    }
-
     /** 打开面板时才读收藏夹与归属:没点开收藏就不为它多发两条请求 */
     private fun openFavoritePicker() {
         val current = mutableState.value
@@ -683,13 +735,11 @@ class VideoDetailViewModel @Inject constructor(
                 is HsyResult.Success -> {
                     val ids = interactionRepository.favoritedFolderIds(detail.brief.aid)
                     mutableState.update {
-                        it.copy(
-                            favoriteFolders = folders.value,
-                            favoriteFolderIds = (ids as? HsyResult.Success)?.value ?: emptySet(),
-                            favoriteFoldersLoading = false,
-                            favoriteFoldersError = (ids as? HsyResult.Failure)?.let { failure ->
-                                "收藏归属没读到:${failure.error.userMessage()}"
-                            },
+                        it.withFavoritePanel(
+                            folders = folders.value,
+                            ids = (ids as? HsyResult.Success)?.value.orEmpty(),
+                            ownershipError = (ids as? HsyResult.Failure)
+                                ?.let { failure -> "收藏归属没读到:${failure.error.userMessage()}" },
                         )
                     }
                 }
@@ -784,36 +834,14 @@ class VideoDetailViewModel @Inject constructor(
         }
     }
 
+    /** 收藏这一条在本机的镜像:收进某个夹时写下,移走时删掉 —— 那一行的形状在文件末尾 */
     private fun recordLocalMirror(detail: VideoDetail, folderId: Long) {
-        viewModelScope.launch {
-            favoriteRepository.recordLocal(
-                FavoriteItem(
-                    bvid = detail.brief.bvid,
-                    aid = detail.brief.aid,
-                    title = detail.brief.title,
-                    coverUrl = detail.brief.coverUrl,
-                    durationSec = detail.brief.durationSec,
-                    upName = detail.brief.upName,
-                    folderId = FavoriteItem.LOCAL_FOLDER_ID,
-                    folderTitle = folderTitleOf(folderId),
-                    addedAtEpochSec = HsyClock.nowEpochSec(),
-                ),
-            )
-        }
+        viewModelScope.launch { favoriteRepository.recordLocalMirror(detail, folderTitleOf(folderId)) }
     }
 
     /** 本地镜像没有平台归属,走 removeItem 的本地分支即可删掉,不用网络 */
     private fun clearLocalMirror(detail: VideoDetail) {
-        viewModelScope.launch {
-            favoriteRepository.removeItem(
-                FavoriteItem(
-                    bvid = detail.brief.bvid,
-                    aid = detail.brief.aid,
-                    title = detail.brief.title,
-                    folderId = FavoriteItem.LOCAL_FOLDER_ID,
-                ),
-            )
-        }
+        viewModelScope.launch { favoriteRepository.clearLocalMirror(detail) }
     }
 
     private fun folderTitleOf(folderId: Long): String =
@@ -925,4 +953,46 @@ private fun describe(update: DanmakuTimelineUpdate): String = buildString {
     append("弹幕 ${update.merged.entries.size} 条 · 覆盖 ${update.merged.coveredShards.size} 片")
     if (update.failedShards.isNotEmpty()) append(" · 缺 ${update.failedShards.size} 片")
     update.stopped?.let { append(" · 已中止(${it.userMessage()})") }
+}
+
+/**
+ * "自动播放"那一档乘上此刻的网络。
+ *
+ * 离线文件走 `[metered] = false`:本机读出来的两条轨不花流量,那一档拦它没有道理 ——
+ * 用户在移动网络上想接着看缓存,不该被自己的省流量设置按停。
+ */
+private fun autoStartOf(prefs: AppPreferences, metered: Boolean): Boolean =
+    AutoPlayPolicy.fromStorageId(prefs.autoPlayPolicyId).allowsAutoStart(metered)
+
+/** 换 P 那一刻的清空:上一 P 的流、弹幕与续播点都不许留到这一 P 的屏上 */
+private fun VideoDetailUiState.resetForPart(index: Int, cid: Long, prefs: AppPreferences): VideoDetailUiState = copy(
+    partIndex = index,
+    playbackLoading = true,
+    playbackError = null,
+    playback = null,
+    offlineSource = null,
+    playbackCid = cid,
+    qualities = emptyList(),
+    selectedQualityId = PlaybackTrackSelector.AUTO_QUALITY,
+    playbackAutoStart = autoStartOf(prefs, metered = false),
+    resumePositionSec = 0,
+    timeline = emptyList(),
+    danmakuNote = DANMAKU_PENDING,
+)
+
+/**
+ * 这一档能不能选:已经选中的不算一次改变,候选里没有的档(自动档除外)不在这支视频里。
+ *
+ * 屏上的档位列表本就由 [qualityOptionsOf] 从这支视频实际下发的候选轨生成,
+ * 所以"候选里没有"只可能来自旧 state 上的点击 —— 那种一律不认。
+ */
+private fun VideoDetailUiState.acceptsQuality(qualityId: Int): Boolean {
+    if (qualityId == selectedQualityId) return false
+    return qualityId == PlaybackTrackSelector.AUTO_QUALITY || qualities.any { it.id == qualityId }
+}
+
+/** 投币成功后的那一拍:读数加一、解除忙态;详情还没回来时只解忙态 */
+private fun VideoDetailUiState.withCoinBumped(): VideoDetailUiState {
+    val bumped = detail?.let { it.copy(stat = it.stat.copy(coin = it.stat.coin + COIN_PER_TAP)) }
+    return copy(detail = bumped ?: detail, interactionBusy = false)
 }

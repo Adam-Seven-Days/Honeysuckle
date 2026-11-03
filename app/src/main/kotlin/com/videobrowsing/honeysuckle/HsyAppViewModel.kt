@@ -90,4 +90,18 @@ class HsyAppViewModel @Inject constructor(appPreferences: AppPreferenceRepositor
             started = SharingStarted.Eagerly,
             initialValue = PipAspect.DEFAULT,
         )
+
+    /**
+     * 允许不允许后台播放:壳层在 Activity 停下的那一刻问的就是这一格。
+     *
+     * 判据只有壳层拿得到 —— "退到桌面"是系统给 Activity 的回调,任何一屏都不在场。
+     * 没设过与读盘失败都按"允许"处理:这一向就是切走继续放声音。
+     */
+    val backgroundPlayEnabled: StateFlow<Boolean> = appPreferences.preferences
+        .map { it.backgroundPlayEnabled }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = AppPreferences.DEFAULT_BACKGROUND_PLAY_ENABLED,
+        )
 }

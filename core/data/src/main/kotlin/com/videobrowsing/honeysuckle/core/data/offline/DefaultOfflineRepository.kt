@@ -69,6 +69,8 @@ class DefaultOfflineRepository @Inject constructor(
             upName = request.upName,
             coverUrl = request.coverUrl,
             durationMs = request.durationMs,
+            // 先把用户那一档写进任务:真正开始取流后 onTracks 会用平台给的实际档位覆盖它
+            qualityId = request.qualityId,
             state = DownloadState.QUEUED,
             videoPath = OfflineFiles.track(root, request, OfflineFiles.VIDEO_SUFFIX).path,
             audioPath = OfflineFiles.track(root, request, OfflineFiles.AUDIO_SUFFIX).path,

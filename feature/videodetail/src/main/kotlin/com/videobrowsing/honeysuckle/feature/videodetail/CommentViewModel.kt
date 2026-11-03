@@ -120,6 +120,14 @@ class CommentViewModel @Inject constructor(
     /** 每一楼下一次该要第几页;第一页收起后仍保留,展开时不重发第一页 */
     private val nextReplyPage = mutableMapOf<Long, Int>()
 
+    /**
+     * 用户这一场有没有亲手点过排序。
+     *
+     * 点过之后设置里那一档就不再回流覆盖 —— 他刚在评论区选了"最新",设置盘上一次回流
+     * 把列表拨回"最热",看起来像是应用自己乱了顺序。
+     */
+    private var sortTouchedByUser = false
+
     init {
         observeAccount(authRepository, preferences)
     }
@@ -157,7 +165,11 @@ class CommentViewModel @Inject constructor(
                 if (current.moreAvailable && !current.loading && !current.loadingMore) load(append = true)
             }
 
-            is CommentAction.ChangeSort -> changeSort(action.sort)
+            is CommentAction.ChangeSort -> {
+                // 用户在这屏点过哪一档,盘上那一档就不再回来覆盖他:排序是这一场的决定
+                sortTouchedByUser = true
+                changeSort(action.sort)
+            }
 
             is CommentAction.Send -> send(action.text)
 
@@ -187,10 +199,13 @@ class CommentViewModel @Inject constructor(
     }
 
     /**
-     * 登录态与评论两个开关。
+     * 登录态、评论两格开关,以及"默认排序"那一档。
      *
      * 两个开关都由这一屏自己读:点赞只读是"点下去会发生什么"的判断,不能只靠 UI 藏按钮 ——
      * 藏了就等于用户点了没反应;摆着但在这一层拦下,才有一句能读的提醒。
+     *
+     * 默认排序只在**用户这一场没亲手换过排序**时才跟着盘走:换过之后屏上那一档就是他的决定,
+     * 设置回流不该把他刚点的"最新"又拨回"最热"。
      */
     private fun observeAccount(authRepository: AuthRepository, preferences: AppPreferenceStore) {
         viewModelScope.launch {
@@ -200,9 +215,17 @@ class CommentViewModel @Inject constructor(
         }
         viewModelScope.launch {
             preferences.preferences.collect { prefs ->
+                val preferred = CommentSort.fromStorageId(prefs.commentSortId)
+                val adoptSort = !sortTouchedByUser && preferred != mutableState.value.sort
                 mutableState.update {
-                    it.copy(likeReadOnly = prefs.commentLikeReadOnly, replyLikesVisible = prefs.replyLikesVisible)
+                    it.copy(
+                        likeReadOnly = prefs.commentLikeReadOnly,
+                        replyLikesVisible = prefs.replyLikesVisible,
+                        sort = if (adoptSort) preferred else it.sort,
+                    )
                 }
+                // 评论区已经摆过一批才要重取;还没 open() 时把档位留着,第一次读自然用它
+                if (adoptSort && mutableState.value.aid > 0L) load(append = false)
             }
         }
     }

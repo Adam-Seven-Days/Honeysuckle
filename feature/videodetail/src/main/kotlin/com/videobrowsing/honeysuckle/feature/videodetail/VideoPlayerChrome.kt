@@ -90,11 +90,16 @@ internal fun PlayerEndedEffect(host: HsyPlayerHost, onEnded: () -> Unit) {
  *
  * 播放器已经是进程级实例,所以这里多一条"别打断":从别的页面回到同一支视频时,
  * 声音一直在播,新页面的取流结果到达后只认领会话,不从历史点重新开播。
+ *
+ * **`autoStart` 是"自动播放"那一档落在这里的唯一一处**:设置说"不自动播"只拦第一次落座,
+ * 而 [PlayerUi.startedByUser] 说"用户在这屏已经按过播了"之后,换清晰度、换分 P 都接着动 ——
+ * 否则一个"不想让它自己动"的开关会变成"每次换档都要再按一次"。
  */
 @Composable
 internal fun PlaybackSeatEffect(engine: PlaybackEngine, host: HsyPlayerHost, state: VideoDetailUiState, ui: PlayerUi) {
     var seatedCid by remember { mutableStateOf<Long?>(null) }
     var seatedQualityId by remember { mutableStateOf<Int?>(null) }
+    val autoStart = ui.startedByUser || state.playbackAutoStart
     LaunchedEffect(state.bvid, state.playback, state.offlineSource, state.selectedQualityId) {
         val offline = state.offlineSource
         if (offline != null) {
@@ -105,6 +110,7 @@ internal fun PlaybackSeatEffect(engine: PlaybackEngine, host: HsyPlayerHost, sta
                     selection = offlineSelectionOf(offline),
                     startAtMs = startAtMs,
                     session = playbackSessionOf(state),
+                    autoStart = autoStart,
                 )
                 host.setSpeed(ui.speedNow(state.speed))
             }
@@ -135,6 +141,7 @@ internal fun PlaybackSeatEffect(engine: PlaybackEngine, host: HsyPlayerHost, sta
             selection = selection,
             startAtMs = startAtMsOf(engine, host, state, seatedCid),
             session = playbackSessionOf(state),
+            autoStart = autoStart,
         )
         host.setSpeed(ui.speedNow(state.speed))
         seatedCid = state.playbackCid
@@ -180,6 +187,8 @@ internal suspend fun keepClock(host: HsyPlayerHost, ui: PlayerUi) {
     while (true) {
         delay(POSITION_TICK_MS)
         ui.playing = host.isPlaying
+        // 只要画面真的动过一次就算"用户要播" —— 按的是屏上的播放键、通知栏还是小窗,结论一样
+        if (host.isPlaying) ui.startedByUser = true
         ui.durationMs = host.durationMs
         if (!ui.dragging) ui.positionMs = host.positionMs
     }

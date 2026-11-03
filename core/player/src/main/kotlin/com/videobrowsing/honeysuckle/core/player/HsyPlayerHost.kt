@@ -114,9 +114,13 @@ class HsyPlayerHost(context: Context, referer: String = HsyChannel.WEB.refererBa
      *
      * 返回 null 表示这条 [playback] 凑不齐一对音视频轨(DASH 分轨,少一路就是黑屏或哑片),
      * 此时播放器不被改动 —— 让调用方去说"取流不完整",比播一半更诚实。
+     *
+     * [autoStart] 对应设置里的"自动播放"那一档:交 `false` 时照样取流、照样缓冲出首帧,
+     * 只是不把 `playWhenReady` 抬起来 —— 用户看到的是停在第一帧的画面与一条能按的播放键,
+     * 而不是"设置没生效"或者"什么都不知道的黑屏"。
      */
-    fun play(playback: Playback, startAtMs: Long = 0L): MediaTrackSelection? =
-        play(PlaybackTrackSelector.select(playback), startAtMs)
+    fun play(playback: Playback, startAtMs: Long = 0L, autoStart: Boolean = true): MediaTrackSelection? =
+        play(PlaybackTrackSelector.select(playback), startAtMs, autoStart = autoStart)
 
     /**
      * 用调用方已经挑好的那一对轨开播(播放页换清晰度时走这里)。
@@ -128,6 +132,7 @@ class HsyPlayerHost(context: Context, referer: String = HsyChannel.WEB.refererBa
         selection: MediaTrackSelection?,
         startAtMs: Long = 0L,
         metadata: PlaybackMetadata? = null,
+        autoStart: Boolean = true,
     ): MediaTrackSelection? {
         if (selection == null) return null
         player.setMediaSource(
@@ -138,7 +143,7 @@ class HsyPlayerHost(context: Context, referer: String = HsyChannel.WEB.refererBa
         )
         player.prepare()
         if (startAtMs > 0L) player.seekTo(startAtMs)
-        player.playWhenReady = true
+        player.playWhenReady = autoStart
         this.selection = selection
         return selection
     }

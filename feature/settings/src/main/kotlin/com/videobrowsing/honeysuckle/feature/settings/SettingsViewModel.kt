@@ -8,6 +8,9 @@ import com.videobrowsing.honeysuckle.core.datastore.general.AppPreferenceReposit
 import com.videobrowsing.honeysuckle.core.datastore.general.AppPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -23,11 +26,15 @@ import kotlinx.coroutines.launch
  * UI 再抄一份就必然出现"屏上答应了、盘上没落"的那种分歧。
  *
  * [loaded] 为假时屏上不摆控件而摆一行"读取中":默认值冒充读数,用户会以为自己的设置被改回了出厂。
+ *
+ * [message] 是唯一一条不来自盘上的读数:它说的是"刚刚那一下做了什么"。复位这一类动作在
+ * 那一组本来就是默认档时屏上毫无变化,没有这句话,用户只会以为按钮坏了。
  */
 data class SettingsUiState(
     val loaded: Boolean = false,
     val danmaku: DanmakuPreferences = DanmakuPreferences(),
     val app: AppPreferences = AppPreferences(),
+    val message: String? = null,
 )
 
 /** 设置页的单向回传口。所有动作都是"写盘",没有一个先在 UI 里改数 */
@@ -68,6 +75,46 @@ sealed interface SettingsAction {
     data class AbLoopEnabled(val enabled: Boolean) : SettingsAction
     data class CommentLikeReadOnly(val readOnly: Boolean) : SettingsAction
     data class ReplyLikesVisible(val visible: Boolean) : SettingsAction
+
+    /** 进详情页与换分 P 时自动不自播(英文 id,与 `AutoPlayPolicy.storageId` 同表) */
+    data class AutoPlayPolicy(val storageId: String) : SettingsAction
+
+    /** 播放默认清晰度(英文 id,与 `QualityTier.storageId` 同表) */
+    data class DefaultQuality(val storageId: String) : SettingsAction
+    data class KeepScreenOnEnabled(val enabled: Boolean) : SettingsAction
+
+    /** 详情页评论的默认排序(英文 id,与 `CommentSort.storageId` 同表) */
+    data class CommentSort(val storageId: String) : SettingsAction
+    data class WifiOnlyDownload(val enabled: Boolean) : SettingsAction
+    data class BackgroundPlayEnabled(val enabled: Boolean) : SettingsAction
+
+    /** 全屏方向(英文 id,与 `FullscreenOrientation.storageId` 同表) */
+    data class FullscreenOrientation(val storageId: String) : SettingsAction
+
+    /** 下载清晰度(英文 id,含 `follow` = 跟随当前播放档) */
+    data class DownloadQuality(val storageId: String) : SettingsAction
+
+    /** 首页排布(英文 id,与 `HomeLayout.storageId` 同表) */
+    data class HomeLayout(val storageId: String) : SettingsAction
+    data class RememberBrightness(val enabled: Boolean) : SettingsAction
+
+    /** 弹幕三格类型各自画不画 */
+    data class DanmakuScrollVisible(val visible: Boolean) : SettingsAction
+    data class DanmakuTopVisible(val visible: Boolean) : SettingsAction
+    data class DanmakuBottomVisible(val visible: Boolean) : SettingsAction
+
+    /** 弹幕速度档(英文 id,与 `DanmakuSpeed.storageId` 同表) */
+    data class DanmakuSpeed(val storageId: String) : SettingsAction
+
+    /**
+     * 把某一组退回出厂档。
+     *
+     * 只给"这一组"而不做全局:用户按的是"弹幕被我调乱了,恢复一下",不该顺手把主题色与底栏三格一起抹掉。
+     */
+    data class ResetSection(val section: SettingsSection) : SettingsAction
+
+    /** 屏上那句话不再需要时收走(点一下提示本身) */
+    data object DismissMessage : SettingsAction
 }
 
 /**
@@ -75,18 +122,25 @@ sealed interface SettingsAction {
  *
  * 屏蔽词的两个动作先 `first()` 取盘上那一份再改,而不是用 [SettingsUiState] 里的快照:
  * 状态是"某一屏看到的",词表是"盘上当前有的",拿前者当后者会在没订阅的时候抹掉别人加的词条。
+ *
+ * 一把键一条写入口 + 一组一条复位口,函数数超过阈值是这两块盘的形状(与仓库侧同一条口径)。
  */
+@Suppress("TooManyFunctions")
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val danmakuPreferences: DanmakuPreferenceRepository,
     private val appPreferences: AppPreferenceRepository,
 ) : ViewModel() {
 
+    private val mutableMessage = MutableStateFlow<String?>(null)
+    private var messageJob: Job? = null
+
     val state: StateFlow<SettingsUiState> = combine(
         danmakuPreferences.preferences,
         appPreferences.preferences,
-    ) { danmaku, app ->
-        SettingsUiState(loaded = true, danmaku = danmaku, app = app)
+        mutableMessage,
+    ) { danmaku, app, message ->
+        SettingsUiState(loaded = true, danmaku = danmaku, app = app, message = message)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
@@ -98,13 +152,15 @@ class SettingsViewModel @Inject constructor(
             when (action) {
                 is SettingsAction.AddBlockedWord -> addBlockedWord(action.word)
                 is SettingsAction.RemoveBlockedWord -> removeBlockedWord(action.word)
+                is SettingsAction.ResetSection -> reset(action.section)
+                SettingsAction.DismissMessage -> mutableMessage.value = null
                 else -> writeOne(action)
             }
         }
     }
 
     /**
-     * 除词表外的动作都是"一把键写一个值"。
+     * 除词表与复位外的动作都是"一把键写一个值"。
      *
      * 词表单列:它要先 `first()` 读盘上那一份再改,不能拿 [SettingsUiState] 里的快照 ——
      * 状态是"某一屏看到的",词表是"盘上当前有的",拿前者当后者会在没订阅的时候抹掉别人加的词条。
@@ -117,11 +173,44 @@ class SettingsViewModel @Inject constructor(
             is SettingsAction.ScrollArea -> danmakuPreferences.setScrollAreaFraction(action.fraction)
             is SettingsAction.Density -> danmakuPreferences.setDensityId(action.storageId)
             is SettingsAction.FramePace -> danmakuPreferences.setFramePaceId(action.storageId)
+            is SettingsAction.DanmakuSpeed -> danmakuPreferences.setSpeedId(action.storageId)
+            is SettingsAction.DanmakuScrollVisible -> danmakuPreferences.setScrollVisible(action.visible)
+            is SettingsAction.DanmakuTopVisible -> danmakuPreferences.setTopVisible(action.visible)
+            is SettingsAction.DanmakuBottomVisible -> danmakuPreferences.setBottomVisible(action.visible)
             else -> writeApp(action)
         }
     }
 
-    /** 第二块盘的那几把键;词表两条由 onAction 分流,这里够不到 */
+    /**
+     * 某一组退回出厂档:弹幕那组在另一块盘上,其余四组各删自己那几把键。
+     *
+     * 分组的键清单归存储层那一处(见 `AppPreferenceRepository` 的 `GROUP_*`),这里只说"哪一组" ——
+     * 设置页不该知道自己每一把键的名字,否则加一项设置要改两个文件。
+     *
+     * 成功后说一句:这一组本来全是默认档时屏上不会有任何变化,不说话就等于让用户自己猜那一下点没点上。
+     */
+    private suspend fun reset(section: SettingsSection) {
+        when (section) {
+            SettingsSection.APPEARANCE -> appPreferences.resetAppearanceHome()
+            SettingsSection.NAVIGATION -> appPreferences.resetNavigation()
+            SettingsSection.PLAYBACK -> appPreferences.resetPlayback()
+            SettingsSection.COMMENTS -> appPreferences.resetComments()
+            SettingsSection.DANMAKU -> danmakuPreferences.reset()
+        }
+        showMessage("已把「${section.title}」退回默认")
+    }
+
+    /** 屏上那句话留几秒就收走:它是"刚刚那一下"的回执,不是常驻说明 */
+    private fun showMessage(text: String) {
+        messageJob?.cancel()
+        mutableMessage.value = text
+        messageJob = viewModelScope.launch {
+            delay(MESSAGE_LINGER_MS)
+            mutableMessage.value = null
+        }
+    }
+
+    /** 第二块盘的那几把键;词表两条与复位一条由 [onAction] 分流,这里够不到 */
     private suspend fun writeApp(action: SettingsAction) {
         when (action) {
             is SettingsAction.ThemeMode,
@@ -129,6 +218,7 @@ class SettingsViewModel @Inject constructor(
             is SettingsAction.ClearHistoryWhenFinished,
             is SettingsAction.HomeFeedSource,
             is SettingsAction.PlaybackSpeed,
+            is SettingsAction.HomeLayout,
             -> writeGeneral(action)
 
             is SettingsAction.DynamicTabVisible,
@@ -148,10 +238,19 @@ class SettingsViewModel @Inject constructor(
             is SettingsAction.AutoPlayNextPart,
             is SettingsAction.RecordHistory,
             is SettingsAction.AbLoopEnabled,
+            is SettingsAction.AutoPlayPolicy,
+            is SettingsAction.DefaultQuality,
+            is SettingsAction.KeepScreenOnEnabled,
+            is SettingsAction.BackgroundPlayEnabled,
+            is SettingsAction.FullscreenOrientation,
+            is SettingsAction.RememberBrightness,
+            is SettingsAction.WifiOnlyDownload,
+            is SettingsAction.DownloadQuality,
             -> writePlayer(action)
 
             is SettingsAction.CommentLikeReadOnly,
             is SettingsAction.ReplyLikesVisible,
+            is SettingsAction.CommentSort,
             -> writeComment(action)
 
             else -> Unit
@@ -166,6 +265,7 @@ class SettingsViewModel @Inject constructor(
             is SettingsAction.ClearHistoryWhenFinished -> appPreferences.setClearHistoryWhenFinished(action.enabled)
             is SettingsAction.HomeFeedSource -> appPreferences.setHomeFeedSourceId(action.storageId)
             is SettingsAction.PlaybackSpeed -> appPreferences.setPlaybackSpeed(action.speed)
+            is SettingsAction.HomeLayout -> appPreferences.setHomeLayoutId(action.storageId)
             else -> Unit
         }
     }
@@ -179,7 +279,35 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * 「播放」那一组的键。
+     *
+     * 拆两支不是为了少写行:这一组现在有近二十把键,挤在一个 `when` 里读一次"开播那档接到哪儿"
+     * 要横向扫完整屏。两支各管一张卡上的那些,互不重叠。
+     */
     private suspend fun writePlayer(action: SettingsAction) {
+        writeStartOptions(action)
+        writeWindowAndDownload(action)
+    }
+
+    /** 开播与播放行为:自动播、画质、常亮、后台、方向、亮度记忆,加连播 / 历史 / AB */
+    private suspend fun writeStartOptions(action: SettingsAction) {
+        when (action) {
+            is SettingsAction.AutoPlayPolicy -> appPreferences.setAutoPlayPolicyId(action.storageId)
+            is SettingsAction.DefaultQuality -> appPreferences.setDefaultQualityId(action.storageId)
+            is SettingsAction.KeepScreenOnEnabled -> appPreferences.setKeepScreenOnEnabled(action.enabled)
+            is SettingsAction.BackgroundPlayEnabled -> appPreferences.setBackgroundPlayEnabled(action.enabled)
+            is SettingsAction.FullscreenOrientation -> appPreferences.setFullscreenOrientationId(action.storageId)
+            is SettingsAction.RememberBrightness -> appPreferences.setRememberBrightnessEnabled(action.enabled)
+            is SettingsAction.AutoPlayNextPart -> appPreferences.setAutoPlayNextPart(action.enabled)
+            is SettingsAction.RecordHistory -> appPreferences.setRecordHistory(action.enabled)
+            is SettingsAction.AbLoopEnabled -> appPreferences.setAbLoopEnabled(action.enabled)
+            else -> Unit
+        }
+    }
+
+    /** 窗口形态与小窗、手势那一串,以及下载那两把 —— 都在同一屏上,只是不属同一张卡 */
+    private suspend fun writeWindowAndDownload(action: SettingsAction) {
         when (action) {
             is SettingsAction.AutoPipEnabled -> appPreferences.setAutoPipEnabled(action.enabled)
             is SettingsAction.PipOnlyWhilePlaying -> appPreferences.setPipOnlyWhilePlaying(action.enabled)
@@ -190,9 +318,8 @@ class SettingsViewModel @Inject constructor(
             is SettingsAction.GestureSideSwapped -> appPreferences.setGestureSideSwapped(action.swapped)
             is SettingsAction.LongPressBoostEnabled -> appPreferences.setLongPressBoostEnabled(action.enabled)
             is SettingsAction.LongPressBoostSpeed -> appPreferences.setLongPressBoostSpeed(action.speed)
-            is SettingsAction.AutoPlayNextPart -> appPreferences.setAutoPlayNextPart(action.enabled)
-            is SettingsAction.RecordHistory -> appPreferences.setRecordHistory(action.enabled)
-            is SettingsAction.AbLoopEnabled -> appPreferences.setAbLoopEnabled(action.enabled)
+            is SettingsAction.WifiOnlyDownload -> appPreferences.setWifiOnlyDownload(action.enabled)
+            is SettingsAction.DownloadQuality -> appPreferences.setDownloadQualityId(action.storageId)
             else -> Unit
         }
     }
@@ -201,6 +328,7 @@ class SettingsViewModel @Inject constructor(
         when (action) {
             is SettingsAction.CommentLikeReadOnly -> appPreferences.setCommentLikeReadOnly(action.readOnly)
             is SettingsAction.ReplyLikesVisible -> appPreferences.setReplyLikesVisible(action.visible)
+            is SettingsAction.CommentSort -> appPreferences.setCommentSortId(action.storageId)
             else -> Unit
         }
     }
@@ -219,5 +347,8 @@ class SettingsViewModel @Inject constructor(
 
     companion object {
         private const val STOP_TIMEOUT_MS = 5_000L
+
+        /** "已把哪一组退回默认"那句话在屏上留多久;与详情页的回执同一拍 */
+        private const val MESSAGE_LINGER_MS = 4_000L
     }
 }

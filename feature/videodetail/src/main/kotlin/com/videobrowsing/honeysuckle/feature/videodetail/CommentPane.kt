@@ -108,6 +108,10 @@ internal fun CommentPane(
     }
 }
 
+/**
+ * 排序那两颗粒子直接摆 [CommentSort.displayName]:设置页的"默认排序"选的也是同一张表,
+ * 两处各写一份中文迟早会长出"最热 / 热门"这种两个名字指同一档的样子。
+ */
 @Composable
 private fun SortRow(selected: CommentSort, onSelect: (CommentSort) -> Unit) {
     Row(
@@ -115,16 +119,13 @@ private fun SortRow(selected: CommentSort, onSelect: (CommentSort) -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        FilterChip(
-            selected = selected == CommentSort.HOT,
-            onClick = { onSelect(CommentSort.HOT) },
-            label = { Text("最热") },
-        )
-        FilterChip(
-            selected = selected == CommentSort.TIME,
-            onClick = { onSelect(CommentSort.TIME) },
-            label = { Text("最新") },
-        )
+        CommentSort.entries.forEach { option ->
+            FilterChip(
+                selected = selected == option,
+                onClick = { onSelect(option) },
+                label = { Text(option.displayName) },
+            )
+        }
     }
 }
 
