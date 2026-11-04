@@ -20,6 +20,9 @@ jobs:
 
       - name: Set up Android SDK (基础包 + 当前平台)
         uses: android-actions/setup-android@v3
+        with:
+          # 默认的 tools 包已从 SDK 仓库移除,显式只装 platform-tools;平台由 AGP 按 compileSdk 自动补齐
+          packages: platform-tools
 
       - name: Build(跳 AGP Android Lint)
         # 这里跳的是 Android 自带的 lint,不在质量卡口范围内(那条定的是 ktlint + detekt)
