@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -123,6 +124,10 @@ private class VerticalGestureTargets(
 /**
  * 竖向手势单独成一层:一侧亮度、另一侧音量,起点在按下那一刻取。
  *
+ * 换算吃的是**这一把拖动累计的位移**,不是单帧的 `dragAmount`:每帧都拿 start + 单帧增量,
+ * 算出来的那一格永远在起点 ±0.5% 之间来回跳(实测就是亮度/音量卡在 97、98、99 不动),
+ * 而用户要的是"拖了多少就改多少"。
+ *
  * [onBrightness] 只在**松手那一下**交最后一次算出来的数:拖动过程中每帧都写盘等于用一根手指
  * 把 DataStore 打成几百次写,而用户要的只是"停在我松手看到的那一格"。
  */
@@ -134,6 +139,7 @@ private fun Modifier.verticalGesture(targets: VerticalGestureTargets, volumeOnRi
     var startVolume by remember { mutableStateOf(0) }
     var startBrightness by remember { mutableStateOf(DEFAULT_BRIGHTNESS) }
     var lastBrightness by remember { mutableStateOf<Float?>(null) }
+    var dragDy by remember { mutableFloatStateOf(0f) }
     var volumeSide by remember { mutableStateOf(false) }
     return pointerInput(volumeOnRight) {
         detectVerticalDragGestures(
@@ -142,14 +148,16 @@ private fun Modifier.verticalGesture(targets: VerticalGestureTargets, volumeOnRi
                 startVolume = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
                 startBrightness = currentBrightness(activity, targets.context)
                 lastBrightness = null
+                dragDy = 0f
             },
             onVerticalDrag = { change, dragAmount ->
                 change.consume()
                 if (size.height <= 0) return@detectVerticalDragGestures
+                dragDy += dragAmount
                 if (volumeSide) {
-                    applyVolume(audio, ui, startVolume, dragAmount, size.height)
+                    applyVolume(audio, ui, startVolume, dragDy, size.height)
                 } else {
-                    lastBrightness = applyBrightness(activity, ui, startBrightness, dragAmount, size.height)
+                    lastBrightness = applyBrightness(activity, ui, startBrightness, dragDy, size.height)
                 }
             },
             onDragEnd = {

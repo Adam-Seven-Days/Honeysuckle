@@ -11,19 +11,21 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -46,6 +48,7 @@ import com.videobrowsing.honeysuckle.core.player.PlaybackExtras
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 /**
  * 视频详情 + 产品播放页(后续的播放与弹幕能力都从这一屏长出来)。
@@ -73,6 +76,12 @@ fun VideoDetailScreen(
     callbacks: VideoDetailCallbacks,
     modifier: Modifier = Modifier,
     inPip: Boolean = false,
+    /**
+     * 全屏与否由壳层拿着:侧栏收不收是窗口那一层的事,而"重建一次子树就把标志抹掉"
+     * 正是旋转时横屏闪一下又弹回竖屏的那条链。这一屏只读它、按按钮时请壳层改它。
+     */
+    fullscreen: Boolean = false,
+    onFullscreenChange: (Boolean) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     // 评论区整份状态只在 CommentPane 内部收集:顶层只留"总数",打字/翻页/点赞不再拖着播放器重组
@@ -89,12 +98,11 @@ fun VideoDetailScreen(
     // 进页那一刻引擎里是否已经在放这一支:决定注记说"接着后台"还是"从头/从历史点"
     val continuingOnEntry = remember(state.bvid) { engine.session.value?.bvid == state.bvid }
     val playerUi = remember { PlayerUi() }
-    var fullscreen by rememberSaveable { mutableStateOf(false) }
     // 回调/读数的容器缓存成同一实例,子组件的跳过判断才真正生效;总数传"怎么读"而不是值
-    val intents = rememberDetailIntents(viewModel, callbacks) { fullscreen = true }
+    val intents = rememberDetailIntents(viewModel, callbacks) { onFullscreenChange(true) }
     val commentZone = remember(commentsViewModel) { CommentZone(commentsViewModel) { commentCount.value } }
 
-    BackHandler { if (fullscreen) fullscreen = false else callbacks.onBack() }
+    BackHandler { if (fullscreen) onFullscreenChange(false) else callbacks.onBack() }
     VideoPageEffects(engine, host, playerUi, state, fullscreen)
     PlayerEndedEffect(host) { viewModel.onAction(VideoDetailAction.PartEnded) }
 
@@ -119,7 +127,11 @@ fun VideoDetailScreen(
                 stage,
                 state,
                 intents,
-                WindowIntents({ fullscreen = false }, { fullscreen = false }, callbacks.onEnterPip),
+                WindowIntents(
+                    { onFullscreenChange(false) },
+                    { onFullscreenChange(false) },
+                    callbacks.onEnterPip,
+                ),
                 Modifier.fillMaxSize(),
             )
 
@@ -240,6 +252,8 @@ private fun DetailColumn(
     comments: CommentZone,
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        // 这一处按**当前这一边**的宽度判,和壳层那条 min(宽,高) 相反:手机横过来要的是两栏铺开,
+        // 而 16:9 的画面按横屏的宽度铺满会吃掉整屏高度,只剩一张画面挂在屏上
         val wide = maxWidth >= TWO_PANE_BREAKPOINT
         Column(modifier = Modifier.fillMaxSize()) {
             HsyTopBar(title = "视频详情", onBack = intents.onBack)
@@ -263,7 +277,7 @@ private fun DetailColumn(
     }
 }
 
-/** 窄屏:播放器下面两个切换页 —— 简介(元信息/UP/分P/推荐)与评论(全量分页 + 发评论) */
+/** 窄屏:播放器下面两个页 —— 简介(元信息/UP/分P/推荐)与评论(全量分页 + 发评论) */
 @Composable
 private fun DetailFeed(
     state: VideoDetailUiState,
@@ -272,7 +286,9 @@ private fun DetailFeed(
     continuing: Boolean,
     comments: CommentZone,
 ) {
-    var tab by rememberSaveable { mutableStateOf(DetailTab.INTRO) }
+    // 页签与左右拖是同一件事的两个入口:状态只挂在 pager 上,两处读的写的都是它
+    val pages = rememberPagerState(pageCount = { DetailTab.entries.size })
+    val scrollScope = rememberCoroutineScope()
     Column(modifier = Modifier.fillMaxSize()) {
         PlayerStage(
             inputs = PlayerStageInputs(
@@ -292,44 +308,52 @@ private fun DetailFeed(
             ),
             modifier = Modifier.fillMaxWidth().aspectRatio(VIDEO_ASPECT_RATIO),
         )
-        DetailTabRow(
-            selected = tab,
-            commentCount = comments.commentCount,
-            danmakuEnabled = state.danmakuPreferences.enabled,
-            onSelect = { tab = it },
-            onToggleDanmaku = { intents.onAction(VideoDetailAction.ToggleDanmaku) },
-        )
-        when (tab) {
-            DetailTab.INTRO -> IntroFeed(state, intents, stage, continuing, Modifier.weight(1f))
+        // 页签与弹幕入口同一行,从左到右:简介 / 评论 N / 输入框 / 开关。
+        // 两边都吃权重而不是给输入框定死宽度:评论数变长、字体调大都只是各自挤一挤,
+        // 不会出现"整行放不下、开关被顶出屏外"。
+        // 白底与行底那条发丝线都画在这一列上而不是画在页签行里:只让页签那半截是白的、
+        // 线也只铺到输入框为止,右边那两枚就落在页面灰底上,看着像另一行控件。
+        Column(modifier = Modifier.fillMaxWidth().background(Hsy.colors.surface)) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                DetailTabRow(
+                    selected = DetailTab.entries[pages.currentPage],
+                    commentCount = comments.commentCount,
+                    onSelect = { scrollScope.launch { pages.animateScrollToPage(it.ordinal) } },
+                    modifier = Modifier.weight(TAB_SLOT_WEIGHT),
+                )
+                DanmakuEntry(
+                    state = state,
+                    intents = intents,
+                    positionMs = { stage.ui.positionMs },
+                    modifier = Modifier.weight(DANMAKU_SLOT_WEIGHT),
+                )
+            }
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Hsy.colors.outlineVariant))
+        }
+        HorizontalPager(state = pages, modifier = Modifier.weight(1f).fillMaxWidth()) { page ->
+            when (DetailTab.entries[page]) {
+                DetailTab.INTRO -> IntroFeed(state, intents, continuing)
 
-            DetailTab.COMMENTS -> CommentPane(
-                viewModel = comments.viewModel,
-                onOpenLogin = intents.onOpenLogin,
-                onOpenSpace = intents.onOpenSpace,
-                modifier = Modifier.weight(1f),
-            )
+                DetailTab.COMMENTS -> CommentPane(
+                    viewModel = comments.viewModel,
+                    onOpenLogin = intents.onOpenLogin,
+                    onOpenSpace = intents.onOpenSpace,
+                )
+            }
         }
     }
 }
 
-/** 简介页的滚动内容:播放器留在页顶不跟着滚,这里只剩文字与卡片 */
+/** 简介页的滚动内容:播放器留在页顶不跟着滚,这里只剩文字与卡片(弹幕入口在页签下面那一行) */
 @Composable
 private fun IntroFeed(
     state: VideoDetailUiState,
     intents: DetailIntents,
-    stage: DetailStage,
     continuing: Boolean,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(modifier = modifier.fillMaxSize()) {
         item(key = "playback-notes") { PlaybackNotes(state, continuing) }
-        item(key = "danmaku-composer") {
-            DanmakuComposer(
-                state = state,
-                onSend = { text -> intents.onAction(VideoDetailAction.SendDanmaku(text, stage.ui.positionMs)) },
-                onOpenLogin = intents.onOpenLogin,
-            )
-        }
         state.detail?.let { detail ->
             item(key = "meta") { VideoMeta(state, detail, intents) }
             item(key = "up") {
@@ -341,7 +365,6 @@ private fun IntroFeed(
                     onOpenLogin = intents.onOpenLogin,
                 )
             }
-            item(key = "description") { Description(detail.description) }
         }
         if (state.parts.size > 1) {
             item(key = "parts") {
@@ -386,7 +409,14 @@ private fun WideDetailFeed(
                 ),
                 modifier = Modifier.fillMaxWidth().aspectRatio(VIDEO_ASPECT_RATIO),
             )
-            IntroFeed(state, intents, stage, continuing, Modifier.weight(1f))
+            // 宽屏没有页签行,弹幕入口就摆在左栏简介流的头上;开关仍在画面控制条里
+            DanmakuEntry(
+                state = state,
+                intents = intents,
+                positionMs = { stage.ui.positionMs },
+                toggleInRow = false,
+            )
+            IntroFeed(state, intents, continuing, Modifier.weight(1f))
         }
         Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
             CommentHeader(comments.commentCount)
@@ -402,6 +432,15 @@ private fun WideDetailFeed(
 
 /** 两栏断点:扣掉宽屏侧栏之后,内容区低于 800dp 时左右各分不到一张卡片与一段评论 */
 private val TWO_PANE_BREAKPOINT = 800.dp
+
+/**
+ * 页签与弹幕入口在同一行里的份额。
+ *
+ * 页签多拿一半:两枚页签要装下"评论 156.9 万"这种读数,而输入框那头只要装得下一句提示;
+ * 开关自己贴右边占一格,不参与权重。
+ */
+private const val TAB_SLOT_WEIGHT = 1.6f
+private const val DANMAKU_SLOT_WEIGHT = 1f
 
 /** 相关推荐单独成段:它失败只让这一段降级,不拖垮整页(仓库把两个读取口分开正是为此) */
 private fun LazyListScope.relatedItems(state: VideoDetailUiState, intents: DetailIntents) {

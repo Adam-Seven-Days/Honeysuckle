@@ -11,7 +11,6 @@ import com.videobrowsing.honeysuckle.core.danmaku.model.DanmakuMode
 import com.videobrowsing.honeysuckle.core.data.auth.AuthRepository
 import com.videobrowsing.honeysuckle.core.data.danmaku.DanmakuPostRepository
 import com.videobrowsing.honeysuckle.core.data.danmaku.DanmakuRepository
-import com.videobrowsing.honeysuckle.core.data.danmaku.DanmakuTimelineUpdate
 import com.videobrowsing.honeysuckle.core.data.detail.VideoDetailRepository
 import com.videobrowsing.honeysuckle.core.data.favorite.FavoriteRepository
 import com.videobrowsing.honeysuckle.core.data.history.HistoryRepository
@@ -53,10 +52,11 @@ const val VIDEO_BVID_ARG = "bvid"
 /** 互动回执在屏上留多久 */
 private const val MESSAGE_LINGER_MS = 4_000L
 
-private const val DANMAKU_PENDING = "弹幕:待拉取"
-
 /** 一次投币投几枚(与 `InteractionApi` 表单里的 multiply 对齐) */
 private const val COIN_PER_TAP = 1L
+
+/** 赞与"点赞"下面那个数之间的一次翻动量 */
+private const val LIKE_BUMP = 1L
 
 /** 弹幕默认色:白(与 DanmakuPostApi 发出去的那一档一致) */
 private const val DANMAKU_WHITE = 0xFFFFFFL
@@ -141,7 +141,6 @@ data class VideoDetailUiState(
     val danmakuAcceptedAt: Long = 0L,
     val loggedIn: Boolean = false,
     val timeline: List<DanmakuEntry> = emptyList(),
-    val danmakuNote: String = DANMAKU_PENDING,
     val danmakuPreferences: DanmakuPreferences = DanmakuPreferences(),
     /** 盘上的播放选项:手势与小窗在设置里可调,播放页照同一份读数走 */
     val playerGesturesEnabled: Boolean = AppPreferences.DEFAULT_PLAYER_GESTURES_ENABLED,
@@ -639,7 +638,7 @@ class VideoDetailViewModel @Inject constructor(
         danmakuJob = viewModelScope.launch {
             val durationSec = (durationMs / MS_PER_SECOND).toInt()
             danmakuRepository.timeline(cid, durationSec).collect { update ->
-                mutableState.update { it.copy(timeline = update.merged.entries, danmakuNote = describe(update)) }
+                mutableState.update { it.copy(timeline = update.merged.entries) }
             }
         }
     }
@@ -665,12 +664,7 @@ class VideoDetailViewModel @Inject constructor(
             mutableState.update { it.copy(interactionBusy = true) }
             when (val result = interactionRepository.setLike(detail.brief.aid, target)) {
                 is HsyResult.Success -> {
-                    mutableState.update {
-                        it.copy(
-                            interaction = it.interaction.copy(liked = target),
-                            interactionBusy = false,
-                        )
-                    }
+                    mutableState.update { it.withLikeBumped(target) }
                     showMessage(if (target) "已点赞" else "已取消点赞")
                 }
 
@@ -948,13 +942,6 @@ internal fun qualityOptionsOf(playback: Playback): List<QualityOption> {
     }
 }
 
-/** 分片进度那一行:缺片与中途被风控都要说出口,不许静默少一片 */
-private fun describe(update: DanmakuTimelineUpdate): String = buildString {
-    append("弹幕 ${update.merged.entries.size} 条 · 覆盖 ${update.merged.coveredShards.size} 片")
-    if (update.failedShards.isNotEmpty()) append(" · 缺 ${update.failedShards.size} 片")
-    update.stopped?.let { append(" · 已中止(${it.userMessage()})") }
-}
-
 /**
  * "自动播放"那一档乘上此刻的网络。
  *
@@ -977,7 +964,6 @@ private fun VideoDetailUiState.resetForPart(index: Int, cid: Long, prefs: AppPre
     playbackAutoStart = autoStartOf(prefs, metered = false),
     resumePositionSec = 0,
     timeline = emptyList(),
-    danmakuNote = DANMAKU_PENDING,
 )
 
 /**
@@ -995,4 +981,16 @@ private fun VideoDetailUiState.acceptsQuality(qualityId: Int): Boolean {
 private fun VideoDetailUiState.withCoinBumped(): VideoDetailUiState {
     val bumped = detail?.let { it.copy(stat = it.stat.copy(coin = it.stat.coin + COIN_PER_TAP)) }
     return copy(detail = bumped ?: detail, interactionBusy = false)
+}
+
+/**
+ * 点赞成功后的那一拍:`liked` 与"点赞"下面那个数一起翻,下一次进页面再由平台读数覆盖。
+ *
+ * 与投币同一做法(那边没有"我投过没"的读口,这边有);减到底也不越过 0 ——
+ * 平台读数与本机动作本来就可能差一个,不该在屏上减出一个负数。
+ */
+private fun VideoDetailUiState.withLikeBumped(liked: Boolean): VideoDetailUiState {
+    val delta = if (liked) LIKE_BUMP else -LIKE_BUMP
+    val bumped = detail?.let { it.copy(stat = it.stat.copy(like = (it.stat.like + delta).coerceAtLeast(0L))) }
+    return copy(detail = bumped ?: detail, interaction = interaction.copy(liked = liked), interactionBusy = false)
 }

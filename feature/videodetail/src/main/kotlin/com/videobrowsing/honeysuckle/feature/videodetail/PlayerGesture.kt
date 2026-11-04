@@ -17,13 +17,18 @@ internal object PlayerGesture {
         return if (volumeOnRight) x >= widthPx / 2f else x < widthPx / 2f
     }
 
-    /** 竖向拖动 → 音量档位增量;向上拖(dy<0)为增,返回的是"要加多少档" */
+    /**
+     * 竖向拖动 → 音量档位增量;向上拖(dy<0)为增,返回的是"要加多少档"。
+     *
+     * [dragDy] 是**这一把拖动累计的位移**,不是单帧增量 —— 单帧那种只有几个像素,
+     * 加在起点上算出来的那一格会在 ±1 档之间来回跳。
+     */
     fun volumeDelta(dragDy: Float, heightPx: Int, maxVolume: Int): Int {
         if (heightPx <= 0 || maxVolume <= 0) return 0
         return (-dragDy / heightPx * maxVolume * GESTURE_SENSITIVITY).roundToInt()
     }
 
-    /** 竖向拖动 → 亮度增量(0..1 量程);向上拖为增 */
+    /** 竖向拖动 → 亮度增量(0..1 量程);向上拖为增。[dragDy] 同上,吃的是累计位移 */
     fun brightnessDelta(dragDy: Float, heightPx: Int): Float {
         if (heightPx <= 0) return 0f
         return -dragDy / heightPx * GESTURE_SENSITIVITY

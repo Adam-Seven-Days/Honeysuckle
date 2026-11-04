@@ -2,13 +2,18 @@ package com.videobrowsing.honeysuckle.navigation
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -32,7 +37,6 @@ import com.videobrowsing.honeysuckle.core.designsystem.ui.NavigationBar
 import com.videobrowsing.honeysuckle.core.designsystem.ui.NavigationBarItem
 import com.videobrowsing.honeysuckle.core.designsystem.ui.NavigationRail
 import com.videobrowsing.honeysuckle.core.designsystem.ui.NavigationRailItem
-import com.videobrowsing.honeysuckle.core.designsystem.ui.Scaffold
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Text
 import com.videobrowsing.honeysuckle.core.player.PlaybackEngine
 import com.videobrowsing.honeysuckle.feature.anime.ANIME_SEASON_ID_ARG
@@ -117,8 +121,15 @@ fun HsyNavHost(
         if (stuckOnHiddenTab) navController.switchTab(HsyRoute.HOME)
     }
 
+    // 全屏是**窗口形态**,不是详情页的私事:读数放在壳这一层,侧栏才收得起来,
+    // 而目的地子树因为别的原因重建时也不会把"正在全屏"抹掉。离开详情页就归位,免得把侧栏丢在别人脚下。
+    var stageFullscreen by rememberSaveable { mutableStateOf(false) }
+
     // 壳层不替系统做决定,只把"现在是不是详情页"这一格交出去:按 Home 时进不进画中画由 Activity 判
-    LaunchedEffect(onVideoRoute) { onVideoRouteChanged(onVideoRoute) }
+    LaunchedEffect(onVideoRoute) {
+        onVideoRouteChanged(onVideoRoute)
+        if (!onVideoRoute) stageFullscreen = false
+    }
 
     val openVideo: (String) -> Unit = { bvid -> navController.navigate(HsyRoute.video(bvid)) }
     val openSpace: (Long) -> Unit = { mid ->
@@ -130,25 +141,26 @@ fun HsyNavHost(
         onVideoRouteChanged = onVideoRouteChanged,
         onEnterPip = onEnterPip.takeIf { pipEnabled },
         pipEnabled = pipEnabled,
+        stageFullscreen = stageFullscreen,
+        onStageFullscreen = { stageFullscreen = it },
     )
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        // 600dp 是 Material 的 medium 断点:手机横屏也算宽,那里底栏竖着占掉的正是最缺的高度
-        val wide = maxWidth >= WIDE_BREAKPOINT
-        if (wide) {
-            Row(modifier = Modifier.fillMaxSize()) {
-                if (!inPip) HsyNavRail(tabs, currentRoute) { navController.switchTab(it) }
-                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                    HsyGraph(navController, engine, onVideoRoute, NavActions(openVideo, openSpace), shell)
-                }
+        // 600dp 是 Material 的 medium 断点,量的却是**这个窗口最短的那一边**而不是横着的那一边:
+        // 手机转成横屏是 w914dp/h411dp,min 不动 —— 一次旋转不该把布局换成"内容 + 侧栏",
+        // 也不该因此把整棵导航子树推倒重建(见下面 HsyGraph 只留一个调用点的理由)。
+        val wide = minOf(maxWidth, maxHeight) >= WIDE_BREAKPOINT
+        // 侧栏与底栏是壳,内容只有一个槽位:两边都调 HsyGraph 会让跨断点变成"拆了重建",
+        // 全屏标志、pager、滚动位置这些跟着 remember 走的状态会一起没了(旋转时播放器重新落座就是这一条)。
+        Row(modifier = Modifier.fillMaxSize()) {
+            if (wide && !inPip && !stageFullscreen) {
+                HsyNavRail(tabs, currentRoute) { navController.switchTab(it) }
             }
-        } else {
-            Scaffold(
-                bottomBar = { if (showTabs) HsyTabBar(tabs, currentRoute) { navController.switchTab(it) } },
-            ) { innerPadding ->
-                Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+            Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     HsyGraph(navController, engine, onVideoRoute, NavActions(openVideo, openSpace), shell)
                 }
+                if (!wide && showTabs) HsyTabBar(tabs, currentRoute) { navController.switchTab(it) }
             }
         }
     }
@@ -161,6 +173,9 @@ private class ShellCallbacks(
     /** null = 画中画已关,详情页不摆手动入口 */
     val onEnterPip: (() -> Unit)?,
     val pipEnabled: Boolean,
+    /** 播放舞台正占满整窗:宽屏的侧栏在这时候也该收起来 */
+    val stageFullscreen: Boolean,
+    val onStageFullscreen: (Boolean) -> Unit,
 )
 
 /** 导航图里反复要用的一对"打开"入口:收成一束,免得每加一个入口就给 HsyGraph 添一参 */
@@ -207,7 +222,7 @@ private fun HsyGraph(
             predictivePopExitTransition = hsyPredictivePopExitTransition(TOP_LEVEL_ROUTES, context),
         ) {
             tabDestinations(navController, nav.openVideo, nav.openSpace)
-            pushedDestinations(navController, nav.openVideo, nav.openSpace, shell.inPip, shell.onEnterPip)
+            pushedDestinations(navController, nav, shell)
         }
         if (shell.pipEnabled && !shell.inPip && !onVideoRoute) {
             PlaybackMiniBar(
@@ -273,11 +288,11 @@ private fun NavGraphBuilder.tabDestinations(
 /** 压在栈上的二三级页:返回一律回上一页,不进底栏 */
 private fun NavGraphBuilder.pushedDestinations(
     navController: NavHostController,
-    openVideo: (String) -> Unit,
-    openSpace: (Long) -> Unit,
-    inPip: Boolean,
-    onEnterPip: (() -> Unit)?,
+    nav: NavActions,
+    shell: ShellCallbacks,
 ) {
+    val openVideo = nav.openVideo
+    val openSpace = nav.openSpace
     managementDestinations(navController, openVideo)
     composable(HsyRoute.SEARCH) {
         SearchScreen(
@@ -306,9 +321,11 @@ private fun NavGraphBuilder.pushedDestinations(
                 onOpenVideo = openVideo,
                 onOpenSpace = openSpace,
                 onOpenLogin = { navController.navigate(HsyRoute.LOGIN) },
-                onEnterPip = onEnterPip,
+                onEnterPip = shell.onEnterPip,
             ),
-            inPip = inPip,
+            inPip = shell.inPip,
+            fullscreen = shell.stageFullscreen,
+            onFullscreenChange = shell.onStageFullscreen,
         )
     }
     extendedDestinations(navController, openVideo)

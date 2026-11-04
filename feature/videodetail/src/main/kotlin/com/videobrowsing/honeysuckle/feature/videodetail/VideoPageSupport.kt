@@ -31,13 +31,15 @@ internal fun favoriteLabel(state: VideoDetailUiState): String = when (state.inte
     false, null -> "收藏"
 }
 
+/**
+ * 标题下面那一行统计。
+ *
+ * 只剩播放与弹幕:回复/投币/收藏/分享这四个数改挂在互动区那四枚动作下面(见 `MetaAction`),
+ * 同一屏里同一件事念两遍。
+ */
 internal fun statsLineOf(stat: VideoStat): String = listOf(
     "${formatCount(stat.view)} 播放",
     "${formatCount(stat.danmaku)} 弹幕",
-    "${formatCount(stat.reply)} 回复",
-    "${formatCount(stat.coin)} 投币",
-    "${formatCount(stat.favorite)} 收藏",
-    "${formatCount(stat.share)} 分享",
 ).joinToString(" · ")
 
 internal fun metaLineOf(detail: VideoDetail): String = listOfNotNull(

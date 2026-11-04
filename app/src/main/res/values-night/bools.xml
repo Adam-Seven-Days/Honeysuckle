@@ -1,0 +1,6 @@
+<resources>
+    <!-- 夜里反过来:chrome 是深底,状态栏要浅图标 -->
+    <bool name="hsy_light_system_bars">false</bool>
+    <!-- 闪屏在夜里是浅白那一格,图标要深的 -->
+    <bool name="hsy_splash_light_status_bars">true</bool>
+</resources>

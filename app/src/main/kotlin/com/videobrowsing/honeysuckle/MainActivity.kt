@@ -27,6 +27,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.videobrowsing.honeysuckle.core.datastore.general.AppPreferences
 import com.videobrowsing.honeysuckle.core.designsystem.theme.Hsy
 import com.videobrowsing.honeysuckle.core.designsystem.theme.HsyTheme
 import com.videobrowsing.honeysuckle.core.player.PIP_WIDE_ASPECT
@@ -74,8 +75,10 @@ class MainActivity : ComponentActivity() {
      *
      * 它管的是"人走了声音要不要跟着走"——`onUserLeaveHint` 那一条只管小窗,
      * 没进小窗又关掉后台播放的人,声音该停在这一刻,而不是等通知栏把他提醒一次。
+     * 初值取盘上那一份默认,首帧画完之前也不至于按"允许"抢先放行。
      */
-    private var backgroundPlayEnabled by mutableStateOf(true)
+    private var backgroundPlayEnabled by
+        mutableStateOf(AppPreferences.DEFAULT_BACKGROUND_PLAY_ENABLED)
 
     private val notificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* 拒绝也只是不展示通知 */ }
@@ -84,6 +87,11 @@ class MainActivity : ComponentActivity() {
         // 系统启动窗口要赶在 super.onCreate 之前装上,否则主题已经切成 postSplashScreenTheme
         installSplashScreen()
         super.onCreate(savedInstanceState)
+        // 边到边由应用自己声明:targetSdk 36 只在 API 35+ 上换来系统给的这一口径,
+        // 底下那几年还得自己开口。不开口时窗口不铺到状态栏背后,通知栏那一行就露出
+        // DeviceDefault 的墨黑 statusBarColor —— 浅色内容上压一条黑带,而下面那个根 Box
+        // 的 background 与 safeDrawingPadding 本来就是按"铺满整窗"写的。
+        WindowCompat.setDecorFitsSystemWindows(window, false)
 
         setContent {
             val appViewModel: HsyAppViewModel = viewModel()
@@ -104,14 +112,19 @@ class MainActivity : ComponentActivity() {
             }
 
             val dark = ui.themeMode.resolveDark(systemDark = isSystemInDarkTheme())
+            // 闪屏只在冷启动出现一次:旋转、深色切换、从后台回来都不该再放一遍。
+            // 导航图在下面照常装配,揭开时首页已经在取数。
+            var showSplash by remember { mutableStateOf(savedInstanceState == null) }
             // 边到边之后状态栏图标由系统按"系统亮暗"刷色,应用档位与系统不一致时会把白图标压在浅底上,
-            // 所以两栏图标的亮暗跟的是应用主题,不是系统主题
-            SideEffect { syncSystemBars(dark) }
+            // 所以两栏图标的亮暗跟的是应用主题,不是系统主题。闪屏那一帧除外:它铺的是主题的反面,
+            // 图标跟着反过来才对 —— 日间的墨黑底要浅图标,夜里的浅白底要深图标。
+            // 用按键的 effect 而不是 SideEffect 里读 showSplash:那一读落在闪屏那层的作用域上,
+            // 交棒时这一层不重组,图标就会一直留在闪屏那一档
+            LaunchedEffect(showSplash, dark) {
+                syncSystemBars(if (showSplash) dark else !dark)
+            }
 
             HsyTheme(darkTheme = dark, accent = ui.themeAccent) {
-                // 闪屏只在冷启动出现一次:旋转、深色切换、从后台回来都不该再放一遍。
-                // 导航图在下面照常装配,揭开时首页已经在取数。
-                var showSplash by remember { mutableStateOf(savedInstanceState == null) }
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -184,11 +197,11 @@ class MainActivity : ComponentActivity() {
         return enterPictureInPictureMode(params)
     }
 
-    /** 状态栏与导航栏的图标:浅色主题要深图标,深色主题要浅图标 */
-    private fun syncSystemBars(dark: Boolean) {
+    /** 状态栏与导航栏的图标:浅底要深图标,所以进来的就是"这一格底是不是浅的" */
+    private fun syncSystemBars(lightBars: Boolean) {
         WindowCompat.getInsetsController(window, window.decorView).apply {
-            isAppearanceLightStatusBars = !dark
-            isAppearanceLightNavigationBars = !dark
+            isAppearanceLightStatusBars = lightBars
+            isAppearanceLightNavigationBars = lightBars
         }
     }
 

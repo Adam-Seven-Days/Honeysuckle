@@ -92,7 +92,10 @@ data class AppPreferences(
     val commentSortId: String = DEFAULT_COMMENT_SORT_ID,
     /** 只在 Wi-Fi 下缓存视频;默认开,与"仅 Wi-Fi 自动播"是两把键 —— 一个是看,一个是存 */
     val wifiOnlyDownload: Boolean = DEFAULT_WIFI_ONLY_DOWNLOAD,
-    /** 允许后台播放;默认开,这一向就是切走继续放声音 */
+    /**
+     * 允许后台播放;默认关 —— 切走就暂停才是"没打算一直放",想让声音跟着走自己开,
+     * 或者直接用画中画小窗。
+     */
     val backgroundPlayEnabled: Boolean = DEFAULT_BACKGROUND_PLAY_ENABLED,
     /** 全屏方向的英文名(`landscape` / `sensor`);`""` = 没设过,退锁定横屏 */
     val fullscreenOrientationId: String = DEFAULT_FULLSCREEN_ORIENTATION_ID,
@@ -158,7 +161,9 @@ data class AppPreferences(
         const val DEFAULT_HOME_LAYOUT_ID = TIER_ID_UNSET
         const val DEFAULT_KEEP_SCREEN_ON_ENABLED = true
         const val DEFAULT_WIFI_ONLY_DOWNLOAD = true
-        const val DEFAULT_BACKGROUND_PLAY_ENABLED = true
+
+        /** 后台播放默认关:退到桌面就把声音停下来,要切走接着放是用户自己那一格的事 */
+        const val DEFAULT_BACKGROUND_PLAY_ENABLED = false
         const val DEFAULT_REMEMBER_BRIGHTNESS_ENABLED = false
 
         /** 网络协议档默认开:优先 HTTP/2,谈不成 h2 的节点仍回落 HTTP/1.1 */

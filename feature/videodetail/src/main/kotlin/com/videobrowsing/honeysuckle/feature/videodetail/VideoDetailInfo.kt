@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -33,6 +32,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.videobrowsing.honeysuckle.core.common.formatClock
+import com.videobrowsing.honeysuckle.core.common.formatCount
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsySectionCard
 import com.videobrowsing.honeysuckle.core.designsystem.icon.HsyIcons
 import com.videobrowsing.honeysuckle.core.designsystem.theme.Hsy
@@ -40,37 +40,43 @@ import com.videobrowsing.honeysuckle.core.designsystem.ui.DropdownMenu
 import com.videobrowsing.honeysuckle.core.designsystem.ui.DropdownMenuItem
 import com.videobrowsing.honeysuckle.core.designsystem.ui.FilterChip
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Icon
-import com.videobrowsing.honeysuckle.core.designsystem.ui.OutlinedTextField
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Text
 import com.videobrowsing.honeysuckle.core.designsystem.ui.TextButton
 import com.videobrowsing.honeysuckle.core.designsystem.ui.minimumInteractiveComponentSize
 import com.videobrowsing.honeysuckle.core.model.VideoDetail
 
+/**
+ * 标题上面那行续播注记,外加取流失败时那一句。
+ *
+ * 弹幕本机取到多少条、覆盖几片不再往屏上说 —— 那是取数侧的事,观众要的是画面上的字在不在。
+ * "从头开始"也不算新闻:只有真的从历史点接着放、或者从后台沿过来,才值得提一句。
+ * 两句都没话说时整块不占高度,免得留一条空槽。
+ */
 @Composable
 internal fun PlaybackNotes(state: VideoDetailUiState, continuing: Boolean) {
+    val resume = state.resumePositionSec
+    // 引擎里坐着的就是这一条流时,画面/声音从后台沿过来,没有"从历史点重开"这回事
+    val resumeNote = when {
+        continuing -> "接着后台播放,进度连续"
+        resume > 0 -> "上次看到 ${formatClock(resume.toLong())},已从那里继续"
+        else -> null
+    }
+    val error = state.playbackError
+    if (resumeNote == null && error == null) return
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        Text(
-            text = state.danmakuNote,
-            style = Hsy.typography.bodySmall,
-            color = Hsy.colors.onSurfaceVariant,
-        )
-        val resume = state.resumePositionSec
-        // 引擎里坐着的就是这一条流时,画面/声音从后台沿过来,没有"从历史点重开"这回事
-        Text(
-            text = when {
-                continuing -> "接着后台播放,进度连续"
-                resume > 0 -> "上次看到 ${formatClock(resume.toLong())},已从那里继续"
-                else -> "这一 P 从头开始"
-            },
-            style = Hsy.typography.bodySmall,
-            color = Hsy.colors.onSurfaceVariant,
-        )
-        state.playbackError?.let { error ->
+        resumeNote?.let {
             Text(
-                text = "取流失败:$error",
+                text = it,
+                style = Hsy.typography.bodySmall,
+                color = Hsy.colors.onSurfaceVariant,
+            )
+        }
+        error?.let {
+            Text(
+                text = "取流失败:$it",
                 style = Hsy.typography.bodySmall,
                 color = Hsy.colors.error,
             )
@@ -99,6 +105,8 @@ internal fun VideoMeta(state: VideoDetailUiState, detail: VideoDetail, intents: 
             style = Hsy.typography.bodySmall,
             color = Hsy.colors.onSurfaceVariant,
         )
+        // 简介紧跟在发布日期后面:它是这条稿自己的话,与标题同属一段,不该到页面末尾才出现
+        Description(detail.description)
         MetaActionRow(state, detail, intents)
         OfflineBar(state, intents)
         state.interactionMessage?.let { message ->
@@ -113,7 +121,7 @@ internal fun VideoMeta(state: VideoDetailUiState, detail: VideoDetail, intents: 
     }
 }
 
-/** 互动区那一排:点赞 / 投币 / 收藏 / 分享,游客态多一个扫码入口 */
+/** 互动区那一排:点赞 / 投币 / 收藏 / 分享,每枚下面挂自己的读数;游客态多一个扫码入口 */
 @Composable
 private fun MetaActionRow(state: VideoDetailUiState, detail: VideoDetail, intents: DetailIntents) {
     val context = LocalContext.current
@@ -127,6 +135,7 @@ private fun MetaActionRow(state: VideoDetailUiState, detail: VideoDetail, intent
         MetaAction(
             icon = HsyIcons.thumbUp,
             label = if (state.interaction.liked) "已点赞" else "点赞",
+            count = formatCount(detail.stat.like),
             active = state.interaction.liked,
             enabled = idle,
             onClick = { intents.onAction(VideoDetailAction.ToggleLike) },
@@ -134,12 +143,14 @@ private fun MetaActionRow(state: VideoDetailUiState, detail: VideoDetail, intent
         MetaAction(
             icon = HsyIcons.coin,
             label = "投币",
+            count = formatCount(detail.stat.coin),
             enabled = idle,
             onClick = { intents.onAction(VideoDetailAction.AddCoin) },
         )
         MetaAction(
             icon = HsyIcons.star,
             label = favoriteLabel(state),
+            count = formatCount(detail.stat.favorite),
             active = favorited,
             enabled = idle,
             onClick = {
@@ -159,14 +170,15 @@ private fun MetaActionRow(state: VideoDetailUiState, detail: VideoDetail, intent
 }
 
 /**
- * 互动区的一枚动作:图标压一行小字,点击区按最小触控尺寸撑开。
+ * 互动区的一枚动作:图标压两行小字,第一行是动作名,第二行是这一格的读数。
  *
- * 图标本身不带语义,读屏念的是下面那行文字 —— 同一件事不重复念两遍。
+ * 图标本身不带语义,读屏念的是下面那两行文字 —— 同一件事不重复念两遍。
  */
 @Composable
 private fun MetaAction(
     icon: ImageVector,
     label: String,
+    count: String,
     onClick: () -> Unit,
     active: Boolean = false,
     enabled: Boolean = true,
@@ -192,10 +204,11 @@ private fun MetaAction(
             modifier = Modifier.size(22.dp),
         )
         Text(text = label, style = Hsy.typography.labelSmall, color = color)
+        Text(text = count, style = Hsy.typography.labelSmall, color = color)
     }
 }
 
-/** 分享:菜单里两条路 —— 复制链接(离线可用)与系统分享面板 */
+/** 分享:下面那行是平台的分享计数;菜单里两条路 —— 复制链接(离线可用)与系统分享面板 */
 @Composable
 private fun ShareAction(context: Context, detail: VideoDetail, enabled: Boolean) {
     var expanded by remember { mutableStateOf(false) }
@@ -203,6 +216,7 @@ private fun ShareAction(context: Context, detail: VideoDetail, enabled: Boolean)
         MetaAction(
             icon = HsyIcons.share,
             label = "分享",
+            count = formatCount(detail.stat.share),
             enabled = enabled,
             onClick = { expanded = true },
         )
@@ -304,11 +318,12 @@ private fun UpAvatar(detail: VideoDetail) {
     }
 }
 
+/** 简介那一块,摆在 [VideoMeta] 里;边距由那一段给,这里只管字与展开 */
 @Composable
-internal fun Description(description: String) {
+private fun Description(description: String) {
     if (description.isBlank()) return
     var expanded by remember(description) { mutableStateOf(false) }
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+    Column {
         Text(text = "视频简介", style = Hsy.typography.titleSmall, color = Hsy.colors.onSurface)
         Text(
             text = description,
@@ -336,46 +351,6 @@ internal fun PartsRow(state: VideoDetailUiState, onSelect: (Int) -> Unit) {
                 onClick = { onSelect(index) },
                 label = { Text("P${part.index} ${part.title}", maxLines = 1, overflow = TextOverflow.Ellipsis) },
             )
-        }
-    }
-}
-
-/**
- * 播放器下面那一条发弹幕入口。
- * 草稿只在本组件里:每敲一个字都往 ViewModel 推一份,会把整页详情跟着重组,
- * 而这条输入框的中间态只有它自己用得上。清空只发生在"平台真的收下了"那一拍。
- */
-@Composable
-internal fun DanmakuComposer(state: VideoDetailUiState, onSend: (String) -> Unit, onOpenLogin: () -> Unit) {
-    var draft by remember { mutableStateOf("") }
-    LaunchedEffect(state.danmakuAcceptedAt) {
-        if (state.danmakuAcceptedAt > 0L) draft = ""
-    }
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (!state.loggedIn) {
-            Text(
-                text = "发弹幕需要登录",
-                style = Hsy.typography.bodySmall,
-                color = Hsy.colors.onSurfaceVariant,
-                modifier = Modifier.weight(1f),
-            )
-            TextButton(onClick = onOpenLogin) { Text("去登录") }
-        } else {
-            OutlinedTextField(
-                value = draft,
-                onValueChange = { draft = it },
-                modifier = Modifier.weight(1f),
-                placeholder = { Text("发一条弹幕…") },
-                singleLine = true,
-            )
-            Spacer(modifier = Modifier.size(8.dp))
-            TextButton(
-                onClick = { onSend(draft) },
-                enabled = draft.isNotBlank() && !state.danmakuSending,
-            ) { Text(if (state.danmakuSending) "发送中" else "发送") }
         }
     }
 }

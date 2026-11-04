@@ -1,3 +1,5 @@
 <resources>
     <color name="hsy_splash_background">#1C1C1E</color>
+    <!-- 主题的 background(浅色那一档),见 :core:designsystem 的 HsyColor -->
+    <color name="hsy_window_background">#F6F6F7</color>
 </resources>

@@ -28,6 +28,8 @@ data class VideoStat(
     val view: Long = 0,
     val danmaku: Long = 0,
     val reply: Long = 0,
+    /** 点赞总数:互动区的"点赞"下面那一行读它 */
+    val like: Long = 0,
     val coin: Long = 0,
     val favorite: Long = 0,
     val share: Long = 0,

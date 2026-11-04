@@ -33,7 +33,7 @@ data class TabVisibility(
  * 合成一份之后,一次读盘只产生一次 [AppUiPreferences] 快照,壳层一次订阅就拿到全部字段。
  *
  * 字段语义与原七格一一对应,默认值就是"盘还没回来"时的安全初值:
- * 主题/强调色跟随默认、底栏按默认显隐、画中画与后台播放按允许处理。
+ * 主题/强调色跟随默认、底栏按默认显隐、画中画按允许处理、后台播放按默认关(切走先停,不误出声)。
  */
 data class AppUiPreferences(
     val themeMode: HsyThemeMode = HsyThemeMode.DEFAULT,

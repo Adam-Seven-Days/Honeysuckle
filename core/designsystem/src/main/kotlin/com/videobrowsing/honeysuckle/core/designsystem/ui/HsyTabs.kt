@@ -36,16 +36,20 @@ private val SEGMENT_GAP = 2.dp
  *
  * 与 Material 的差别是"没有容器色与涟漪扩散":选中只由字色与指示条表达,
  * 放在播放器正下方时不至于抢画面的注意力。
+ * [divider] 是行底那条 1dp 发丝线:页签独占一行时它是"这一行到此为止"的收口,
+ * 而页签与别的东西共用一行时它只会把那一行切成两段,所以那种地方关掉。
  */
 @Composable
-fun PrimaryTabRow(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
+fun PrimaryTabRow(modifier: Modifier = Modifier, divider: Boolean = true, content: @Composable RowScope.() -> Unit) {
     Column(modifier = modifier.fillMaxWidth().background(Hsy.colors.surface)) {
         Row(
             modifier = Modifier.fillMaxWidth().height(48.dp),
             verticalAlignment = Alignment.CenterVertically,
             content = content,
         )
-        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Hsy.colors.outlineVariant))
+        if (divider) {
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Hsy.colors.outlineVariant))
+        }
     }
 }
 

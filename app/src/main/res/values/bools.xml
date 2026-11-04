@@ -1,0 +1,6 @@
+<resources>
+    <!-- 日间:chrome 是浅底,状态栏要深图标 -->
+    <bool name="hsy_light_system_bars">true</bool>
+    <!-- 闪屏铺的是主题的反面:日间那一格是墨黑,图标反过来要浅的 -->
+    <bool name="hsy_splash_light_status_bars">false</bool>
+</resources>

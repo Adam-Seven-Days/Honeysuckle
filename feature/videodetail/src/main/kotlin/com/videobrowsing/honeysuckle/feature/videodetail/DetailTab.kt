@@ -1,16 +1,11 @@
 package com.videobrowsing.honeysuckle.feature.videodetail
 
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.videobrowsing.honeysuckle.core.common.formatCount
-import com.videobrowsing.honeysuckle.core.designsystem.icon.HsyIcons
 import com.videobrowsing.honeysuckle.core.designsystem.theme.Hsy
-import com.videobrowsing.honeysuckle.core.designsystem.ui.Icon
-import com.videobrowsing.honeysuckle.core.designsystem.ui.IconButton
 import com.videobrowsing.honeysuckle.core.designsystem.ui.PrimaryTabRow
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Tab
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Text
@@ -18,42 +13,34 @@ import com.videobrowsing.honeysuckle.core.designsystem.ui.Text
 internal enum class DetailTab { INTRO, COMMENTS }
 
 /**
- * 「简介 / 评论 N」页签行,最右边固定一个弹幕开关。
+ * 「简介 / 评论 N」页签行。
  *
- * 开关不跟着控制条一起隐身:竖屏看到一半想关弹幕时,不必先点画面叫出控制条。
+ * 与弹幕入口共用一行(见 `DanmakuEntry`),所以宽度由调用方给、行底那条发丝线也不在这里画:
+ * 不自己 fillMaxWidth 的话页签会把整行吃光,把输入框与开关顶出屏外;线只铺到页签为止的话,
+ * 右边那两枚看着就像另一层的控件。白底与线都由调用方在整行那一层画一次。
  */
 @Composable
 internal fun DetailTabRow(
     selected: DetailTab,
     /** 传"怎么读"而不是"读到的值":总数变化时只让这一枚页签重组 */
     commentCount: () -> Int,
-    danmakuEnabled: Boolean,
     onSelect: (DetailTab) -> Unit,
-    onToggleDanmaku: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        PrimaryTabRow(modifier = Modifier.weight(1f)) {
-            Tab(
-                selected = selected == DetailTab.INTRO,
-                onClick = { onSelect(DetailTab.INTRO) },
-                text = { Text("简介") },
-            )
-            Tab(
-                selected = selected == DetailTab.COMMENTS,
-                onClick = { onSelect(DetailTab.COMMENTS) },
-                text = {
-                    val total = commentCount()
-                    Text(if (total > 0) "评论 ${formatCount(total.toLong())}" else "评论")
-                },
-            )
-        }
-        IconButton(onClick = onToggleDanmaku) {
-            Icon(
-                imageVector = if (danmakuEnabled) HsyIcons.danmakuOn else HsyIcons.danmakuOff,
-                contentDescription = if (danmakuEnabled) "关闭弹幕" else "开启弹幕",
-                tint = if (danmakuEnabled) Hsy.colors.accent else Hsy.colors.onSurfaceVariant,
-            )
-        }
+    PrimaryTabRow(modifier = modifier, divider = false) {
+        Tab(
+            selected = selected == DetailTab.INTRO,
+            onClick = { onSelect(DetailTab.INTRO) },
+            text = { Text("简介", maxLines = 1) },
+        )
+        Tab(
+            selected = selected == DetailTab.COMMENTS,
+            onClick = { onSelect(DetailTab.COMMENTS) },
+            text = {
+                val total = commentCount()
+                Text(if (total > 0) "评论 ${formatCount(total.toLong())}" else "评论", maxLines = 1)
+            },
+        )
     }
 }
 

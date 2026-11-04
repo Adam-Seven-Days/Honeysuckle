@@ -1,14 +1,30 @@
 <resources>
-    <style name="Theme.Honeysuckle" parent="android:Theme.DeviceDefault.NoActionBar" />
+    <!--
+        系统栏只留图标,底色交回应用自己画:根 Box 铺满整窗,内容由 safeDrawingPadding 让开。
+        这几笔是替 API 35 以下补的 —— 那一边状态栏的底色由主题说了算,留着 DeviceDefault 的墨黑,
+        就成了"浅色内容上压一条黑带";targetSdk 36 在 API 35+ 上把这一口径交给系统,不需要这里操心。
+        图标的亮暗运行期由 MainActivity 跟着应用主题改,这里只保证首帧之前不是错的那一档。
+    -->
+    <style name="Theme.Honeysuckle" parent="android:Theme.DeviceDefault.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">@bool/hsy_light_system_bars</item>
+        <!-- Compose 首帧之前系统先画窗口底色:与主题的 background 同口径,免得先闪一条黑 -->
+        <item name="android:windowBackground">@color/hsy_window_background</item>
+    </style>
 
     <!--
         系统冷启动窗口:Compose 首帧之前由系统先画这一屏。
-        底色跟应用主题的 primary 同口径(浅色 #1C1C1E / 深色 #EDEDEF,见 values-night),
+        底色跟主题的 primary 同口径(浅色 #1C1C1E / 深色 #EDEDEF,见 values-night) —— 它是主题的反面,
+        所以状态栏图标的亮暗也跟着反过来:墨黑那一格要浅图标,浅白那一格要深图标。
         图标沿用启动器前景;首帧一到就交回 postSplashScreenTheme。
     -->
     <style name="Theme.Honeysuckle.Starting" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/hsy_splash_background</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
         <item name="postSplashScreenTheme">@style/Theme.Honeysuckle</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">@bool/hsy_splash_light_status_bars</item>
     </style>
 </resources>
