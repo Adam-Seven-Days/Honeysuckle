@@ -90,10 +90,6 @@
 ./gradlew ktlintCheck detekt
 ```
 
-## 项目状态
-
-当前版本 `0.3.0`，主要功能已经可用。账号相关能力仍在持续完善中。
-
 ## 更多文档
 
 - [隐私与免责说明](docs/PRIVACY.md)
