@@ -1,5 +1,6 @@
 package com.videobrowsing.honeysuckle.core.data.di
 
+import android.content.Context
 import com.videobrowsing.honeysuckle.core.data.remote.AccountNavApi
 import com.videobrowsing.honeysuckle.core.data.remote.HomeFeedApi
 import com.videobrowsing.honeysuckle.core.data.remote.InteractionApi
@@ -10,6 +11,8 @@ import com.videobrowsing.honeysuckle.core.data.remote.RelatedVideosApi
 import com.videobrowsing.honeysuckle.core.data.remote.SearchSuggestApi
 import com.videobrowsing.honeysuckle.core.data.remote.VideoSearchApi
 import com.videobrowsing.honeysuckle.core.data.remote.VideoViewApi
+import com.videobrowsing.honeysuckle.core.network.buvid.HsyBuvidSource
+import com.videobrowsing.honeysuckle.core.network.buvid.SpiBuvid
 import com.videobrowsing.honeysuckle.core.network.client.HsyBytesSource
 import com.videobrowsing.honeysuckle.core.network.client.HsyFormHttp
 import com.videobrowsing.honeysuckle.core.network.client.HsyFormHttpWithHeaders
@@ -26,8 +29,11 @@ import com.videobrowsing.honeysuckle.core.network.wbi.WbiUrlSigner
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import java.io.File
 import javax.inject.Singleton
+import okhttp3.Cache
 import okhttp3.OkHttpClient
 
 /**
@@ -48,9 +54,35 @@ import okhttp3.OkHttpClient
 @InstallIn(SingletonComponent::class)
 object DataAssemblyModule {
 
+    /** 响应缓存目录与上限:缓存只影响可缓存的 GET,上限压住磁盘占用 */
+    private const val HTTP_CACHE_DIR = "http"
+    private const val HTTP_CACHE_BYTES = 20L * 1024 * 1024
+
+    /**
+     * 访客身份单例。
+     *
+     * 旧装配里 `HsyHeaderInterceptor()` 自己 new 了一个 `SpiBuvid`,而 `SpiBuvid` 又各建一块
+     * `buvidClient` —— 每条链各问一次身份、各起一个连接池。收到这里之后,整个进程只有一枚 buvid3,
+     * 启动期也只需要预热一次。
+     */
     @Provides
     @Singleton
-    fun provideWebClient(): OkHttpClient = HsyHttpFactory.webClient()
+    fun provideBuvidSource(): HsyBuvidSource = SpiBuvid()
+
+    /**
+     * WEB 主通道。
+     *
+     * 响应缓存只兜"平台明确允许缓存"的那部分(GET + 缓存头),不改变鉴权与写路径:
+     * OkHttp 的 Cache 不缓存带 `Authorization` 的请求,写请求也不是 GET。
+     * 缓存目录放在 `cacheDir` 下,系统清缓存时一并回收。
+     */
+    @Provides
+    @Singleton
+    fun provideWebClient(buvid: HsyBuvidSource, @ApplicationContext context: Context): OkHttpClient =
+        HsyHttpFactory.webClient(
+            buvid = buvid,
+            httpCache = Cache(File(context.cacheDir, HTTP_CACHE_DIR), HTTP_CACHE_BYTES),
+        )
 
     @Provides
     @Singleton

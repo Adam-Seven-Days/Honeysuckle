@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.videobrowsing.honeysuckle.core.data.crash.CrashRedactor
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsySectionCard
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsySettingRow
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsyTopBar
@@ -152,8 +153,9 @@ private fun AboutDialogs(state: AboutUiState, onAction: (AboutAction) -> Unit) {
             log = state.crashLog,
             onCopy = {
                 val log = state.crashLog ?: return@CrashDialog
+                // 读取端已脱敏,这里再兜一次:剪贴板是文本离开本机最直接的一条路
                 val clipboard = context.getSystemService(ClipboardManager::class.java)
-                clipboard?.setPrimaryClip(ClipData.newPlainText("金银花崩溃记录", log))
+                clipboard?.setPrimaryClip(ClipData.newPlainText("金银花崩溃记录", CrashRedactor.redact(log)))
                 onAction(AboutAction.CrashCopied)
             },
             onClear = { onAction(AboutAction.ClearCrash) },

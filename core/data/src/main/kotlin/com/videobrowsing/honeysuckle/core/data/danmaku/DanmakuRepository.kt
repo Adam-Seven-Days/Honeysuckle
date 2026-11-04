@@ -11,7 +11,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.flowOn
 
 /**
  * 弹幕时间轴的一次更新。
@@ -32,7 +32,8 @@ data class DanmakuTimelineUpdate(
  *
  * 与 [DanmakuSegApi.fetchRange] 的差别只在**流出的时机**:一次性区间要等最后一片才能给出时间轴,
  * 这里每合并进一片就流出一版。长视频开局不必等十片拉完才见到第一屏弹幕。
- * 代价是合并被重做 N 次(10 片 / 万条这一档是几十毫秒,且都落在注入的 IO 调度器上),换来首屏。
+ * 合并走 [DanmakuTimeline.IncrementalMerger]:每片只与已有轴做一次线性归并,
+ * 不再把全部条目重新排序;整条流 `flowOn(ioDispatcher)`,不占主线程。
  *
  * 失败口径与 `fetchRange` 同一条线,码表也共用(见 [isAccessBlocked]):
  *  - 网络/解码类失败 ⇒ 记进 [DanmakuTimelineUpdate.failedShards] 后接着拉,不许演成"这段没弹幕";
@@ -58,22 +59,26 @@ class DanmakuRepository(
      *   传 0 也至少拉一片:没查过就没资格说"这片视频没弹幕"。
      */
     fun timeline(oid: Long, durationSec: Int): Flow<DanmakuTimelineUpdate> = flow {
-        val pulled = mutableListOf<DanmakuShard>()
+        // 整条流都跑在 IO 上:排序与线性归并都是 CPU 活,不该借收集方(主线程)的地盘。
+        // 增量合并器每片只做一次归并,长视频的累计开销从"每次全量重排"降到"每片线性扫一遍"。
+        val merger = DanmakuTimeline.IncrementalMerger()
         val failed = mutableListOf<Int>()
         var firstFailure: AppError? = null
+        var anySuccess = false
 
         for (index in 1..DanmakuSegApi.segmentCountFor(durationSec)) {
-            when (val result = withContext(ioDispatcher) { api.fetch(oid, index) }) {
+            when (val result = api.fetch(oid, index)) {
                 is HsyResult.Success -> {
-                    pulled += DanmakuShard(index, result.value)
-                    emit(update(pulled, failed, stopped = null))
+                    merger.add(DanmakuShard(index, result.value))
+                    anySuccess = true
+                    emit(update(merger, failed, stopped = null))
                 }
 
                 is HsyResult.Failure -> {
                     failed += index
                     if (firstFailure == null) firstFailure = result.error
                     if (result.error.isAccessBlocked()) {
-                        emit(update(pulled, failed, stopped = result.error))
+                        emit(update(merger, failed, stopped = result.error))
                         return@flow
                     }
                 }
@@ -81,16 +86,16 @@ class DanmakuRepository(
         }
 
         // 一片都没成:失败原因必须生效,否则调用方拿到的就是一条看起来正常的空时间轴
-        if (pulled.isEmpty()) emit(update(pulled, failed, stopped = firstFailure))
-    }
+        if (!anySuccess) emit(update(merger, failed, stopped = firstFailure))
+    }.flowOn(ioDispatcher)
 
     /** 每次流出的两份列表都是副本:收集方攥着旧元素,不该被后面的补片改写 */
     private fun update(
-        pulled: List<DanmakuShard>,
+        merger: DanmakuTimeline.IncrementalMerger,
         failedShards: List<Int>,
         stopped: AppError?,
     ): DanmakuTimelineUpdate = DanmakuTimelineUpdate(
-        merged = DanmakuTimeline.merge(pulled),
+        merged = merger.snapshot(),
         failedShards = failedShards.toList(),
         stopped = stopped,
     )

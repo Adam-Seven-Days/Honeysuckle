@@ -17,8 +17,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -56,8 +58,15 @@ import com.videobrowsing.honeysuckle.core.player.danmaku.DanmakuDensity
 import com.videobrowsing.honeysuckle.core.player.danmaku.DanmakuFramePace
 import com.videobrowsing.honeysuckle.core.player.danmaku.DanmakuScreener
 import com.videobrowsing.honeysuckle.core.player.danmaku.DanmakuSpeed
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
-/** 播放器的读数都收在这里:它们每 200ms 变一次,进 ViewModel 的状态会让整页跟着重组 */
+/**
+ * 播放器的读数都收在这里:它们每 200ms 变一次,进 ViewModel 的状态会让整页跟着重组。
+ *
+ * 字段都是 Compose 的 [mutableStateOf]:实例本身在页面生命周期内不变,读值处自动订阅。
+ */
+@Stable
 internal class PlayerUi {
     var playing by mutableStateOf(false)
     var positionMs by mutableStateOf(0L)
@@ -92,6 +101,7 @@ internal class PlayerUi {
 }
 
 /** 弹幕那一层要从偏好档算一次;三块策略(密度/屏蔽/限帧)与调试页共用同一套实现 */
+@Stable
 internal class DanmakuScreen(
     val timeline: List<DanmakuEntry>,
     val presentation: DanmakuPresentation,
@@ -113,12 +123,25 @@ internal fun danmakuScreen(state: VideoDetailUiState, inPip: Boolean = false): D
     val framePace = remember(prefs.framePaceId) { DanmakuFramePace.fromStorageId(prefs.framePaceId) }
     val speed = remember(prefs.speedId) { DanmakuSpeed.fromStorageId(prefs.speedId) }
     val screener = remember(prefs.blockedWords) { DanmakuScreener(prefs.blockedWords) }
-    val timeline = remember(state.timeline, density, screener, inPip, state.pipDanmakuVisible, prefs) {
-        // 小窗里关掉弹幕就交空表:宿主层不必再按帧判断"这一条要不要画"
-        if (inPip && !state.pipDanmakuVisible) {
+    // 屏蔽词与密度过滤是 O(全量弹幕) 的 CPU 活:放到默认调度器上算,
+    // 组合期只做一次状态读写。旧实现把它放在 remember 里,换轴/改密度时会卡住主线程。
+    // 重启期间保留上一版结果(produceState 的值跨 key 变化保留),不会先闪一屏空弹幕。
+    val timeline by produceState(
+        initialValue = emptyList<DanmakuEntry>(),
+        state.timeline,
+        density,
+        screener,
+        inPip,
+        state.pipDanmakuVisible,
+        prefs,
+    ) {
+        value = if (inPip && !state.pipDanmakuVisible) {
+            // 小窗里关掉弹幕就交空表:宿主层不必再按帧判断"这一条要不要画"
             emptyList()
         } else {
-            screener.screen(state.timeline, density).passed.filterVisibleModes(prefs)
+            withContext(Dispatchers.Default) {
+                screener.screen(state.timeline, density).passed.filterVisibleModes(prefs)
+            }
         }
     }
     val presentation = remember(prefs, framePace, speed, inPip) {
@@ -130,11 +153,12 @@ internal fun danmakuScreen(state: VideoDetailUiState, inPip: Boolean = false): D
             minFrameIntervalMs = framePace.effectiveIntervalMs(compactStage = inPip),
         )
     }
-    return DanmakuScreen(
-        timeline = timeline,
-        presentation = presentation,
-        hostState = rememberDanmakuHostState(),
-    )
+    val hostState = rememberDanmakuHostState()
+    // 输入没变就复用同一实例:它会被当成 PlayerStageInputs 的一部分,
+    // 每帧新建会让播放舞台误以为弹幕层换了。
+    return remember(timeline, presentation, hostState) {
+        DanmakuScreen(timeline = timeline, presentation = presentation, hostState = hostState)
+    }
 }
 
 /**
@@ -153,6 +177,7 @@ private fun List<DanmakuEntry>.filterVisibleModes(prefs: DanmakuPreferences): Li
 }
 
 /** 播放器一屏要读的读数:宿主机、播放器读数、页面状态、弹幕层与是否全屏 */
+@Stable
 internal class PlayerStageInputs(
     val host: HsyPlayerHost,
     val ui: PlayerUi,
@@ -167,6 +192,7 @@ internal class PlayerStageInputs(
 )
 
 /** 播放器一屏能发的动作:与屏上控制条一一对应;窗口形态的进退归 [window] */
+@Stable
 @Suppress("LongParameterList") // 与 DetailIntents 同一条口径:它是一束回调,拆开只是把同一串中转复制到每个子组件
 internal class PlayerIntents(
     val onRetry: () -> Unit,
@@ -181,6 +207,7 @@ internal class PlayerIntents(
 )
 
 /** 全屏与画中画的进退:动的是窗口形态,不是播放本身,与播放控制分开成组 */
+@Stable
 internal class WindowIntents(
     val onToggleFullscreen: () -> Unit,
     val onExitFullscreen: () -> Unit,

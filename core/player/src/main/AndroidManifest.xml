@@ -3,14 +3,12 @@
 
     <application>
         <!-- 后台播放:MediaSessionService 托管通知与媒体键。
-             exported 留给系统媒体键与蓝牙设备发现这个会话;没有自定义 Action,外部拿不到内部数据。 -->
+             不需要外部应用绑定:系统通知、锁屏与蓝牙媒体键走的是 MediaSession 框架,
+             不是直接 bind 这个 Service,所以这里不导出,也不留外部可发现的 intent-filter。
+             会话级还有一道 ControllerInfo 白名单(见 HsyPlaybackService.onConnect)。 -->
         <service
             android:name=".HsyPlaybackService"
-            android:exported="true"
-            android:foregroundServiceType="mediaPlayback">
-            <intent-filter>
-                <action android:name="androidx.media3.session.MediaSessionService" />
-            </intent-filter>
-        </service>
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
     </application>
 </manifest>

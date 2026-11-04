@@ -45,30 +45,84 @@ data class MergedDanmaku(
 object DanmakuTimeline {
 
     fun merge(shards: List<DanmakuShard>): MergedDanmaku {
-        val covered = shards.map { it.index }.distinct().sorted()
-        val sorted = shards.flatMap { it.segment.entries }
-            .sortedWith(compareBy(DanmakuEntry::timeMs, DanmakuEntry::id))
+        val merger = IncrementalMerger()
+        for (shard in shards) merger.add(shard)
+        return merger.snapshot()
+    }
 
-        val seen = mutableSetOf<Triple<Long, Long, String>>()
-        val kept = ArrayList<DanmakuEntry>(sorted.size)
-        var duplicates = 0
-        for (entry in sorted) {
-            if (seen.add(Triple(entry.id, entry.timeMs, entry.text))) {
-                kept += entry
-            } else {
-                duplicates++
-            }
+    /**
+     * 增量合并器:每来一片只把它并进已有轴,而不是把全部条目重新排序一遍。
+     *
+     * 片内先按 `(timeMs, id)` 排一次(解码器本已给升序,这里仍兜一层,代价只与片长有关),
+     * 再与已合并轴做一次线性归并 —— 已有轴的顺序保持不变,新片里同刻同 id 的条目排在后面,
+     * 与原先"整体稳定排序、按分片到达顺序"的口径一致。
+     *
+     * 线程口径:实例不是线程安全的,同一实例的 [add]/[snapshot] 必须串行;
+     * [DanmakuRepository] 把它整段放在 IO 调度器上跑,收集方拿到的 [MergedDanmaku] 是快照,
+     * 后续 [add] 只会生成新列表,不会改写已经流出的那一份。
+     */
+    class IncrementalMerger {
+
+        private val covered = sortedSetOf<Int>()
+        private val seen = mutableSetOf<Triple<Long, Long, String>>()
+        private var kept: List<DanmakuEntry> = emptyList()
+
+        private var droppedByPolicy = 0
+        private var droppedUnknownMode = 0
+        private var droppedMalformed = 0
+        private var droppedDuplicate = 0
+
+        /** 并入一片;同一分片号重复到达时,条目仍按去重规则处理,但覆盖区间只记一次 */
+        fun add(shard: DanmakuShard) {
+            covered += shard.index
+            droppedByPolicy += shard.segment.droppedByPolicy
+            droppedUnknownMode += shard.segment.droppedUnknownMode
+            droppedMalformed += shard.segment.droppedMalformed
+
+            val incoming = shard.segment.entries
+                .sortedWith(compareBy(DanmakuEntry::timeMs, DanmakuEntry::id))
+                .filter { entry ->
+                    val fresh = seen.add(Triple(entry.id, entry.timeMs, entry.text))
+                    if (!fresh) droppedDuplicate++
+                    fresh
+                }
+            if (incoming.isNotEmpty()) kept = mergeSorted(kept, incoming)
         }
 
-        return MergedDanmaku(
-            entries = kept,
-            droppedByPolicy = shards.sumOf { it.segment.droppedByPolicy },
-            droppedUnknownMode = shards.sumOf { it.segment.droppedUnknownMode },
-            droppedMalformed = shards.sumOf { it.segment.droppedMalformed },
-            droppedDuplicate = duplicates,
-            coveredShards = covered,
-            missingShards = missingOf(covered),
-        )
+        /** 当前完整轴的快照;列表在下次 [add] 时不会被就地改写 */
+        fun snapshot(): MergedDanmaku {
+            val coveredShards = covered.toList()
+            return MergedDanmaku(
+                entries = kept,
+                droppedByPolicy = droppedByPolicy,
+                droppedUnknownMode = droppedUnknownMode,
+                droppedMalformed = droppedMalformed,
+                droppedDuplicate = droppedDuplicate,
+                coveredShards = coveredShards,
+                missingShards = missingOf(coveredShards),
+            )
+        }
+
+        private fun mergeSorted(existing: List<DanmakuEntry>, incoming: List<DanmakuEntry>): List<DanmakuEntry> {
+            val merged = ArrayList<DanmakuEntry>(existing.size + incoming.size)
+            var left = 0
+            var right = 0
+            while (left < existing.size && right < incoming.size) {
+                val a = existing[left]
+                val b = incoming[right]
+                // 同刻同 id 时已有轴在前:稳定排序下先到的分片本来就该先出现
+                if (a.timeMs < b.timeMs || (a.timeMs == b.timeMs && a.id <= b.id)) {
+                    merged += a
+                    left++
+                } else {
+                    merged += b
+                    right++
+                }
+            }
+            while (left < existing.size) merged += existing[left++]
+            while (right < incoming.size) merged += incoming[right++]
+            return merged
+        }
     }
 
     private fun missingOf(coveredShards: List<Int>): List<Int> {

@@ -42,7 +42,7 @@ class FavoriteApi(
     private val resourceDealUrl: HttpUrl = RESOURCE_DEAL_URL.toHttpUrl(),
 ) {
 
-    fun fetchFolders(mid: Long): HsyResult<List<FavoriteFolder>> {
+    suspend fun fetchFolders(mid: Long): HsyResult<List<FavoriteFolder>> {
         if (mid <= 0L) return HsyResult.Failure(AppError.Server(CODE_NOT_LOGGED_IN, "账号未登录"))
         return jsonSource.getJson(foldersUrl.newBuilder().setQueryParameter("up_mid", mid.toString()).build())
             .flatMap { root ->
@@ -52,7 +52,7 @@ class FavoriteApi(
             }
     }
 
-    fun fetchPage(folderId: Long, page: Int, keyword: String = "", sort: String = ""): HsyResult<FavoritePage> {
+    suspend fun fetchPage(folderId: Long, page: Int, keyword: String = "", sort: String = ""): HsyResult<FavoritePage> {
         if (folderId <= 0L) return HsyResult.Failure(AppError.Decode("收藏夹 id 非法:$folderId"))
         if (page < FIRST_PAGE) return HsyResult.Failure(AppError.Decode("页码非法:$page"))
         val url = resourceListUrl.newBuilder()
@@ -85,7 +85,7 @@ class FavoriteApi(
         }
     }
 
-    fun createFolder(title: String, csrf: String): HsyResult<Long> = postWithCsrf(
+    suspend fun createFolder(title: String, csrf: String): HsyResult<Long> = postWithCsrf(
         folderAddUrl,
         listOf("title" to title.trim(), "privacy" to PRIVACY_PUBLIC),
         csrf,
@@ -100,20 +100,20 @@ class FavoriteApi(
         }
     }
 
-    fun renameFolder(folderId: Long, title: String, csrf: String): HsyResult<Unit> = postWithCsrf(
+    suspend fun renameFolder(folderId: Long, title: String, csrf: String): HsyResult<Unit> = postWithCsrf(
         folderEditUrl,
         listOf("media_id" to folderId.toString(), "title" to title.trim(), "privacy" to PRIVACY_PUBLIC),
         csrf,
     ).flatMap { HsyResult.Success(Unit) }
 
-    fun deleteFolder(folderId: Long, csrf: String): HsyResult<Unit> = postWithCsrf(
+    suspend fun deleteFolder(folderId: Long, csrf: String): HsyResult<Unit> = postWithCsrf(
         folderDelUrl,
         listOf("media_ids" to folderId.toString()),
         csrf,
     ).flatMap { HsyResult.Success(Unit) }
 
     /** 从某个夹里移走一条;本地那份镜像由仓库顺手清掉 */
-    fun removeItem(aid: Long, folderId: Long, csrf: String): HsyResult<Unit> = postWithCsrf(
+    suspend fun removeItem(aid: Long, folderId: Long, csrf: String): HsyResult<Unit> = postWithCsrf(
         resourceDealUrl,
         listOf(
             "rid" to aid.toString(),
@@ -125,7 +125,7 @@ class FavoriteApi(
     ).flatMap { HsyResult.Success(Unit) }
 
     /** 夹间移动:目标夹进 add_media_ids、来源夹进 del_media_ids,一次写完成 */
-    fun moveItem(aid: Long, fromFolderId: Long, toFolderId: Long, csrf: String): HsyResult<Unit> = postWithCsrf(
+    suspend fun moveItem(aid: Long, fromFolderId: Long, toFolderId: Long, csrf: String): HsyResult<Unit> = postWithCsrf(
         resourceDealUrl,
         listOf(
             "rid" to aid.toString(),
@@ -136,7 +136,11 @@ class FavoriteApi(
         csrf,
     ).flatMap { HsyResult.Success(Unit) }
 
-    private fun postWithCsrf(url: HttpUrl, fields: List<Pair<String, String>>, csrf: String): HsyResult<JsonElement> {
+    private suspend fun postWithCsrf(
+        url: HttpUrl,
+        fields: List<Pair<String, String>>,
+        csrf: String,
+    ): HsyResult<JsonElement> {
         if (csrf.isBlank()) return HsyResult.Failure(AppError.Server(CODE_NOT_LOGGED_IN, "缺少 csrf,当前登录态不可写"))
         return formSource.postForm(url, fields.toMap() + ("csrf" to csrf))
     }

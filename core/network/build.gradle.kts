@@ -18,4 +18,9 @@ dependencies {
     api(project(":core:common"))
     api(libs.okhttp)
     api(libs.kotlinx.serialization.json)
+
+    // 交换层现在是 suspend 的:取消要能真正打断 OkHttp 的 call,
+    // 退避重试要用 delay 而不是 Thread.sleep。用 implementation:
+    // 协程类型不出现在本层的公开签名上,调用方各自已依赖 coroutines。
+    implementation(libs.kotlinx.coroutines.core)
 }

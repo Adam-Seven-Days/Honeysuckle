@@ -42,7 +42,7 @@ class PlayUrlApi(
      * 失败一律是 [AppError],不抛异常:key 拉不到 ⇒ 不签名也就不发请求;
      * 风控返回 HTML / `dash.video` 空 ⇒ 归一化为 Decode,由 UI 呈现"取流失败"而不是白屏。
      */
-    fun fetch(bvid: String, cid: Long): HsyResult<Playback> {
+    suspend fun fetch(bvid: String, cid: Long): HsyResult<Playback> {
         val unsigned = try {
             urlFor(bvid, cid)
         } catch (e: IllegalArgumentException) {

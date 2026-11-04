@@ -37,7 +37,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
  */
 class DynamicApi(private val jsonSource: HsyJsonSource, private val feedUrl: HttpUrl = FEED_URL.toHttpUrl()) {
 
-    fun page(offset: String = "", pageIndex: Int = FIRST_PAGE): HsyResult<DynamicPage> {
+    suspend fun page(offset: String = "", pageIndex: Int = FIRST_PAGE): HsyResult<DynamicPage> {
         if (pageIndex < FIRST_PAGE) {
             return HsyResult.Failure(AppError.Decode("页码非法:$pageIndex,应从 $FIRST_PAGE 起算"))
         }

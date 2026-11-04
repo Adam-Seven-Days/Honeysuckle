@@ -5,6 +5,8 @@ import com.videobrowsing.honeysuckle.core.network.client.HsyJson
 import com.videobrowsing.honeysuckle.core.network.headers.HsyChannel
 import com.videobrowsing.honeysuckle.core.network.headers.HsyHeaderFactory
 import java.io.IOException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -15,9 +17,15 @@ import okhttp3.Request
  * WEB 通道的访客身份(`Cookie: buvid3=…`)。
  *
  * 返回 null 表示"这一趟不带 Cookie 头"—— 调用方(拦截器)据此决定加不加,不拿空串冒充一枚有身份的访客。
+ *
+ * [prefetch] 给启动期预热用:拦截器里那一问是同步的(OkHttp 拦截链没有协程上下文),
+ * 但应用可以在首条业务请求之前先把它换回来,让第一屏不必等在 `/finger/spi` 上。
+ * 默认空实现 —— 测试替身与"不需要身份"的实现不必关心。
  */
-fun interface HsyBuvidSource {
+interface HsyBuvidSource {
     fun buvid3(): String?
+
+    suspend fun prefetch() = Unit
 }
 
 /**
@@ -39,6 +47,17 @@ class SpiBuvid(private val client: OkHttpClient = HsyHttpFactory.buvidClient()) 
 
     override fun buvid3(): String? = cached ?: synchronized(this) {
         cached ?: fetch()?.also { cached = it }
+    }
+
+    /**
+     * 启动期预热:把换身份这一步挪到首条业务请求之前,与读盘/装配并行。
+     *
+     * 真正的 `buvid3()` 仍是同步阻塞的(拦截器只能在同步上下文里问),所以这里切到 IO:
+     * 启动路径上不占主线程,拿到之后拦截器直接读内存。
+     */
+    override suspend fun prefetch() {
+        if (cached != null) return
+        withContext(Dispatchers.IO) { buvid3() }
     }
 
     /** 拉不到就返回 null(超时、断网、信封形状变了):让真正的请求自己撞上去,由它报出 412 而不是这里编一句 */

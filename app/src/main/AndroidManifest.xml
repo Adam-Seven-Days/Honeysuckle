@@ -16,9 +16,11 @@
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Honeysuckle">
+        android:theme="@style/Theme.Honeysuckle"
+        android:usesCleartextTraffic="false">
 
         <!-- 全屏播放会锁横屏:自己接住方向与尺寸变化,不重建 Activity/Compose 树,
              否则一次横屏会把播放器与整页状态推倒重来(画面黑一帧、进度跳回起点)。
@@ -28,7 +30,8 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:exported="true"
             android:launchMode="singleTop"
-            android:supportsPictureInPicture="true">
+            android:supportsPictureInPicture="true"
+            android:theme="@style/Theme.Honeysuckle.Starting">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

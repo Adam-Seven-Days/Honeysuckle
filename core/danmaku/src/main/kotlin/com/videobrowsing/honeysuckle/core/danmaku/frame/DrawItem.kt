@@ -56,6 +56,13 @@ class DrawItem internal constructor() {
     var heightPx = 0f
         internal set
 
+    /**
+     * 字模凭据(见 [TextSize.cacheToken]):绘制侧拿它直接取回测量结果,
+     * 不再按 (文本, 字号) 重新算一次缓存键。
+     */
+    var measureToken = NO_CACHE_TOKEN
+        internal set
+
     /** 逐条透明度(0..1):自由定位的 alpha 渐变走这里,轨道弹幕恒 1(整层组透明度另算) */
     var alpha = 1f
         internal set

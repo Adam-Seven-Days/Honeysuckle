@@ -25,7 +25,7 @@ class DanmakuPostApi(
     private val rnd: () -> String = { Random.nextLong(1L, Long.MAX_VALUE).toString() },
 ) {
 
-    fun send(aid: Long, cid: Long, progressMs: Long, message: String, csrf: String): HsyResult<Unit> {
+    suspend fun send(aid: Long, cid: Long, progressMs: Long, message: String, csrf: String): HsyResult<Unit> {
         val text = message.trim()
         val rejection = when {
             aid <= 0L || cid <= 0L -> AppError.Decode("稿件 id 非法:aid=$aid cid=$cid")

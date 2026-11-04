@@ -8,15 +8,17 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 internal const val COOKIE_DEDE_USER_ID = "DedeUserID"
 
 /**
- * 登录回包里要收的 Cookie 键。`sid` 用于退出登录,`__ckMd5` 是平台校验的一环,
- * 少任何一个都可能让"登录成功"在下一个需要鉴权的接口上退回 -101。
+ * 登录回包里要收的 Cookie 键。`__ckMd5` 是平台校验的一环,少任何一个都可能让"登录成功"
+ * 在下一个需要鉴权的接口上退回 -101。
+ *
+ * `sid` 不收:它只在平台注销接口里用得到,而本应用的退出只清本地会话。
+ * 收进来却不用,只会让盘上多一份用不到的凭证。
  */
 private val LOGIN_COOKIE_KEYS = listOf(
     "SESSDATA",
     "bili_jct",
     COOKIE_DEDE_USER_ID,
     "DedeUserID__ckMd5",
-    "sid",
 )
 
 /** `Set-Cookie` 头里那几项;`deleted` 表示平台正在清键,不能当成可用凭证 */

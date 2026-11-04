@@ -116,8 +116,12 @@ class DanmakuRenderer(private val measurer: DanmakuTextMeasurer) {
      * 换上新的全局时间轴([merge/DanmakuTimeline] 的产出),续喂点按"已经交到哪儿"重算。
      *
      * 已在飞的条目不受影响:它们的坐标由 `enterMs` 推出,与新轴无关。
-     * 排序是防御性的 —— 契约上 merge 已给升序(`sortedBy` 稳定,对有序输入是 O(n)),
-     * 但调用方若是直接把分片首尾相接,那就不该等到绘制阶段才炸出逆序异常。
+     *
+     * **输入契约:按 `(timeMs, id)` 升序**。[DanmakuTimeline] 的合并器是这条契约的唯一出口,
+     * 它每片归并一次就产出一条有序轴。这里不再二次排序 —— 每来一片就把整条轴重排一遍,
+     * 在万条弹幕、十片陆续到达时是一笔纯属重复的主线程开销(旧实现的 `sortedBy` 虽对有序输入
+     * 是 O(n),但每片都要扫全量,而且调用点就在组合/主线程上)。逆序输入是上游的 bug,
+     * 应在合并层被测试钉住,而不是在绘制阶段兜底。
      *
      * 用时间水位([lastFedTimeMs])而不是播放头或下标来定位续喂点,是因为这两者都会漂:
      * 新片里的更早条目会把下标整体后移,而播放头在 seek 后可能已经退到已投区之间。
@@ -125,10 +129,9 @@ class DanmakuRenderer(private val measurer: DanmakuTextMeasurer) {
      * 在一帧内一起投完,所以这只发生在"分片恰好在播放头那一毫秒补到"的边界上。
      */
     fun setTimeline(entries: List<DanmakuEntry>) {
-        val sorted = entries.sortedBy { it.timeMs }
-        this.entries = sorted
-        maxFreeLocateLifeMs = sorted.maxOfOrNull { it.freeLocate?.lifeMs ?: 0L } ?: 0L
-        cursor = sorted.firstIndexAfter(lastFedTimeMs)
+        this.entries = entries
+        maxFreeLocateLifeMs = entries.maxOfOrNull { it.freeLocate?.lifeMs ?: 0L } ?: 0L
+        cursor = entries.firstIndexAfter(lastFedTimeMs)
         maxFedIndex = cursor
     }
 

@@ -31,7 +31,7 @@ class DanmakuSegApi(private val bytesSource: HsyBytesSource, private val segUrl:
         .addQueryParameter("segment_index", requireSegmentIndex(segmentIndex))
         .build()
 
-    fun fetch(oid: Long, segmentIndex: Int): HsyResult<DanmakuSegment> {
+    suspend fun fetch(oid: Long, segmentIndex: Int): HsyResult<DanmakuSegment> {
         val url = try {
             urlFor(oid, segmentIndex)
         } catch (e: IllegalArgumentException) {
@@ -61,7 +61,7 @@ class DanmakuSegApi(private val bytesSource: HsyBytesSource, private val segUrl:
      *  - 风控/鉴权类失败立即中止:继续加码只会延长封禁,错误原样上抛;
      *  - 整段一片都没成功 → 透传第一个错误,不用"空白时间轴"冒充成功。
      */
-    fun fetchRange(oid: Long, fromIndex: Int, toIndex: Int): HsyResult<MergedDanmaku> {
+    suspend fun fetchRange(oid: Long, fromIndex: Int, toIndex: Int): HsyResult<MergedDanmaku> {
         val indices = try {
             requireRange(oid, fromIndex, toIndex)
         } catch (e: IllegalArgumentException) {
@@ -77,7 +77,7 @@ class DanmakuSegApi(private val bytesSource: HsyBytesSource, private val segUrl:
      *  - 其他失败 ⇒ 记为缺片接着拉,只有"无一成功"才让原因生效 ——
      *    用空白时间轴冒充成功,等于把接口故障演成"这段视频没弹幕"。
      */
-    private fun pullRange(oid: Long, indices: List<Int>): ShardPull {
+    private suspend fun pullRange(oid: Long, indices: List<Int>): ShardPull {
         val shards = mutableListOf<DanmakuShard>()
         var failure: AppError? = null
         for (index in indices) {

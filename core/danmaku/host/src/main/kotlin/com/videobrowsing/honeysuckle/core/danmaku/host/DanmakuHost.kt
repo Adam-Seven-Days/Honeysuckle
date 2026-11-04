@@ -112,11 +112,15 @@ fun DanmakuHost(
                 lastPaintAtMs = nowMs
                 frameSignal.value = frameSignal.value.copy(positionMs = positionMs)
             }
-            val stats = renderer.stats()
-            if (stats != lastStats && nowMs - lastReportAtMs >= STATS_THROTTLE_MS) {
-                lastStats = stats
+            // 账面只在节流窗口内取一次:stats() 要读渲染器的一批计数器,
+            // 每帧都取等于把"省下来的绘制"又花回去。
+            if (nowMs - lastReportAtMs >= STATS_THROTTLE_MS) {
                 lastReportAtMs = nowMs
-                currentOnStats(stats)
+                val stats = renderer.stats()
+                if (stats != lastStats) {
+                    lastStats = stats
+                    currentOnStats(stats)
+                }
             }
             // 播放中贴着 vsync 走;停播后只留一次慢轮询,等 seek 或换轴把它叫醒
             if (clock.isPlaying) withFrameNanos { } else delay(PAUSED_POLL_MS)
@@ -166,7 +170,7 @@ private fun DrawScope.drawDanmaku(
 private fun DrawScope.paint(item: DrawItem, measurer: AndroidTextMeasurer) {
     // 透明度渐变到全透的条目直接跳过,连字模都不用取
     if (item.alpha <= TRANSPARENT) return
-    val layout = measurer.layoutOf(item.text, item.fontSizePx)
+    val layout = measurer.layoutOf(item.text, item.fontSizePx, item.measureToken)
     val thickness = item.fontSizePx * OUTLINE_RATIO
     val needsTransform = item.rotationZDeg != 0f || item.scale != 1f
     if (needsTransform) {

@@ -25,7 +25,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
  */
 class ArticleApi(private val jsonSource: HsyJsonSource, private val viewUrl: HttpUrl = VIEW_URL.toHttpUrl()) {
 
-    fun fetch(articleId: Long): HsyResult<Article> {
+    suspend fun fetch(articleId: Long): HsyResult<Article> {
         if (articleId <= 0L) return HsyResult.Failure(AppError.Decode("专栏编号非法:$articleId"))
         val url = viewUrl.newBuilder().addQueryParameter("id", articleId.toString()).build()
         return jsonSource.getJson(url)

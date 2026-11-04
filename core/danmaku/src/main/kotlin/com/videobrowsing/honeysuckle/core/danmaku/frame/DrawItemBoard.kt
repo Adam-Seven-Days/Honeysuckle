@@ -47,6 +47,7 @@ internal class DrawItemBoard {
         }
         item.widthPx = size.widthPx
         item.heightPx = size.heightPx
+        item.measureToken = size.cacheToken
         item.free = null
         item.alpha = 1f
         item.rotationZDeg = 0f
@@ -72,6 +73,7 @@ internal class DrawItemBoard {
         item.exitMs = entry.timeMs + free.lifeMs
         item.widthPx = size.widthPx
         item.heightPx = size.heightPx
+        item.measureToken = size.cacheToken
         item.free = free
         layout.placeAt(item, positionMs)
         active += item

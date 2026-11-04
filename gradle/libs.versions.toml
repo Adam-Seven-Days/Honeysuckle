@@ -6,6 +6,8 @@ gradleWrapper = "9.8.2"
 
 composeBom = "2026.08.00"
 activityCompose = "1.13.0"
+# 系统冷启动窗口:1.2.0 为 Google Maven 当前稳定线(2026-11-04 实查 maven-metadata.xml)
+coreSplashscreen = "1.2.0"
 
 # 网络基础块(2026-10-30 核实):OkHttp 5.5.1 稳定(2026-10-22,含证书安全修复);serialization-json 1.12.0(2026-10-19)
 okhttp = "5.5.1"
@@ -49,6 +51,7 @@ compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = 
 compose-ui = { group = "androidx.compose.ui", name = "ui" }
 compose-foundation = { group = "androidx.compose.foundation", name = "foundation" }
 activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
+core-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "coreSplashscreen" }
 
 # 网络基础块:core:network 骨架
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }

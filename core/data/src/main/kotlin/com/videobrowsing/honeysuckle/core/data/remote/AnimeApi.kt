@@ -43,7 +43,7 @@ class AnimeApi(
     private val followDelUrl: HttpUrl = FOLLOW_DEL_URL.toHttpUrl(),
 ) {
 
-    fun ranking(pageIndex: Int = FIRST_PAGE): HsyResult<AnimePage> {
+    suspend fun ranking(pageIndex: Int = FIRST_PAGE): HsyResult<AnimePage> {
         if (pageIndex < FIRST_PAGE) {
             return HsyResult.Failure(AppError.Decode("页码非法:$pageIndex,应从 $FIRST_PAGE 起算"))
         }
@@ -66,13 +66,13 @@ class AnimeApi(
             }
     }
 
-    fun timeline(): HsyResult<List<AnimeTimelineDay>> = jsonSource.getJson(timelineUrl)
+    suspend fun timeline(): HsyResult<List<AnimeTimelineDay>> = jsonSource.getJson(timelineUrl)
         .flatMap { HsyEnvelope.resultArrayOf(it) }
         .flatMap { days ->
             HsyResult.Success(days.mapNotNull { element -> (element as? JsonObject)?.let(::timelineDayOf) })
         }
 
-    fun season(seasonId: Long): HsyResult<AnimeSeason> {
+    suspend fun season(seasonId: Long): HsyResult<AnimeSeason> {
         if (seasonId <= 0L) return HsyResult.Failure(AppError.Decode("seasonId 非法:$seasonId"))
         val url = seasonUrl.newBuilder().addQueryParameter("season_id", seasonId.toString()).build()
         return jsonSource.getJson(url)
@@ -112,7 +112,7 @@ class AnimeApi(
      * 追番开关。走 `x/space/bangumi/follow` 这组老端点:它只要 season_id + csrf,
      * 不像新版 pgc 接口那样要求额外的一次确认令牌。`follow = false` 即取消追番。
      */
-    fun setFollow(seasonId: Long, follow: Boolean, csrf: String): HsyResult<Unit> {
+    suspend fun setFollow(seasonId: Long, follow: Boolean, csrf: String): HsyResult<Unit> {
         if (seasonId <= 0L) return HsyResult.Failure(AppError.Decode("seasonId 非法:$seasonId"))
         if (csrf.isBlank()) return HsyResult.Failure(AppError.Server(CODE_NOT_LOGGED_IN, "缺少 csrf,当前登录态不可写"))
         return formSource.postForm(

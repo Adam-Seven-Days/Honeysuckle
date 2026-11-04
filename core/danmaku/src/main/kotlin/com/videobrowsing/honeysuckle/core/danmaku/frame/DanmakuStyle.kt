@@ -5,8 +5,15 @@ import com.videobrowsing.honeysuckle.core.danmaku.model.DanmakuEntry
 /**
  * 字模测量结果:内核只需要宽和高两个数,所以不把 Android 的 TextLayoutResult 透进来
  * (规则留在内核,只有"量宽度、画像素"属渲染侧)。
+ *
+ * [cacheToken] 是不透明凭据:渲染侧据此取回同一次测量结果,绘制时不必再按文本重新查缓存。
+ * 内核不解释它,只经 [DrawItem] 原样搬运;[NO_CACHE_TOKEN] 表示实现没有提供凭据
+ * (纯 Kotlin 测试替身即如此),渲染侧退回按文本测量。
  */
-data class TextSize(val widthPx: Float, val heightPx: Float)
+data class TextSize(val widthPx: Float, val heightPx: Float, val cacheToken: Long = NO_CACHE_TOKEN)
+
+/** 字模凭据缺省值:内核不依赖它,只有 Android 测量实现会给出真实值 */
+const val NO_CACHE_TOKEN = 0L
 
 /**
  * 测量缝:轨道碰撞判定要文本宽度([schedule/DanmakuScheduler.place]),而宽度只有 Android

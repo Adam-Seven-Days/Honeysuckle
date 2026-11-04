@@ -12,6 +12,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MergingMediaSource
@@ -64,7 +65,11 @@ class HsyPlayerHost(context: Context, referer: String = HsyChannel.WEB.refererBa
     PlayerHost,
     DanmakuClock {
 
-    private val dataSourceFactory: DataSource.Factory = playbackDataSource(context.applicationContext, referer)
+    /** 签名 URL 的占位表:`MediaItem` 只拿占位 URI,真实地址在打开 DataSource 前才还原 */
+    private val urlRegistry = MediaUrlRegistry()
+
+    private val dataSourceFactory: DataSource.Factory =
+        playbackDataSource(context.applicationContext, referer, urlRegistry)
 
     /** 交给 `PlayerView` 挂渲染面;类本身不做 UI,也不做常驻 */
     val player: ExoPlayer = ExoPlayer.Builder(context.applicationContext).build().apply {
@@ -135,6 +140,8 @@ class HsyPlayerHost(context: Context, referer: String = HsyChannel.WEB.refererBa
         autoStart: Boolean = true,
     ): MediaTrackSelection? {
         if (selection == null) return null
+        // 表只服务当前这一条媒体:换源前清掉上一次的占位名
+        urlRegistry.clear()
         player.setMediaSource(
             MergingMediaSource(
                 progressiveSource(selection.video, metadata),
@@ -160,6 +167,7 @@ class HsyPlayerHost(context: Context, referer: String = HsyChannel.WEB.refererBa
      * 这里把 [selection] 清空 —— 上一次点播的"正在播哪一对轨"不该留在屏上冒充直播的读数。
      */
     fun playLive(url: String, kind: LiveStreamKind, metadata: PlaybackMetadata? = null) {
+        urlRegistry.clear()
         val item = mediaItemOfUrl(url, metadata)
         val source = when (kind) {
             LiveStreamKind.HLS -> HlsMediaSource.Factory(dataSourceFactory).createMediaSource(item)
@@ -188,6 +196,7 @@ class HsyPlayerHost(context: Context, referer: String = HsyChannel.WEB.refererBa
 
     /** 离开页面必须释放:ExoPlayer 不 release 就占着解码器与网络线程(常驻化后归 Service 管) */
     fun release() {
+        urlRegistry.clear()
         player.release()
     }
 
@@ -196,7 +205,10 @@ class HsyPlayerHost(context: Context, referer: String = HsyChannel.WEB.refererBa
             .createMediaSource(mediaItemOf(track, metadata))
 
     /**
-     * 媒体项只承载"这条轨是哪个 URL + 通知里该念什么"。
+     * 媒体项只承载"这条轨的占位名 + 通知里该念什么"。
+     *
+     * 真实 URL 不进 `MediaItem`:MediaSession 会把当前媒体项交给控制器,
+     * 而这条 URL 带签名与有效期。占位名由 [urlRegistry] 在 DataSource 打开前还原。
      *
      * 注意它同时喂给了音视频两路:合并源的时间线窗口取首路(视频)的媒体项,
      * 所以通知里的标题只可能来自这一份,不会因为两路都带而同屏出现两个标题。
@@ -205,7 +217,7 @@ class HsyPlayerHost(context: Context, referer: String = HsyChannel.WEB.refererBa
         mediaItemOfUrl(track.url, metadata)
 
     private fun mediaItemOfUrl(url: String, metadata: PlaybackMetadata?): MediaItem {
-        val builder = MediaItem.Builder().setUri(url)
+        val builder = MediaItem.Builder().setUri(urlRegistry.syntheticUri(url))
         if (metadata != null) {
             builder.setMediaMetadata(
                 MediaMetadata.Builder()
@@ -225,18 +237,24 @@ class HsyPlayerHost(context: Context, referer: String = HsyChannel.WEB.refererBa
  * Media3 走自己的 `HttpURLConnection` 栈,不经过 `:core:network` 的 OkHttp 拦截器,
  * 所以指纹头必须在这一处手动带上 —— 但字面量仍然只在 [HsyHeaderFactory] 定义一份,
  * 这里只负责"把它们交出去"。UA 既进 map 也单喂一次 —— 它是 Media3 的一等字段,
- * 建连与日志路径直接读它,不该留空。重定向跨协议同样要放开:CDN 的有效期与限速按"一次会话"计。
+ * 建连与日志路径直接读它,不该留空。
+ *
+ * **重定向不再跨协议放开**:`DefaultHttpDataSource` 默认只跟随同协议重定向,
+ * 放开 http↔https 等于给一条降级通道;明文流量在 Manifest 与 networkSecurityConfig 里都已关闭。
+ *
+ * 最外层的 [ResolvingDataSource] 负责把 `hsy-media://` 占位 URI 还原成真实地址 ——
+ * 还原发生在 `open` 之前,`MediaItem` 与 MediaSession 看到的始终是占位名。
  *
  * 类上的 [OptIn] 管不到文件级声明,所以这一处单独挂 —— lint 的 `UnsafeOptInUsageError` 抓的就是这种漏。
  */
 @OptIn(UnstableApi::class)
-private fun playbackDataSource(context: Context, referer: String): DataSource.Factory {
+private fun playbackDataSource(context: Context, referer: String, registry: MediaUrlRegistry): DataSource.Factory {
     val headers = HsyHeaderFactory.webHeaders(HsyChannel.WEB, referer = referer)
     val http = DefaultHttpDataSource.Factory()
         .setUserAgent(headers.getValue(HEADER_USER_AGENT))
         .setDefaultRequestProperties(headers)
         .setConnectTimeoutMs(CONNECT_TIMEOUT_MS)
         .setReadTimeoutMs(READ_TIMEOUT_MS)
-        .setAllowCrossProtocolRedirects(true)
-    return DefaultDataSource.Factory(context, http)
+    val base = DefaultDataSource.Factory(context, http)
+    return ResolvingDataSource.Factory(base) { dataSpec -> registry.resolve(dataSpec) }
 }

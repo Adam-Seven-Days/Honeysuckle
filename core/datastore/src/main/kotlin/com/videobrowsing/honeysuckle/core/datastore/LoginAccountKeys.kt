@@ -9,6 +9,9 @@ package com.videobrowsing.honeysuckle.core.datastore
  *
  * 旧的平铺键(`account.mid` / `cookie` / `refresh_token`)保留为**只读回退**:
  * 已在设备上登录过的用户升级后仍读得回来,signIn 之后才改写成桶内键。
+ *
+ * `refresh_token` 与 `sid` 当前链路都不使用:新写入一律不落,旧的留在盘上的那份
+ * 由 `AccountPreferenceRepository.migrateCredentials` 在冷启动时清掉。
  */
 object LoginAccountKeys {
     const val GUEST_BUCKET = "guest"
@@ -19,6 +22,8 @@ object LoginAccountKeys {
 
     /** 旧平铺键(只读回退;新写入一律进桶) */
     const val COOKIE = "cookie"
+
+    /** 仅用于清理旧版本落盘的刷新令牌,不再读写它 */
     const val REFRESH_TOKEN = "refresh_token"
     const val LEGACY_MID = "account.mid"
     const val LEGACY_NAME = "account.name"
@@ -31,6 +36,8 @@ object LoginAccountKeys {
     const val FIELD_LEVEL = "level"
     const val FIELD_COINS = "coins"
     const val FIELD_COOKIE = "cookie"
+
+    /** 仅用于清理旧版本落盘的刷新令牌,不再读写它 */
     const val FIELD_REFRESH_TOKEN = "refresh_token"
 
     fun accountBucket(aid: Long, slot: Int): String = "$ACCOUNT_PREFIX$aid-$slot"

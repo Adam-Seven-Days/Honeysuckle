@@ -20,7 +20,7 @@ class WbiUrlSigner(
 ) {
 
     /** 待签 URL 若已带 `wts`/`w_rid`(例如重试同一个 URL),先剔除再签,避免自签自的死循环 */
-    fun sign(url: HttpUrl): HsyResult<HttpUrl> = keyProvider.current().flatMap { keys ->
+    suspend fun sign(url: HttpUrl): HsyResult<HttpUrl> = keyProvider.current().flatMap { keys ->
         val params = url.queryParameterNames.asSequence()
             .filter { it !in SIGNED_KEYS }
             .associateWith { name -> url.queryParameter(name) ?: "" }

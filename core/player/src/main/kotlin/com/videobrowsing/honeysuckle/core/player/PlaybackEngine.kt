@@ -11,7 +11,6 @@ import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -117,6 +116,20 @@ class PlaybackEngine @Inject constructor(
 
     private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
+    /**
+     * 心跳与播放器监听。
+     *
+     * 只在有会话时跑;暂停后不再按 200ms 空转,而是挂起等播放器事件或定时关闭的截止点。
+     * 起停细节见 [PlaybackTicker]。
+     */
+    private val ticker = PlaybackTicker(
+        scope = engineScope,
+        playerProvider = { hostOrNull?.player },
+        sleepRemainingMs = { mutableExtras.value.sleepRemainingMs },
+        onTick = ::tick,
+        onPlayerEvent = ::publishProgress,
+    )
+
     init {
         // AB 是设置里的总开关:跟随盘上的值,页面退到后台也照这个口径执行
         engineScope.launch {
@@ -127,12 +140,6 @@ class PlaybackEngine @Inject constructor(
                     playbackExtras.setAbLoopEnabled(enabled)
                     mutableExtras.value = playbackExtras.state
                 }
-        }
-        engineScope.launch {
-            while (true) {
-                delay(ENGINE_TICK_MS)
-                tick()
-            }
         }
     }
 
@@ -167,6 +174,7 @@ class PlaybackEngine @Inject constructor(
             playbackExtras.clearAbPoints()
         }
         mutableSession.value = session
+        ticker.start()
         publishProgress()
         ensureServiceRunning()
         return seated
@@ -181,6 +189,7 @@ class PlaybackEngine @Inject constructor(
     fun togglePlayPause() {
         val host = hostOrNull ?: return
         if (host.isPlaying) host.pause() else host.resume()
+        ticker.wakeUp()
     }
 
     /** AB 循环:第一次标 A、第二次标 B、第三次清空(三态与"不足间距当成撤回"的口径见 [PlaybackExtrasRunner]) */
@@ -189,16 +198,20 @@ class PlaybackEngine @Inject constructor(
         val host = activeHost ?: return
         playbackExtras.markAbPoint(host.positionMs.coerceAtLeast(0L))
         mutableExtras.value = playbackExtras.state
+        ticker.wakeUp()
     }
 
     /** 定时关闭:分钟数;null 或非正数表示取消 */
     fun setSleepTimer(minutes: Int?) {
         playbackExtras.setSleepTimer(minutes, SystemClock.elapsedRealtime())
         mutableExtras.value = playbackExtras.state
+        // 暂停时心跳正挂在信号上:新的截止点要把它叫醒一次,否则剩余时间读数不会动
+        ticker.wakeUp()
     }
 
     /** 用户明确关掉播放(小窗的叉、通知栏划走):停媒体、清通知,但不释放实例 */
     fun stop() {
+        ticker.stop()
         hostOrNull?.let {
             it.player.stop()
             it.player.clearMediaItems()
@@ -211,6 +224,7 @@ class PlaybackEngine @Inject constructor(
     }
 
     fun release() {
+        ticker.stop()
         hostOrNull?.release()
         hostOrNull = null
         mutableSession.value = null

@@ -22,7 +22,7 @@ class VideoViewApi(private val jsonSource: HsyJsonSource, private val viewUrl: H
     /** 纯 URL 装配:产品请求与人工核对裸接口都走这里 */
     fun urlFor(bvid: String): HttpUrl = viewUrl.newBuilder().addQueryParameter("bvid", normalizeBvid(bvid)).build()
 
-    fun fetch(bvid: String): HsyResult<VideoDetail> {
+    suspend fun fetch(bvid: String): HsyResult<VideoDetail> {
         val url = try {
             urlFor(bvid)
         } catch (e: IllegalArgumentException) {

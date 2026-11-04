@@ -15,12 +15,15 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -78,33 +81,37 @@ class MainActivity : ComponentActivity() {
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* 拒绝也只是不展示通知 */ }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // 系统启动窗口要赶在 super.onCreate 之前装上,否则主题已经切成 postSplashScreenTheme
+        installSplashScreen()
         super.onCreate(savedInstanceState)
-        requestNotificationPermissionIfNeeded()
 
         setContent {
             val appViewModel: HsyAppViewModel = viewModel()
-            val themeMode by appViewModel.themeMode.collectAsStateWithLifecycle()
-            val themeAccent by appViewModel.themeAccent.collectAsStateWithLifecycle()
-            val tabVisibility by appViewModel.tabVisibility.collectAsStateWithLifecycle()
-            val autoPip by appViewModel.autoPipEnabled.collectAsStateWithLifecycle()
-            val pipOnlyPlaying by appViewModel.pipOnlyWhilePlaying.collectAsStateWithLifecycle()
-            val aspect by appViewModel.pipAspect.collectAsStateWithLifecycle()
-            val background by appViewModel.backgroundPlayEnabled.collectAsStateWithLifecycle()
+            // 壳层只订阅一份快照:主题、底栏显隐、画中画与后台播放来自同一次读盘
+            val ui by appViewModel.uiState.collectAsStateWithLifecycle()
             SideEffect {
-                autoPipEnabled = autoPip
-                pipOnlyWhilePlaying = pipOnlyPlaying
-                pipAspect = aspect
-                backgroundPlayEnabled = background
+                autoPipEnabled = ui.autoPipEnabled
+                pipOnlyWhilePlaying = ui.pipOnlyWhilePlaying
+                pipAspect = ui.pipAspect
+                backgroundPlayEnabled = ui.backgroundPlayEnabled
             }
 
-            val dark = themeMode.resolveDark(systemDark = isSystemInDarkTheme())
+            // 通知权限等首帧画完再问:权限弹窗会打断启动窗口与首屏装配,
+            // 而它本身不产出任何用户可见内容,没有任何理由抢在画面前面
+            LaunchedEffect(Unit) {
+                withFrameNanos { }
+                requestNotificationPermissionIfNeeded()
+            }
+
+            val dark = ui.themeMode.resolveDark(systemDark = isSystemInDarkTheme())
             // 边到边之后状态栏图标由系统按"系统亮暗"刷色,应用档位与系统不一致时会把白图标压在浅底上,
             // 所以两栏图标的亮暗跟的是应用主题,不是系统主题
             SideEffect { syncSystemBars(dark) }
 
-            HsyTheme(darkTheme = dark, accent = themeAccent) {
-                // 闪屏只盖第一帧:导航图在下面照常装配,700ms 后揭开时首页已经在取数
-                var showSplash by rememberSaveable { mutableStateOf(true) }
+            HsyTheme(darkTheme = dark, accent = ui.themeAccent) {
+                // 闪屏只在冷启动出现一次:旋转、深色切换、从后台回来都不该再放一遍。
+                // 导航图在下面照常装配,揭开时首页已经在取数。
+                var showSplash by remember { mutableStateOf(savedInstanceState == null) }
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -114,8 +121,8 @@ class MainActivity : ComponentActivity() {
                         HsyNavHost(
                             engine = engine,
                             inPip = pipMode,
-                            tabVisibility = tabVisibility,
-                            pipEnabled = autoPip,
+                            tabVisibility = ui.tabVisibility,
+                            pipEnabled = ui.autoPipEnabled,
                             onVideoRouteChanged = { videoRouteActive = it },
                             onEnterPip = ::enterPipIfPossible,
                         )

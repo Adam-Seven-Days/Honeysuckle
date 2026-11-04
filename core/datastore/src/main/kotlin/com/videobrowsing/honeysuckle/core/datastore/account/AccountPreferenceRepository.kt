@@ -32,6 +32,17 @@ private val LEGACY_AVATAR = stringPreferencesKey(LoginAccountKeys.LEGACY_AVATAR)
 private val LEGACY_COOKIE = stringPreferencesKey(LoginAccountKeys.COOKIE)
 private val LEGACY_REFRESH = stringPreferencesKey(LoginAccountKeys.REFRESH_TOKEN)
 
+/** 迁移时按"键名结尾"识别桶内的 cookie / refresh_token,不必先枚举桶 */
+private const val COOKIE_SUFFIX = ":${LoginAccountKeys.FIELD_COOKIE}"
+private const val REFRESH_SUFFIX = ":${LoginAccountKeys.FIELD_REFRESH_TOKEN}"
+private const val SID_COOKIE_PREFIX = "sid="
+
+/** `sid` 只在平台注销接口里用得到,而本应用退出只清本地:落盘前统一剥掉 */
+private fun String.withoutSidCookie(): String = split(';')
+    .map { it.trim() }
+    .filter { it.isNotEmpty() && !it.startsWith(SID_COOKIE_PREFIX, ignoreCase = true) }
+    .joinToString("; ")
+
 /**
  * 登录态的读写口(第三块盘,多账号分桶版)。
  *
@@ -47,13 +58,16 @@ private val LEGACY_REFRESH = stringPreferencesKey(LoginAccountKeys.REFRESH_TOKEN
  *    而 `:app` 会拿它去同步 `HsySession`。
  */
 @Singleton
-class AccountPreferenceRepository @Inject constructor(@AccountStore private val dataStore: DataStore<Preferences>) {
+class AccountPreferenceRepository @Inject constructor(
+    @AccountStore private val dataStore: DataStore<Preferences>,
+    private val cipher: CredentialCipher,
+) {
 
     val preferences: Flow<AccountPreferences> = dataStore.data
         .catch { cause ->
             if (cause is IOException) emit(emptyPreferences()) else throw cause
         }
-        .map { it.currentAccount() }
+        .map { it.currentAccount(cipher) }
         .distinctUntilChanged()
 
     /** 盘上所有账号桶;游客态为空列表。账号切换 UI 读它 */
@@ -61,7 +75,7 @@ class AccountPreferenceRepository @Inject constructor(@AccountStore private val 
         .catch { cause ->
             if (cause is IOException) emit(emptyPreferences()) else throw cause
         }
-        .map { it.allAccounts() }
+        .map { it.allAccounts(cipher) }
         .distinctUntilChanged()
 
     /** 扫码成功后一次落全:身份三件 + 凭证;顺带把旧平铺键清掉 */
@@ -70,22 +84,54 @@ class AccountPreferenceRepository @Inject constructor(@AccountStore private val 
         name: String,
         avatarUrl: String,
         cookie: String,
-        refreshToken: String,
         level: Int? = null,
         coins: Int? = null,
     ) {
         val bucket = LoginAccountKeys.bucketOf(mid)
+        // `sid` 只在平台注销接口里用得到,而本应用退出只清本地,所以不把它带进盘上;
+        // Cookie 本体先剥掉 sid 再加密,密文里不会残留任何未使用的凭证。
+        val protectedCookie = cipher.encrypt(cookie.withoutSidCookie())
         dataStore.edit { prefs ->
             prefs[longPreferencesKey(LoginAccountKeys.bucketKey(bucket, LoginAccountKeys.FIELD_MID))] = mid
             prefs[stringPreferencesKey(LoginAccountKeys.bucketKey(bucket, LoginAccountKeys.FIELD_NAME))] = name
             prefs[stringPreferencesKey(LoginAccountKeys.bucketKey(bucket, LoginAccountKeys.FIELD_AVATAR))] = avatarUrl
             if (level != null) prefs[levelKey(bucket)] = level else prefs.remove(levelKey(bucket))
             if (coins != null) prefs[coinsKey(bucket)] = coins else prefs.remove(coinsKey(bucket))
-            prefs[stringPreferencesKey(LoginAccountKeys.bucketKey(bucket, LoginAccountKeys.FIELD_COOKIE))] = cookie
-            prefs[stringPreferencesKey(LoginAccountKeys.bucketKey(bucket, LoginAccountKeys.FIELD_REFRESH_TOKEN))] =
-                refreshToken
+            prefs[stringPreferencesKey(LoginAccountKeys.bucketKey(bucket, LoginAccountKeys.FIELD_COOKIE))] =
+                protectedCookie
+            // refresh_token 当前链路不使用:不写,顺手清掉旧版本留下的那一条
+            prefs.remove(stringPreferencesKey(LoginAccountKeys.bucketKey(bucket, LoginAccountKeys.FIELD_REFRESH_TOKEN)))
             prefs[KEY_CURRENT] = bucket
             prefs.removeLegacy()
+        }
+    }
+
+    /**
+     * 把盘上已有的明文凭证改写成密文,并清掉 `refresh_token` 遗留。
+     *
+     * 冷启动时跑一次即可:旧版本写下的 `cookie` 是明文,[CredentialCipher.decrypt] 虽然能透明读回,
+     * 但"能读"不等于"已加密"—— 不主动改写,明文会一直躺在盘上。
+     * 已经是 `v1:` 的值原样跳过,重复调用没有副作用。
+     */
+    suspend fun migrateCredentials() {
+        dataStore.edit { prefs ->
+            // asMap() 是活视图:先拍快照,避免边遍历边改同一个 Preferences
+            val snapshot = prefs.asMap().entries.map { it.key.name to it.value }
+            snapshot.forEach { (name, value) ->
+                when {
+                    name == LoginAccountKeys.COOKIE || name.endsWith(COOKIE_SUFFIX) -> {
+                        val stored = value as? String ?: return@forEach
+                        if (stored.isBlank()) return@forEach
+                        val stripped = stored.withoutSidCookie()
+                        if (!cipher.isEncrypted(stripped)) {
+                            prefs[stringPreferencesKey(name)] = cipher.encrypt(stripped)
+                        }
+                    }
+
+                    name == LoginAccountKeys.REFRESH_TOKEN || name.endsWith(REFRESH_SUFFIX) ->
+                        prefs.remove(stringPreferencesKey(name))
+                }
+            }
         }
     }
 
@@ -145,46 +191,45 @@ class AccountPreferenceRepository @Inject constructor(@AccountStore private val 
 /**
  * 当前桶 → 领域快照;当前指针缺失时回退到旧平铺键(升级用户),两者都没有就是游客。
  */
-internal fun Preferences.currentAccount(): AccountPreferences {
+internal fun Preferences.currentAccount(cipher: CredentialCipher): AccountPreferences {
     val bucket = this[KEY_CURRENT]
     if (bucket != null) {
-        val account = accountOf(bucket)
+        val account = accountOf(bucket, cipher)
         if (account.mid != AccountPreferences.NO_ACCOUNT) return account
     }
-    return legacyAccount()
+    return legacyAccount(cipher)
 }
 
-private fun Preferences.accountOf(bucket: String): AccountPreferences = AccountPreferences(
+private fun Preferences.accountOf(bucket: String, cipher: CredentialCipher): AccountPreferences = AccountPreferences(
     mid = this[longPreferencesKey(LoginAccountKeys.bucketKey(bucket, LoginAccountKeys.FIELD_MID))]
         ?: AccountPreferences.NO_ACCOUNT,
     name = this[stringPreferencesKey(LoginAccountKeys.bucketKey(bucket, LoginAccountKeys.FIELD_NAME))].orEmpty(),
     avatarUrl = this[stringPreferencesKey(LoginAccountKeys.bucketKey(bucket, LoginAccountKeys.FIELD_AVATAR))].orEmpty(),
     level = this[levelKey(bucket)],
     coins = this[coinsKey(bucket)],
-    cookie = this[stringPreferencesKey(LoginAccountKeys.bucketKey(bucket, LoginAccountKeys.FIELD_COOKIE))].orEmpty(),
-    refreshToken = this[stringPreferencesKey(LoginAccountKeys.bucketKey(bucket, LoginAccountKeys.FIELD_REFRESH_TOKEN))]
-        .orEmpty(),
+    cookie = cipher.decrypt(
+        this[stringPreferencesKey(LoginAccountKeys.bucketKey(bucket, LoginAccountKeys.FIELD_COOKIE))].orEmpty(),
+    ),
 )
 
-private fun Preferences.legacyAccount(): AccountPreferences = AccountPreferences(
+private fun Preferences.legacyAccount(cipher: CredentialCipher): AccountPreferences = AccountPreferences(
     mid = this[LEGACY_MID] ?: AccountPreferences.NO_ACCOUNT,
     name = this[LEGACY_NAME].orEmpty(),
     avatarUrl = this[LEGACY_AVATAR].orEmpty(),
-    cookie = this[LEGACY_COOKIE].orEmpty(),
-    refreshToken = this[LEGACY_REFRESH].orEmpty(),
+    cookie = cipher.decrypt(this[LEGACY_COOKIE].orEmpty()),
 )
 
 /** 盘上所有桶;按 mid 升序,便于将来做稳定排序的账号列表 */
-internal fun Preferences.allAccounts(): List<AccountPreferences> {
+internal fun Preferences.allAccounts(cipher: CredentialCipher): List<AccountPreferences> {
     val buckets = asMap().keys
         .map { it.name }
         .filter { it.startsWith(LoginAccountKeys.ACCOUNT_PREFIX) && it.endsWith(":${LoginAccountKeys.FIELD_MID}") }
         .map { it.removeSuffix(":${LoginAccountKeys.FIELD_MID}") }
         .distinct()
     val fromBuckets = buckets
-        .map { bucket -> accountOf(bucket) }
+        .map { bucket -> accountOf(bucket, cipher) }
         .filter { it.mid != AccountPreferences.NO_ACCOUNT }
-    val legacy = legacyAccount()
+    val legacy = legacyAccount(cipher)
     val all = if (legacy.mid != AccountPreferences.NO_ACCOUNT && fromBuckets.none { it.mid == legacy.mid }) {
         fromBuckets + legacy
     } else {

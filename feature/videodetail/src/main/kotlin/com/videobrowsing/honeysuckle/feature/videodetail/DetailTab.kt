@@ -1,9 +1,11 @@
 package com.videobrowsing.honeysuckle.feature.videodetail
 
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.videobrowsing.honeysuckle.core.common.formatCount
 import com.videobrowsing.honeysuckle.core.designsystem.icon.HsyIcons
 import com.videobrowsing.honeysuckle.core.designsystem.theme.Hsy
@@ -23,7 +25,8 @@ internal enum class DetailTab { INTRO, COMMENTS }
 @Composable
 internal fun DetailTabRow(
     selected: DetailTab,
-    commentCount: Int,
+    /** 传"怎么读"而不是"读到的值":总数变化时只让这一枚页签重组 */
+    commentCount: () -> Int,
     danmakuEnabled: Boolean,
     onSelect: (DetailTab) -> Unit,
     onToggleDanmaku: () -> Unit,
@@ -38,7 +41,10 @@ internal fun DetailTabRow(
             Tab(
                 selected = selected == DetailTab.COMMENTS,
                 onClick = { onSelect(DetailTab.COMMENTS) },
-                text = { Text(if (commentCount > 0) "评论 ${formatCount(commentCount.toLong())}" else "评论") },
+                text = {
+                    val total = commentCount()
+                    Text(if (total > 0) "评论 ${formatCount(total.toLong())}" else "评论")
+                },
             )
         }
         IconButton(onClick = onToggleDanmaku) {
@@ -49,4 +55,19 @@ internal fun DetailTabRow(
             )
         }
     }
+}
+
+/**
+ * 宽屏右栏标题。总数按"需要时才读"传入:评论状态在评论面板里变化,
+ * 只有这一行会跟着刷新,播放器与简介不参与。
+ */
+@Composable
+internal fun CommentHeader(commentCount: () -> Int) {
+    val total = commentCount()
+    Text(
+        text = if (total > 0) "评论 ${formatCount(total.toLong())}" else "评论",
+        style = Hsy.typography.titleMedium,
+        color = Hsy.colors.onSurface,
+        modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
+    )
 }

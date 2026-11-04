@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  明文流量总闸:整台设备上只允许 HTTPS。
+
+  为什么需要显式写:minSdk 26 时 Android 8.x 默认仍允许明文,只有 targetSdk 28+ 才默认禁止;
+  本应用 targetSdk 36 虽然默认已禁,但把口径写进资源文件后,
+  它不再依赖"构建工具这一版恰好这么默认",也不会被将来某次 targetSdk 调整悄悄改回去。
+
+  平台接口与 CDN 都已走 https(封面、播放、直播在 DTO→领域模型那一档就地升级);
+  本地离线播放是 file://,不属于网络明文流量,不受这里影响。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

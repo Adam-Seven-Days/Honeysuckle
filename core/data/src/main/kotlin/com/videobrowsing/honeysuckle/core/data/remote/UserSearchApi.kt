@@ -31,7 +31,7 @@ class UserSearchApi(
     private val searchUrl: HttpUrl = SEARCH_URL.toHttpUrl(),
 ) {
 
-    fun fetch(keyword: String, pageIndex: Int = FIRST_PAGE): HsyResult<UserSearchPage> {
+    suspend fun fetch(keyword: String, pageIndex: Int = FIRST_PAGE): HsyResult<UserSearchPage> {
         if (pageIndex < FIRST_PAGE) {
             return HsyResult.Failure(AppError.Decode("页码非法:$pageIndex,应从 $FIRST_PAGE 起算"))
         }

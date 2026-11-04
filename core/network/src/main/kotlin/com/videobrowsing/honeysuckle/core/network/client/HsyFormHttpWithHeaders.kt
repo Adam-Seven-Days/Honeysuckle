@@ -5,13 +5,15 @@ import com.videobrowsing.honeysuckle.core.common.HsyResult
 import java.io.IOException
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.decodeFromStream
 import okhttp3.FormBody
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
-fun interface HsyFormWithHeadersSource {
-    fun postFormWithHeaders(url: HttpUrl, fields: Map<String, String>): HsyResult<HsyJsonResponse>
+interface HsyFormWithHeadersSource {
+    suspend fun postFormWithHeaders(url: HttpUrl, fields: Map<String, String>): HsyResult<HsyJsonResponse>
 }
 
 /**
@@ -23,13 +25,13 @@ fun interface HsyFormWithHeadersSource {
 class HsyFormHttpWithHeaders(private val client: OkHttpClient, private val json: Json = HsyJson) :
     HsyFormWithHeadersSource {
 
-    override fun postFormWithHeaders(url: HttpUrl, fields: Map<String, String>): HsyResult<HsyJsonResponse> {
+    override suspend fun postFormWithHeaders(url: HttpUrl, fields: Map<String, String>): HsyResult<HsyJsonResponse> {
         val form = FormBody.Builder().apply {
             fields.forEach { (name, value) -> add(name, value) }
         }.build()
         val request = Request.Builder().url(url).post(form).build()
         return try {
-            client.newCall(request).execute().use { response ->
+            client.awaitResponse(request).use { response ->
                 if (!response.isSuccessful) {
                     return@use HsyResult.Failure(AppError.Server(response.code, response.message))
                 }
@@ -37,7 +39,7 @@ class HsyFormHttpWithHeaders(private val client: OkHttpClient, private val json:
                     ?: return@use HsyResult.Failure(AppError.Decode("响应体为空(HTTP ${response.code})"))
                 HsyResult.Success(
                     HsyJsonResponse(
-                        body = json.parseToJsonElement(body.string()),
+                        body = json.decodeFromStream(JsonElement.serializer(), body.byteStream()),
                         headers = response.headers,
                     ),
                 )

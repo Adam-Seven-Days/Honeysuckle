@@ -71,7 +71,11 @@ class HomeFeedApi(
             .build()
     }
 
-    fun fetch(source: HomeFeedSource, pageIndex: Int = FIRST_PAGE, rid: Int = ALL_REGIONS): HsyResult<FeedPage> {
+    suspend fun fetch(
+        source: HomeFeedSource,
+        pageIndex: Int = FIRST_PAGE,
+        rid: Int = ALL_REGIONS,
+    ): HsyResult<FeedPage> {
         // 非法页码不发请求,也不往下游传一个会被默默改成 1 的数
         if (pageIndex < FIRST_PAGE) {
             return HsyResult.Failure(AppError.Decode("页码非法:$pageIndex,应从 $FIRST_PAGE 起算"))

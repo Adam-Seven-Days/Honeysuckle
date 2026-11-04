@@ -21,7 +21,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 private data class LoginKey(val hash: String, val pem: String)
 
 /** 密码登录成功那一拍要交给仓库的凭证;与扫码的 [QrPollResult] 同一套内容 */
-data class PasswordLoginResult(val cookieHeader: String, val refreshToken: String = "", val mid: Long = 0L)
+data class PasswordLoginResult(val cookieHeader: String, val mid: Long = 0L)
 
 /**
  * 账号密码登录(`passport-login/web/key` + `login`)。
@@ -42,7 +42,7 @@ class PasswordLoginApi(
     private val loginUrl: HttpUrl = LOGIN_URL.toHttpUrl(),
 ) {
 
-    fun login(username: String, password: String): HsyResult<PasswordLoginResult> {
+    suspend fun login(username: String, password: String): HsyResult<PasswordLoginResult> {
         val name = username.trim()
         val rejection = when {
             name.isEmpty() -> AppError.Decode("账号不能为空")
@@ -99,7 +99,6 @@ class PasswordLoginApi(
             HsyResult.Success(
                 PasswordLoginResult(
                     cookieHeader = cookieHeader,
-                    refreshToken = data.stringOr("refresh_token"),
                     mid = cookieHeader.cookieValueOf(COOKIE_DEDE_USER_ID).toLongOrNull() ?: 0L,
                 ),
             )

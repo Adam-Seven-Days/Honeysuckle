@@ -42,7 +42,7 @@ class UserSpaceApi(
     private val countersUrl: HttpUrl = COUNTERS_URL.toHttpUrl(),
 ) {
 
-    fun space(mid: Long): HsyResult<UserSpace> {
+    suspend fun space(mid: Long): HsyResult<UserSpace> {
         if (mid <= 0L) return HsyResult.Failure(AppError.Decode("UP 主 mid 非法:$mid"))
         val url = infoUrl.newBuilder()
             .setQueryParameter("mid", mid.toString())
@@ -55,7 +55,7 @@ class UserSpaceApi(
     }
 
     /** 粉丝与关注的名片外读数;失败由仓库吞掉,名片照常,读数留空不摆假 0 */
-    fun counters(mid: Long): HsyResult<UserCounters> {
+    suspend fun counters(mid: Long): HsyResult<UserCounters> {
         if (mid <= 0L) return HsyResult.Failure(AppError.Decode("UP 主 mid 非法:$mid"))
         return jsonSource.getJson(countersUrl.newBuilder().setQueryParameter("vmid", mid.toString()).build())
             .flatMap { HsyEnvelope.dataOf(it) }
@@ -69,7 +69,7 @@ class UserSpaceApi(
             }
     }
 
-    fun videos(mid: Long, pageIndex: Int = FIRST_PAGE): HsyResult<UserVideoPage> {
+    suspend fun videos(mid: Long, pageIndex: Int = FIRST_PAGE): HsyResult<UserVideoPage> {
         if (mid <= 0L) return HsyResult.Failure(AppError.Decode("UP 主 mid 非法:$mid"))
         if (pageIndex < FIRST_PAGE) {
             return HsyResult.Failure(AppError.Decode("页码非法:$pageIndex,应从 $FIRST_PAGE 起算"))

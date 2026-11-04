@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,7 +29,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.videobrowsing.honeysuckle.core.common.formatClock
-import com.videobrowsing.honeysuckle.core.common.formatCount
 import com.videobrowsing.honeysuckle.core.danmaku.frame.InsertOutcome
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsyEmptyState
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsyErrorState
@@ -44,6 +44,8 @@ import com.videobrowsing.honeysuckle.core.player.HsyPlayerHost
 import com.videobrowsing.honeysuckle.core.player.PlaybackEngine
 import com.videobrowsing.honeysuckle.core.player.PlaybackExtras
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
 /**
  * 视频详情 + 产品播放页(后续的播放与弹幕能力都从这一屏长出来)。
@@ -73,7 +75,10 @@ fun VideoDetailScreen(
     inPip: Boolean = false,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val commentState by commentsViewModel.state.collectAsStateWithLifecycle()
+    // 评论区整份状态只在 CommentPane 内部收集:顶层只留"总数",打字/翻页/点赞不再拖着播放器重组
+    val commentCount = remember(commentsViewModel) {
+        commentsViewModel.state.map { it.total }.distinctUntilChanged()
+    }.collectAsStateWithLifecycle(initialValue = 0)
     // 评论与详情同属这一页:详情一到就把 aid / upMid 交给评论区,标签上的总数也随之就位
     LaunchedEffect(state.detail) {
         state.detail?.let { commentsViewModel.open(it.brief.aid, it.ownerMid) }
@@ -85,26 +90,22 @@ fun VideoDetailScreen(
     val continuingOnEntry = remember(state.bvid) { engine.session.value?.bvid == state.bvid }
     val playerUi = remember { PlayerUi() }
     var fullscreen by rememberSaveable { mutableStateOf(false) }
-
-    val intents = DetailIntents(
-        onBack = callbacks.onBack,
-        onToggleFullscreen = { fullscreen = true },
-        onEnterPip = callbacks.onEnterPip,
-        onAction = viewModel::onAction,
-        onOpenVideo = callbacks.onOpenVideo,
-        onOpenSpace = callbacks.onOpenSpace,
-        onOpenLogin = callbacks.onOpenLogin,
-    )
+    // 回调/读数的容器缓存成同一实例,子组件的跳过判断才真正生效;总数传"怎么读"而不是值
+    val intents = rememberDetailIntents(viewModel, callbacks) { fullscreen = true }
+    val commentZone = remember(commentsViewModel) { CommentZone(commentsViewModel) { commentCount.value } }
 
     BackHandler { if (fullscreen) fullscreen = false else callbacks.onBack() }
     VideoPageEffects(engine, host, playerUi, state, fullscreen)
     PlayerEndedEffect(host) { viewModel.onAction(VideoDetailAction.PartEnded) }
 
-    val stage = DetailStage(host, playerUi, danmakuScreen(state, inPip), extras, engine)
+    val danmaku = danmakuScreen(state, inPip)
+    val stage = remember(host, playerUi, danmaku, extras, engine) {
+        DetailStage(host, playerUi, danmaku, extras, engine)
+    }
     LaunchedEffect(state.pendingDanmaku) {
         val entry = state.pendingDanmaku ?: return@LaunchedEffect
-        val outcome = stage.danmaku.hostState.insert(entry)
-        viewModel.onAction(VideoDetailAction.DanmakuInserted(outcome != InsertOutcome.REJECTED))
+        val inserted = stage.danmaku.hostState.insert(entry) != InsertOutcome.REJECTED
+        viewModel.onAction(VideoDetailAction.DanmakuInserted(inserted))
     }
     Box(modifier.fillMaxSize().background(Hsy.colors.background)) {
         when {
@@ -122,7 +123,7 @@ fun VideoDetailScreen(
                 Modifier.fillMaxSize(),
             )
 
-            else -> DetailColumn(state, intents, stage, continuingOnEntry, CommentZone(commentsViewModel, commentState))
+            else -> DetailColumn(state, intents, stage, continuingOnEntry, commentZone)
         }
     }
 
@@ -136,6 +137,7 @@ fun VideoDetailScreen(
 }
 
 /** 详情页递给播放舞台的上下文:同一只引擎的宿主机、读数、弹幕层与 AB/定时读数收成一束 */
+@Stable
 private class DetailStage(
     val host: HsyPlayerHost,
     val ui: PlayerUi,
@@ -144,8 +146,14 @@ private class DetailStage(
     val engine: PlaybackEngine,
 )
 
-/** 评论区与它的读数:窄屏页签与宽屏右栏都从这一束里取,三个布局函数就不必各摊两只参数 */
-private class CommentZone(val viewModel: CommentViewModel, val state: CommentUiState)
+/**
+ * 评论区与它的 ViewModel,外加"总数怎么读"。
+ *
+ * 读数不在这里:整份 [CommentUiState] 由 [CommentPane] 自己收集,这一束只负责把同一只 ViewModel
+ * 递给窄屏页签与宽屏右栏。评论总数走单独的 [commentCount],不会因为打字/翻页重建这一束。
+ */
+@Stable
+private class CommentZone(val viewModel: CommentViewModel, val commentCount: () -> Int)
 
 /** 三处舞台共用同一套播放动作;全屏/画中画的进退各不相同,由调用方递入 */
 private fun playerIntentsOf(engine: PlaybackEngine, intents: DetailIntents, window: WindowIntents) = PlayerIntents(
@@ -286,7 +294,7 @@ private fun DetailFeed(
         )
         DetailTabRow(
             selected = tab,
-            commentCount = comments.state.total,
+            commentCount = comments.commentCount,
             danmakuEnabled = state.danmakuPreferences.enabled,
             onSelect = { tab = it },
             onToggleDanmaku = { intents.onAction(VideoDetailAction.ToggleDanmaku) },
@@ -381,16 +389,7 @@ private fun WideDetailFeed(
             IntroFeed(state, intents, stage, continuing, Modifier.weight(1f))
         }
         Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
-            Text(
-                text = if (comments.state.total > 0) {
-                    "评论 ${formatCount(comments.state.total.toLong())}"
-                } else {
-                    "评论"
-                },
-                style = Hsy.typography.titleMedium,
-                color = Hsy.colors.onSurface,
-                modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
-            )
+            CommentHeader(comments.commentCount)
             CommentPane(
                 viewModel = comments.viewModel,
                 onOpenLogin = intents.onOpenLogin,

@@ -17,6 +17,7 @@ import com.videobrowsing.honeysuckle.core.model.LiveRoomInfo
 import com.videobrowsing.honeysuckle.core.model.LiveSection
 import com.videobrowsing.honeysuckle.core.model.LiveStreamKind
 import com.videobrowsing.honeysuckle.core.network.client.HsyJsonSource
+import com.videobrowsing.honeysuckle.core.network.url.secureMediaUrl
 import kotlinx.serialization.json.JsonObject
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -39,7 +40,7 @@ class LiveApi(
     private val roomUrl: HttpUrl = ROOM_INFO_URL.toHttpUrl(),
 ) {
 
-    fun fetchHome(): HsyResult<LivePage> = jsonSource.getJson(indexUrl)
+    suspend fun fetchHome(): HsyResult<LivePage> = jsonSource.getJson(indexUrl)
         .flatMap { HsyEnvelope.dataOf(it) }
         .flatMap { data ->
             val areas = areaList(data)
@@ -51,7 +52,7 @@ class LiveApi(
             }
         }
 
-    fun fetchPlay(roomId: Long): HsyResult<LivePlay> {
+    suspend fun fetchPlay(roomId: Long): HsyResult<LivePlay> {
         if (roomId <= 0L) return HsyResult.Failure(AppError.Decode("房间号非法:$roomId"))
         val url = playUrl.newBuilder()
             .addQueryParameter("room_id", roomId.toString())
@@ -66,7 +67,7 @@ class LiveApi(
             .flatMap { data -> playOf(roomId, data) }
     }
 
-    fun fetchRoom(roomId: Long): HsyResult<LiveRoomInfo> {
+    suspend fun fetchRoom(roomId: Long): HsyResult<LiveRoomInfo> {
         if (roomId <= 0L) return HsyResult.Failure(AppError.Decode("房间号非法:$roomId"))
         val url = roomUrl.newBuilder().addQueryParameter("room_id", roomId.toString()).build()
         return jsonSource.getJson(url)
@@ -150,7 +151,7 @@ class LiveApi(
                 ),
             )
         } else {
-            HsyResult.Failure(AppError.Decode("没有可用的 HLS / FLV 流,或流地址缺少 host / base_url"))
+            HsyResult.Failure(AppError.Decode("没有可用的 HLS / FLV 流(地址缺失、非 https 或 host 不在平台 CDN 白名单)"))
         }
     }
 
@@ -170,7 +171,8 @@ class LiveApi(
         val host = info.stringOr("host")
         val base = stringOr("base_url")
         if (host.isBlank() || base.isBlank()) return null
-        return host.trimEnd('/') + base + info.stringOr("extra")
+        // 直播地址同样就地升 https 并校验 CDN host;不合格就当作"没有可用流"
+        return secureMediaUrl(host.trimEnd('/') + base + info.stringOr("extra"))
     }
 
     companion object {

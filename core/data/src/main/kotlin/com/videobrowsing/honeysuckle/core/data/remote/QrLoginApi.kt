@@ -19,12 +19,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
  * [cookieHeader] 只在 [poll] 的 [QrPollState.SUCCESS] 时有值,已经拼成可直接交给
  * `HsySession` 与账号盘的形状;`mid` 缺失时是 0,由登录仓库再问一次 nav 补齐。
  */
-data class QrPollResult(
-    val poll: QrPoll,
-    val cookieHeader: String = "",
-    val refreshToken: String = "",
-    val mid: Long = 0,
-)
+data class QrPollResult(val poll: QrPoll, val cookieHeader: String = "", val mid: Long = 0)
 
 /**
  * 扫码登录(`passport-login/web/qrcode/generate` + `poll`)。
@@ -45,10 +40,10 @@ class QrLoginApi(
     private val pollUrl: HttpUrl = POLL_URL.toHttpUrl(),
 ) {
 
-    fun generate(): HsyResult<QrLoginSession> = withHeaders.getJsonWithHeaders(generateUrl)
+    suspend fun generate(): HsyResult<QrLoginSession> = withHeaders.getJsonWithHeaders(generateUrl)
         .flatMap { response -> generateOf(response) }
 
-    fun poll(qrcodeKey: String): HsyResult<QrPollResult> {
+    suspend fun poll(qrcodeKey: String): HsyResult<QrPollResult> {
         if (qrcodeKey.isBlank()) return HsyResult.Failure(AppError.Decode("qrcode_key 为空"))
         val url = pollUrl.newBuilder().setQueryParameter("qrcode_key", qrcodeKey).build()
         return withHeaders.getJsonWithHeaders(url).flatMap { response -> pollOf(response) }
@@ -91,7 +86,6 @@ class QrLoginApi(
                 QrPollResult(
                     poll = QrPoll(QrPollState.SUCCESS, message),
                     cookieHeader = cookieHeader,
-                    refreshToken = data.stringOr("refresh_token"),
                     mid = cookieHeader.cookieValueOf(COOKIE_DEDE_USER_ID).toLongOrNull() ?: 0L,
                 ),
             )

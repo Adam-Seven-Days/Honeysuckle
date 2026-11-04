@@ -2,6 +2,8 @@ package com.videobrowsing.honeysuckle.core.player
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Process
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import dagger.hilt.android.AndroidEntryPoint
@@ -16,6 +18,11 @@ import javax.inject.Inject
  *
  * 通知的标题/UP/封面来自播放页递进 [PlaybackMetadata] 的那一条 [androidx.media3.common.MediaItem];
  * 这条服务不自己编文案。
+ *
+ * **谁能连上这个会话**:服务本身 `exported="false"`(见模块清单),系统媒体键与通知走的是
+ * MediaSession 框架,不需要外部应用绑定服务。这里再加一道 [MediaSession.Callback.onConnect]
+ * 白名单:只接受本进程、系统信任的控制器,或与本应用签名一致的包 ——
+ * 即使将来有人把 exported 改回去,别的应用也读不到当前媒体项。
  *
  * 生命周期口径(与 [PlaybackEngine.stop] / [PlaybackEngine.release] 的分工一致):
  * 划走任务不等于关掉声音 —— 正在放就让它在后台把这一支放完,这正是"后台播放"这一格要的东西;
@@ -40,11 +47,13 @@ class HsyPlaybackService : MediaSessionService() {
             return
         }
         val builder = MediaSession.Builder(this, host.player)
+            .setCallback(SessionCallback())
         launchIntent()?.let { builder.setSessionActivity(it) }
         mediaSession = builder.build().also { addSession(it) }
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
+        mediaSession?.takeIf { isAllowedController(controllerInfo) }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         val host = engine.activeHost
@@ -60,6 +69,34 @@ class HsyPlaybackService : MediaSessionService() {
         mediaSession?.release()
         mediaSession = null
         super.onDestroy()
+    }
+
+    /** 会话级的第二道门:onGetSession 放行之后,真正建连时再核一次身份 */
+    private inner class SessionCallback : MediaSession.Callback {
+        override fun onConnect(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+        ): MediaSession.ConnectionResult = if (isAllowedController(controller)) {
+            super.onConnect(session, controller)
+        } else {
+            MediaSession.ConnectionResult.reject()
+        }
+    }
+
+    /**
+     * 包名/签名白名单。
+     *
+     * - 本进程:播放页自己的控制器(如果有)必须能连;
+     * - [MediaSession.ControllerInfo.isTrusted]:系统 UI、蓝牙/车机这类由系统授予
+     *   `MEDIA_CONTENT_CONTROL` 的控制器,媒体键与锁屏控制走的就是它们;
+     * - 其余应用:只有与本应用签名一致才放行(当前没有这样的合作方,留作将来扩展)。
+     */
+    private fun isAllowedController(controller: MediaSession.ControllerInfo): Boolean {
+        if (controller.uid == Process.myUid()) return true
+        if (controller.isTrusted) return true
+        return runCatching {
+            packageManager.checkSignatures(packageName, controller.packageName) == PackageManager.SIGNATURE_MATCH
+        }.getOrDefault(false)
     }
 
     /** 点通知回到应用;拿不到启动意图(理论上不会)就不设,而不是让构造抛错 */

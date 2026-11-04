@@ -7,6 +7,7 @@ import coil3.SingletonImageLoader
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import com.videobrowsing.honeysuckle.core.data.crash.CrashStore
 import com.videobrowsing.honeysuckle.core.datastore.account.AccountPreferenceRepository
+import com.videobrowsing.honeysuckle.core.network.buvid.HsyBuvidSource
 import com.videobrowsing.honeysuckle.core.network.session.HsySession
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
@@ -53,6 +54,13 @@ class HsyApplication :
     @Inject
     lateinit var crashStore: CrashStore
 
+    /**
+     * 访客身份。启动期先换回来:首条首页请求的拦截器是同步的,
+     * 等它自己现问就会把 `/finger/spi` 的一次往返压在首屏上。
+     */
+    @Inject
+    lateinit var buvidSource: HsyBuvidSource
+
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /**
@@ -65,7 +73,11 @@ class HsyApplication :
         super.onCreate()
         crashStore.install()
         playbackHistoryRecorder.start()
+        // 换身份与读盘互不依赖:并行起跑,谁先完成都不影响对方
+        applicationScope.launch { buvidSource.prefetch() }
         applicationScope.launch {
+            // 旧版本把凭证明文写在盘上:先改写成 Keystore 密文,再交给会话同步
+            accountPreferences.migrateCredentials()
             accountPreferences.preferences
                 .map { prefs -> prefs.cookie.takeIf { prefs.isLoggedIn } }
                 .distinctUntilChanged()

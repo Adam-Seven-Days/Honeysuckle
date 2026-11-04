@@ -28,7 +28,7 @@ class RelatedVideosApi(
         .setQueryParameter("bvid", VideoViewApi.normalizeBvid(bvid))
         .build()
 
-    fun fetch(bvid: String): HsyResult<List<FeedItem>> {
+    suspend fun fetch(bvid: String): HsyResult<List<FeedItem>> {
         val url = try {
             urlFor(bvid)
         } catch (e: IllegalArgumentException) {

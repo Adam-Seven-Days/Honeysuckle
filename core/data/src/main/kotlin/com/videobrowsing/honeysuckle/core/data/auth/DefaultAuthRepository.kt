@@ -96,7 +96,6 @@ class DefaultAuthRepository @Inject constructor(
             }
             completeSignIn(
                 cookieHeader = result.cookieHeader,
-                refreshToken = result.refreshToken,
                 fallbackMid = result.mid,
             ).map { result.poll }
         }
@@ -107,7 +106,6 @@ class DefaultAuthRepository @Inject constructor(
             passwordLoginApi.login(username, password).flatMap { result ->
                 completeSignIn(
                     cookieHeader = result.cookieHeader,
-                    refreshToken = result.refreshToken,
                     fallbackMid = result.mid,
                 )
             }
@@ -117,8 +115,9 @@ class DefaultAuthRepository @Inject constructor(
      * 扫码与密码登录共用的收尾:先会话、再 nav、最后落盘。
      *
      * 拿不到 mid 就撤掉会话 —— 留着 Cookie 而"我的"页仍是游客,是比登录失败更难查的状态。
+     * `refresh_token` 不在这条链上:当前没有任何续期逻辑会用到它,所以连参数都不收。
      */
-    private suspend fun completeSignIn(cookieHeader: String, refreshToken: String, fallbackMid: Long): HsyResult<Unit> {
+    private suspend fun completeSignIn(cookieHeader: String, fallbackMid: Long): HsyResult<Unit> {
         // 后续 nav 请求必须带上这一串,否则它回的是游客身份
         HsySession.updateLoginCookies(cookieHeader)
 
@@ -134,7 +133,6 @@ class DefaultAuthRepository @Inject constructor(
             name = navProfile?.name.orEmpty(),
             avatarUrl = navProfile?.avatarUrl.orEmpty(),
             cookie = cookieHeader,
-            refreshToken = refreshToken,
             level = navProfile?.level,
             coins = navProfile?.coins,
         )

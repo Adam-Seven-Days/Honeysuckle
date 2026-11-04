@@ -35,7 +35,7 @@ class SearchSuggestApi(
         .setQueryParameter("from_source", "webtop_search")
         .build()
 
-    fun fetch(term: String): HsyResult<List<String>> {
+    suspend fun fetch(term: String): HsyResult<List<String>> {
         val keyword = term.trim()
         if (keyword.isEmpty()) return HsyResult.Success(emptyList())
         return jsonSource.getJson(urlFor(keyword)).flatMap { root ->

@@ -27,7 +27,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
  */
 class AccountNavApi(private val jsonSource: HsyJsonSource, private val navUrl: HttpUrl = NAV_URL.toHttpUrl()) {
 
-    fun fetch(): HsyResult<UserProfile?> = jsonSource.getJson(navUrl).flatMap { root ->
+    suspend fun fetch(): HsyResult<UserProfile?> = jsonSource.getJson(navUrl).flatMap { root ->
         val obj = root as? JsonObject
             ?: return@flatMap HsyResult.Failure(AppError.Decode("nav 响应根节点不是对象"))
         val data = obj["data"] as? JsonObject

@@ -23,7 +23,7 @@ class RelationApi(
     private val modifyUrl: HttpUrl = MODIFY_URL.toHttpUrl(),
 ) {
 
-    fun fetch(mid: Long): HsyResult<RelationState> {
+    suspend fun fetch(mid: Long): HsyResult<RelationState> {
         if (mid <= 0L) return HsyResult.Failure(AppError.Decode("UP 主 mid 非法:$mid"))
         return jsonSource.getJson(relationUrl.newBuilder().setQueryParameter("fid", mid.toString()).build())
             .flatMap { root ->
@@ -39,7 +39,7 @@ class RelationApi(
             }
     }
 
-    fun setFollowing(mid: Long, following: Boolean, csrf: String): HsyResult<Unit> {
+    suspend fun setFollowing(mid: Long, following: Boolean, csrf: String): HsyResult<Unit> {
         if (mid <= 0L) return HsyResult.Failure(AppError.Decode("UP 主 mid 非法:$mid"))
         if (csrf.isBlank()) return HsyResult.Failure(AppError.Server(CODE_NOT_LOGGED_IN, "缺少 csrf,当前登录态不可写"))
         return formSource.postForm(

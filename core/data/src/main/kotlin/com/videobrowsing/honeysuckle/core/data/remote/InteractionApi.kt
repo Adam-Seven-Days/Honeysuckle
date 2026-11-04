@@ -38,7 +38,7 @@ class InteractionApi(
     private val favoriteDealUrl: HttpUrl = FAVORITE_DEAL_URL.toHttpUrl(),
 ) {
 
-    fun fetchLiked(aid: Long): HsyResult<Boolean> = jsonSource.getJson(
+    suspend fun fetchLiked(aid: Long): HsyResult<Boolean> = jsonSource.getJson(
         hasLikeUrl.newBuilder().setQueryParameter("aid", requirePositive(aid, "aid")).build(),
     ).flatMap { root ->
         // has/like 的 data 是裸数字 0/1,不是对象 —— 不能用 dataOf
@@ -46,7 +46,7 @@ class InteractionApi(
         HsyResult.Success(data?.content == "1")
     }
 
-    fun setLike(aid: Long, liked: Boolean, csrf: String): HsyResult<Unit> = formSource.postForm(
+    suspend fun setLike(aid: Long, liked: Boolean, csrf: String): HsyResult<Unit> = formSource.postForm(
         likeUrl,
         mapOf(
             "aid" to requirePositive(aid, "aid"),
@@ -60,7 +60,7 @@ class InteractionApi(
      *
      * 硬币不足是业务失败(-104),不是网络失败 —— 由上层翻成"硬币不够",不要重试。
      */
-    fun addCoin(aid: Long, csrf: String): HsyResult<Unit> = formSource.postForm(
+    suspend fun addCoin(aid: Long, csrf: String): HsyResult<Unit> = formSource.postForm(
         coinUrl,
         mapOf(
             "aid" to requirePositive(aid, "aid"),
@@ -70,7 +70,7 @@ class InteractionApi(
     ).flatMap { HsyResult.Success(Unit) }
 
     /** 用户自己的收藏夹;选中第一个"默认收藏夹"作为基础版的写入目标 */
-    fun fetchFolders(mid: Long): HsyResult<List<FavoriteFolder>> {
+    suspend fun fetchFolders(mid: Long): HsyResult<List<FavoriteFolder>> {
         if (mid <= 0L) return HsyResult.Failure(AppError.Decode("收藏夹查询缺少 mid"))
         return jsonSource.getJson(
             foldersUrl.newBuilder().setQueryParameter("up_mid", mid.toString()).build(),
@@ -82,7 +82,7 @@ class InteractionApi(
     }
 
     /** 该稿在哪些收藏夹里;这是"取消收藏 / 换夹"要用的归属,失败时由调用方保留"未知" */
-    fun fetchCollectedFolderIds(aid: Long): HsyResult<Set<Long>> = jsonSource.getJson(
+    suspend fun fetchCollectedFolderIds(aid: Long): HsyResult<Set<Long>> = jsonSource.getJson(
         collectedUrl.newBuilder()
             .setQueryParameter("rid", requirePositive(aid, "aid"))
             .setQueryParameter("type", TYPE_VIDEO)
@@ -93,7 +93,7 @@ class InteractionApi(
         HsyResult.Success(foldersOf(list).mapTo(mutableSetOf()) { it.id })
     }
 
-    fun addFavorite(aid: Long, folderId: Long, csrf: String): HsyResult<Unit> = formSource.postForm(
+    suspend fun addFavorite(aid: Long, folderId: Long, csrf: String): HsyResult<Unit> = formSource.postForm(
         favoriteDealUrl,
         mapOf(
             "rid" to requirePositive(aid, "aid"),
@@ -105,7 +105,7 @@ class InteractionApi(
     ).flatMap { HsyResult.Success(Unit) }
 
     /** 从若干个夹里移走同一条稿:一个 POST 同时带多个 del_media_ids,不按夹循环发 */
-    fun removeFavorite(aid: Long, folderIds: Collection<Long>, csrf: String): HsyResult<Unit> {
+    suspend fun removeFavorite(aid: Long, folderIds: Collection<Long>, csrf: String): HsyResult<Unit> {
         val ids = folderIds.filter { it > 0L }.joinToString(",")
         if (ids.isEmpty()) return HsyResult.Success(Unit)
         return formSource.postForm(

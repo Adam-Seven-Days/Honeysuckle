@@ -36,7 +36,7 @@ class VideoSearchApi(
         .build()
 
     /** 一次取一页;`moreAvailable` 由 `numPages` 与当前页比较得出,不拿"这一页满了"当还有下一页 */
-    fun fetch(keyword: String, pageIndex: Int = FIRST_PAGE): HsyResult<SearchPage> {
+    suspend fun fetch(keyword: String, pageIndex: Int = FIRST_PAGE): HsyResult<SearchPage> {
         if (pageIndex < FIRST_PAGE) {
             return HsyResult.Failure(AppError.Decode("页码非法:$pageIndex,应从 $FIRST_PAGE 起算"))
         }

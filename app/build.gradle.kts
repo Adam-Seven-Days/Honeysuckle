@@ -62,6 +62,8 @@ dependencies {
 
     implementation(platform(libs.compose.bom))
     implementation(libs.activity.compose)
+    // 系统启动窗口:冷启动时先把主题底色与图标画出来,再把控制权交给 Compose
+    implementation(libs.core.splashscreen)
     implementation(libs.compose.ui)
     implementation(libs.navigation.compose)
     implementation(libs.lifecycle.runtime.compose)

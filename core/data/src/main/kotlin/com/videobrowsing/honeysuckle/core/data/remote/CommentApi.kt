@@ -57,7 +57,7 @@ class CommentApi(
         return builder.build()
     }
 
-    fun fetch(
+    suspend fun fetch(
         aid: Long,
         cursor: String = "",
         sort: CommentSort = CommentSort.HOT,
@@ -65,7 +65,12 @@ class CommentApi(
     ): HsyResult<CommentPage> = readMain(urlFor(aid, cursor, sort), upMid)
 
     /** 楼中楼:同一套形状,多一个 `root` */
-    fun fetchReplies(aid: Long, rootId: Long, page: Int = FIRST_PAGE, upMid: Long = 0L): HsyResult<CommentPage> {
+    suspend fun fetchReplies(
+        aid: Long,
+        rootId: Long,
+        page: Int = FIRST_PAGE,
+        upMid: Long = 0L,
+    ): HsyResult<CommentPage> {
         if (rootId <= 0L) return HsyResult.Failure(AppError.Decode("楼层 id 非法:$rootId"))
         val url = repliesUrl.newBuilder()
             .setQueryParameter("type", TYPE_VIDEO)
@@ -78,7 +83,13 @@ class CommentApi(
     }
 
     /** 发一条评论;顶层评论 `root` / `parent` 都是 0 */
-    fun send(aid: Long, message: String, csrf: String, rootId: Long = 0L, parentId: Long = 0L): HsyResult<Unit> {
+    suspend fun send(
+        aid: Long,
+        message: String,
+        csrf: String,
+        rootId: Long = 0L,
+        parentId: Long = 0L,
+    ): HsyResult<Unit> {
         val text = message.trim()
         val rejection = when {
             text.isEmpty() -> AppError.Decode("评论内容为空")
@@ -105,7 +116,7 @@ class CommentApi(
      *
      * 与发评论同一条写口径:csrf 缺失直接拦下;楼中楼也走这个接口,只是 `rpid` 换成回复的 id。
      */
-    fun setLike(aid: Long, rpid: Long, liked: Boolean, csrf: String): HsyResult<Unit> {
+    suspend fun setLike(aid: Long, rpid: Long, liked: Boolean, csrf: String): HsyResult<Unit> {
         if (rpid <= 0L) return HsyResult.Failure(AppError.Decode("评论 id 非法:$rpid"))
         if (csrf.isBlank()) return HsyResult.Failure(AppError.Server(CODE_NOT_LOGGED_IN, "缺少 csrf,当前登录态不可写"))
         return formSource.postForm(
@@ -130,32 +141,33 @@ class CommentApi(
      * 未登录时平台只回 3 条预览且 `is_end=true`(实网 2026-11-01 对照:带登录 Cookie 才翻得动),
      * 这里照实交出"到底了 + 总数",不在数据层替平台补分页。
      */
-    private fun readMain(url: HttpUrl, upMid: Long): HsyResult<CommentPage> = jsonSource.getJson(url).flatMap { root ->
-        HsyEnvelope.dataOf(root).flatMap { data ->
-            val replies = data.arrOr("replies")
-                ?: if (data.containsKey("replies")) {
-                    null
-                } else {
-                    return@flatMap HsyResult.Failure(AppError.Decode("评论响应缺 replies 字段"))
-                }
-            val cursor = data.objOr("cursor")
-            val nextCursor = cursor?.objOr("pagination_reply")?.stringOr("next_offset").orEmpty()
-            val ended = cursor?.boolOr("is_end") ?: true
-            val moreAvailable = !ended && nextCursor.isNotBlank()
-            HsyResult.Success(
-                CommentPage(
-                    comments = replies?.mapNotNull { (it as? JsonObject)?.let { obj -> commentOf(obj, upMid) } }
-                        .orEmpty(),
-                    moreAvailable = moreAvailable,
-                    total = cursor?.intOr("all_count") ?: data.pageCount(),
-                    nextCursor = if (moreAvailable) nextCursor else "",
-                ),
-            )
+    private suspend fun readMain(url: HttpUrl, upMid: Long): HsyResult<CommentPage> =
+        jsonSource.getJson(url).flatMap { root ->
+            HsyEnvelope.dataOf(root).flatMap { data ->
+                val replies = data.arrOr("replies")
+                    ?: if (data.containsKey("replies")) {
+                        null
+                    } else {
+                        return@flatMap HsyResult.Failure(AppError.Decode("评论响应缺 replies 字段"))
+                    }
+                val cursor = data.objOr("cursor")
+                val nextCursor = cursor?.objOr("pagination_reply")?.stringOr("next_offset").orEmpty()
+                val ended = cursor?.boolOr("is_end") ?: true
+                val moreAvailable = !ended && nextCursor.isNotBlank()
+                HsyResult.Success(
+                    CommentPage(
+                        comments = replies?.mapNotNull { (it as? JsonObject)?.let { obj -> commentOf(obj, upMid) } }
+                            .orEmpty(),
+                        moreAvailable = moreAvailable,
+                        total = cursor?.intOr("all_count") ?: data.pageCount(),
+                        nextCursor = if (moreAvailable) nextCursor else "",
+                    ),
+                )
+            }
         }
-    }
 
     /** 楼中楼仍按页码翻:这一端一次给满 20 条,`page.count` 是真实总数 */
-    private fun readReplies(url: HttpUrl, page: Int, upMid: Long): HsyResult<CommentPage> =
+    private suspend fun readReplies(url: HttpUrl, page: Int, upMid: Long): HsyResult<CommentPage> =
         jsonSource.getJson(url).flatMap { root ->
             HsyEnvelope.dataOf(root).flatMap { data ->
                 val replies = data.arrOr("replies")

@@ -26,7 +26,27 @@ data class TabVisibility(
 )
 
 /**
- * 壳层唯一的那份读数:主题档、底栏三格的显隐与"离开时自动进小窗"。
+ * 壳层一次收集的全部读数。
+ *
+ * 为什么合成一份:七个 `StateFlow` 各自 `stateIn(Eagerly)` 意味着七条对同一份 DataStore 的收集链,
+ * 每次落盘都要被七条链各解析一遍、各发一次状态;组合侧也要七个 `collectAsStateWithLifecycle`。
+ * 合成一份之后,一次读盘只产生一次 [AppUiPreferences] 快照,壳层一次订阅就拿到全部字段。
+ *
+ * 字段语义与原七格一一对应,默认值就是"盘还没回来"时的安全初值:
+ * 主题/强调色跟随默认、底栏按默认显隐、画中画与后台播放按允许处理。
+ */
+data class AppUiPreferences(
+    val themeMode: HsyThemeMode = HsyThemeMode.DEFAULT,
+    val themeAccent: HsyAccent = HsyAccent.DEFAULT,
+    val tabVisibility: TabVisibility = TabVisibility(),
+    val autoPipEnabled: Boolean = AppPreferences.DEFAULT_AUTO_PIP_ENABLED,
+    val pipOnlyWhilePlaying: Boolean = AppPreferences.DEFAULT_PIP_ONLY_WHILE_PLAYING,
+    val pipAspect: PipAspect = PipAspect.DEFAULT,
+    val backgroundPlayEnabled: Boolean = AppPreferences.DEFAULT_BACKGROUND_PLAY_ENABLED,
+)
+
+/**
+ * 壳层唯一的那份读数:主题档、底栏三格的显隐、画中画与后台播放。
  *
  * 它们不属于任何一个 feature —— 换主题要重画的是整棵树,底栏显隐要改的是壳层自己的格子;
  * 把这份状态放在某一屏的 ViewModel 里,就会出现"进设置页才变色、退出又变回去"的那种假象。
@@ -37,71 +57,27 @@ data class TabVisibility(
 @HiltViewModel
 class HsyAppViewModel @Inject constructor(appPreferences: AppPreferenceRepository) : ViewModel() {
 
-    val themeMode: StateFlow<HsyThemeMode> = appPreferences.preferences
-        .map { HsyThemeMode.fromStorageId(it.themeModeId) }
+    /** 一次读盘 → 一份快照;壳层只订阅这一条,不再逐字段各收一次 */
+    val uiState: StateFlow<AppUiPreferences> = appPreferences.preferences
+        .map { prefs ->
+            AppUiPreferences(
+                themeMode = HsyThemeMode.fromStorageId(prefs.themeModeId),
+                themeAccent = HsyAccent.fromStorageId(prefs.themeAccentId),
+                tabVisibility = TabVisibility(
+                    dynamic = prefs.dynamicTabVisible,
+                    live = prefs.liveTabVisible,
+                    anime = prefs.animeTabVisible,
+                ),
+                autoPipEnabled = prefs.autoPipEnabled,
+                pipOnlyWhilePlaying = prefs.pipOnlyWhilePlaying,
+                pipAspect = PipAspect.fromStorageId(prefs.pipAspectId),
+                backgroundPlayEnabled = prefs.backgroundPlayEnabled,
+            )
+        }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.Eagerly,
-            // 没设过与读盘失败都落"跟随系统":这一份是壳层的底色,不能出现"还没决定"的中间态
-            initialValue = HsyThemeMode.DEFAULT,
-        )
-
-    /** 强调色:只影响选中态、进度与点赞等位置;默认金银花琥珀 */
-    val themeAccent: StateFlow<HsyAccent> = appPreferences.preferences
-        .map { HsyAccent.fromStorageId(it.themeAccentId) }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.Eagerly,
-            initialValue = HsyAccent.DEFAULT,
-        )
-
-    /** 底栏与侧栏要不要摆中间三格;盘还没回来时按"摆"处理,免得第一帧把格子抽掉再长回来 */
-    val tabVisibility: StateFlow<TabVisibility> = appPreferences.preferences
-        .map { TabVisibility(dynamic = it.dynamicTabVisible, live = it.liveTabVisible, anime = it.animeTabVisible) }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.Eagerly,
-            initialValue = TabVisibility(),
-        )
-
-    /** 画中画总开关:自动切走、详情页手动入口与应用内小窗共用这一格 */
-    val autoPipEnabled: StateFlow<Boolean> = appPreferences.preferences
-        .map { it.autoPipEnabled }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.Eagerly,
-            initialValue = AppPreferences.DEFAULT_AUTO_PIP_ENABLED,
-        )
-
-    /** 自动进小窗是否只认"正在播";暂停时切走就留在外面 */
-    val pipOnlyWhilePlaying: StateFlow<Boolean> = appPreferences.preferences
-        .map { it.pipOnlyWhilePlaying }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.Eagerly,
-            initialValue = AppPreferences.DEFAULT_PIP_ONLY_WHILE_PLAYING,
-        )
-
-    /** 小窗画幅:跟随视频或固定 16:9;进小窗那一刻读一次 */
-    val pipAspect: StateFlow<PipAspect> = appPreferences.preferences
-        .map { PipAspect.fromStorageId(it.pipAspectId) }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.Eagerly,
-            initialValue = PipAspect.DEFAULT,
-        )
-
-    /**
-     * 允许不允许后台播放:壳层在 Activity 停下的那一刻问的就是这一格。
-     *
-     * 判据只有壳层拿得到 —— "退到桌面"是系统给 Activity 的回调,任何一屏都不在场。
-     * 没设过与读盘失败都按"允许"处理:这一向就是切走继续放声音。
-     */
-    val backgroundPlayEnabled: StateFlow<Boolean> = appPreferences.preferences
-        .map { it.backgroundPlayEnabled }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.Eagerly,
-            initialValue = AppPreferences.DEFAULT_BACKGROUND_PLAY_ENABLED,
+            // 没设过与读盘失败都落默认:这一份是壳层的底色,不能出现"还没决定"的中间态
+            initialValue = AppUiPreferences(),
         )
 }

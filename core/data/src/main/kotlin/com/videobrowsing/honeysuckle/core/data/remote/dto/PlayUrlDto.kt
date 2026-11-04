@@ -2,6 +2,7 @@ package com.videobrowsing.honeysuckle.core.data.remote.dto
 
 import com.videobrowsing.honeysuckle.core.model.MediaTrack
 import com.videobrowsing.honeysuckle.core.model.Playback
+import com.videobrowsing.honeysuckle.core.network.url.secureMediaUrl
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 
@@ -73,8 +74,8 @@ internal data class PlayUrlDto(
         }
 
         /**
-         * 解一条数组里的轨,并丢掉 `baseUrl` 为空的元素:那种轨平台自己都没给地址,
-         * 留在列表里只会让选轨侧挑中一条必死的。
+         * 解一条数组里的轨,并丢掉地址不合格的元素:`baseUrl` 为空、不是 https、
+         * 或 host 不在平台 CDN 白名单的轨都不进列表 —— 留在列表里只会让选轨侧挑中一条必死的。
          */
         private fun JsonObject.tracksOf(field: String): List<TrackDto> =
             (arrOr(field) ?: JsonArray(emptyList())).mapNotNull { element ->
@@ -82,11 +83,11 @@ internal data class PlayUrlDto(
             }
 
         private fun JsonObject.trackOrNull(): TrackDto? {
-            val url = stringEitherOr("baseUrl", "base_url").takeIf { it.isNotBlank() } ?: return null
+            val url = secureMediaUrl(stringEitherOr("baseUrl", "base_url")) ?: return null
             return TrackDto(
                 qualityId = intOr("id"),
                 url = url,
-                backupUrls = arrEitherOr("backupUrl", "backup_url").stringsOrEmpty(),
+                backupUrls = arrEitherOr("backupUrl", "backup_url").stringsOrEmpty().mapNotNull(::secureMediaUrl),
                 bandwidthBps = longOr("bandwidth"),
                 mimeType = stringEitherOr("mimeType", "mime_type"),
                 codecs = stringOr("codecs"),

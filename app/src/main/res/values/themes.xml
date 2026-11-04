@@ -1,3 +1,14 @@
 <resources>
     <style name="Theme.Honeysuckle" parent="android:Theme.DeviceDefault.NoActionBar" />
+
+    <!--
+        系统冷启动窗口:Compose 首帧之前由系统先画这一屏。
+        底色跟应用主题的 primary 同口径(浅色 #1C1C1E / 深色 #EDEDEF,见 values-night),
+        图标沿用启动器前景;首帧一到就交回 postSplashScreenTheme。
+    -->
+    <style name="Theme.Honeysuckle.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/hsy_splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/Theme.Honeysuckle</item>
+    </style>
 </resources>

@@ -3,6 +3,8 @@ package com.videobrowsing.honeysuckle.core.network.wbi
 import com.videobrowsing.honeysuckle.core.common.AppError
 import com.videobrowsing.honeysuckle.core.common.HsyResult
 import com.videobrowsing.honeysuckle.core.network.client.HsyJsonSource
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
@@ -16,8 +18,8 @@ data class WbiKeys(val imgKey: String, val subKey: String) {
 }
 
 /** key 供应方接口;签名侧只依赖此抽象,便于注入替换 */
-fun interface WbiKeyProvider {
-    fun current(): HsyResult<WbiKeys>
+interface WbiKeyProvider {
+    suspend fun current(): HsyResult<WbiKeys>
 }
 
 /**
@@ -26,7 +28,9 @@ fun interface WbiKeyProvider {
  * 按 [refreshIntervalMs] 做本地缓存;过期后刷新,刷新失败回退旧 key(抖动不放大成签名故障),
  * 首次拉取即失败则原样返回错误 —— 上层降级,不硬吞。
  *
- * 线程安全性:[current] 全程 @Synchronized;阻塞实现,由调用方放到 IO 调度器上跑。
+ * 线程安全性:用 [Mutex] 串行化刷新。旧实现是 `@Synchronized` + 阻塞请求 ——
+ * 持锁等网络意味着同一时刻只有一个协程能签名,其它协程全被钉在锁上,取消也带不走它们。
+ * 现在锁只保护"检查/写入缓存"这一小段,等待期间挂起而不是占线程。
  */
 class WbiKeySource(
     private val jsonSource: HsyJsonSource,
@@ -35,13 +39,13 @@ class WbiKeySource(
     private val nowMs: () -> Long = { System.currentTimeMillis() },
 ) : WbiKeyProvider {
 
+    private val mutex = Mutex()
     private var cache: WbiKeys? = null
     private var lastFetchMs = Long.MIN_VALUE
 
-    @Synchronized
-    override fun current(): HsyResult<WbiKeys> {
+    override suspend fun current(): HsyResult<WbiKeys> = mutex.withLock {
         cache?.let { fresh ->
-            if (nowMs() - lastFetchMs < refreshIntervalMs) return HsyResult.Success(fresh)
+            if (nowMs() - lastFetchMs < refreshIntervalMs) return@withLock HsyResult.Success(fresh)
         }
 
         val fetched = when (val result = jsonSource.getJson(navUrl)) {
@@ -49,7 +53,7 @@ class WbiKeySource(
             is HsyResult.Failure -> result
         }
 
-        return when (fetched) {
+        when (fetched) {
             is HsyResult.Success -> {
                 cache = fetched.value
                 lastFetchMs = nowMs()

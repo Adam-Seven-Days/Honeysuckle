@@ -8,8 +8,8 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 
 /** 字节数据源抽象:protobuf 分片走这里,业务只依赖这个接口 */
-fun interface HsyBytesSource {
-    fun getBytes(url: HttpUrl): HsyResult<ByteArray>
+interface HsyBytesSource {
+    suspend fun getBytes(url: HttpUrl): HsyResult<ByteArray>
 }
 
 /**
@@ -23,13 +23,15 @@ fun interface HsyBytesSource {
  *  - oid 没有弹幕池 → HTTP 200 + 0 字节(或只带一个标志字段的 2 字节报文)。
  * 两者统一交回空字节,由内核解成空分片 —— 不能把"这条视频没弹幕"演成接口故障;
  * 而 412 风控、5xx、报文截断仍按原分类上抛(既不硬吞,也不虚报)。
+ *
+ * 弹幕分片是幂等 GET:换片/seek 取消收集时,底层请求随协程一起取消;瞬时 5xx 会退避重试。
  */
 class HsyRawHttp(private val client: OkHttpClient) : HsyBytesSource {
 
-    override fun getBytes(url: HttpUrl): HsyResult<ByteArray> {
+    override suspend fun getBytes(url: HttpUrl): HsyResult<ByteArray> {
         val request = Request.Builder().url(url).get().build()
         return try {
-            client.newCall(request).execute().use { response ->
+            client.awaitGet(request).use { response ->
                 if (!response.isSuccessful && response.code != HTTP_NOT_MODIFIED) {
                     return@use HsyResult.Failure(AppError.Server(response.code, response.message))
                 }

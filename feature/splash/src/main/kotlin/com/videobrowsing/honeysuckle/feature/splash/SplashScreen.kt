@@ -77,7 +77,14 @@ fun SplashScreen(onDone: () -> Unit, modifier: Modifier = Modifier) {
 }
 
 private const val FADE_IN_MS = 220
-private const val HOLD_MS = 700L
+
+/**
+ * 冷启动闪屏停留时长。
+ *
+ * 系统启动窗口已经承担了"等首帧"的那段,这一屏只剩一次呼吸:200–300ms 足够让 logo 被看见,
+ * 再长就变成拦路。旧值 700ms 是系统窗口还没接上时留下的,现已没有存在理由。
+ */
+private const val HOLD_MS = 240L
 private const val SUBTITLE_ALPHA = 0.82f
 
 // 闪屏标题比正文大得多,用独立的字体大小而不是借 typography 里最小那档再乘系数

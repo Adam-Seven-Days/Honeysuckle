@@ -38,7 +38,7 @@ class MessageApi(
 ) {
 
     /** 未读三格;拿不到的格子按 0 处理(角标宁可不冒红点,也不摆一个假 9) */
-    fun unread(): HsyResult<UnreadCounts> = jsonSource.getJson(unreadUrl)
+    suspend fun unread(): HsyResult<UnreadCounts> = jsonSource.getJson(unreadUrl)
         .flatMap { HsyEnvelope.dataOf(it) }
         .flatMap { data ->
             HsyResult.Success(
@@ -51,7 +51,7 @@ class MessageApi(
         }
 
     /** 某一栏的一页;页码从 1 起 */
-    fun page(kind: MessageKind, pageIndex: Int = FIRST_PAGE): HsyResult<MessagePage> {
+    suspend fun page(kind: MessageKind, pageIndex: Int = FIRST_PAGE): HsyResult<MessagePage> {
         if (pageIndex < FIRST_PAGE) {
             return HsyResult.Failure(AppError.Decode("页码非法:$pageIndex,应从 $FIRST_PAGE 起算"))
         }

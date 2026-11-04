@@ -1,7 +1,12 @@
 package com.videobrowsing.honeysuckle.core.network.client
 
+import com.videobrowsing.honeysuckle.core.network.buvid.HsyBuvidSource
+import com.videobrowsing.honeysuckle.core.network.buvid.SpiBuvid
 import com.videobrowsing.honeysuckle.core.network.interceptor.HsyHeaderInterceptor
 import java.time.Duration
+import okhttp3.Cache
+import okhttp3.ConnectionPool
+import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
 
 /**
@@ -24,13 +29,30 @@ object HsyHttpFactory {
     // 换访客身份只有一小段 JSON,给得比主通道短:它卡在首条真实请求前面,慢就等于全体请求都慢
     private const val BUVID_CALL_TIMEOUT_SEC = 10L
 
-    /** WEB 主通道客户端;[customize] 供特殊场景微调(保持追加语义,不破坏基础配置) */
-    fun webClient(customize: OkHttpClient.Builder.() -> Unit = {}): OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(Duration.ofSeconds(CONNECT_TIMEOUT_SEC))
-        .readTimeout(Duration.ofSeconds(READ_TIMEOUT_SEC))
-        .writeTimeout(Duration.ofSeconds(WRITE_TIMEOUT_SEC))
-        .callTimeout(Duration.ofSeconds(CALL_TIMEOUT_SEC))
-        .addInterceptor(HsyHeaderInterceptor())
+    /**
+     * 进程级连接池与调度器。
+     *
+     * 主通道与换身份通道共用同一份:两条链打的是同一个 api.bilibili.com,
+     * 各建一份等于把 keep-alive 与线程池按通道数稀释,换身份那条还要重新握手。
+     * OkHttp 允许共享这两者;Dispatcher 的并发上限也应由整个进程统一约束,而不是每个客户端各算一份。
+     */
+    private val connectionPool = ConnectionPool()
+    private val dispatcher = Dispatcher()
+
+    /**
+     * WEB 主通道客户端。
+     *
+     * @param buvid 访客身份来源;单例由 DI 提供,避免每条链各问一次 `/finger/spi`
+     * @param httpCache 可选响应缓存;传 null 表示不缓存(测试与特殊通道)
+     * @param customize 供特殊场景微调(保持追加语义,不破坏基础配置)
+     */
+    fun webClient(
+        buvid: HsyBuvidSource = SpiBuvid(),
+        httpCache: Cache? = null,
+        customize: OkHttpClient.Builder.() -> Unit = {},
+    ): OkHttpClient = baseBuilder()
+        .apply { httpCache?.let(::cache) }
+        .addInterceptor(HsyHeaderInterceptor(buvid))
         .apply(customize)
         .build()
 
@@ -39,9 +61,17 @@ object HsyHttpFactory {
      *
      * 那条拦截器的职责就是给 WEB 请求补身份,而补之前它得先问一次身份 ——
      * 若这条问话也过同一层拦截,就是自己叫自己,栈会一路长下去。所以问身份走这块裸的。
+     * 连接池与调度器仍与主通道共用:身份请求打的也是同一个 host,没有理由另起一份。
      */
-    fun buvidClient(): OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(Duration.ofSeconds(CONNECT_TIMEOUT_SEC))
+    fun buvidClient(): OkHttpClient = baseBuilder()
         .callTimeout(Duration.ofSeconds(BUVID_CALL_TIMEOUT_SEC))
         .build()
+
+    private fun baseBuilder(): OkHttpClient.Builder = OkHttpClient.Builder()
+        .connectionPool(connectionPool)
+        .dispatcher(dispatcher)
+        .connectTimeout(Duration.ofSeconds(CONNECT_TIMEOUT_SEC))
+        .readTimeout(Duration.ofSeconds(READ_TIMEOUT_SEC))
+        .writeTimeout(Duration.ofSeconds(WRITE_TIMEOUT_SEC))
+        .callTimeout(Duration.ofSeconds(CALL_TIMEOUT_SEC))
 }
