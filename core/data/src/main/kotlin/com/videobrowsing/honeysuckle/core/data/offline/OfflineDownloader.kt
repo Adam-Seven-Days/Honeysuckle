@@ -6,6 +6,7 @@ import com.videobrowsing.honeysuckle.core.data.playback.PlaybackRepository
 import com.videobrowsing.honeysuckle.core.model.DownloadTask
 import com.videobrowsing.honeysuckle.core.model.MediaTrack
 import com.videobrowsing.honeysuckle.core.model.PlaybackTrackSelector
+import com.videobrowsing.honeysuckle.core.network.client.HsyClientSource
 import com.videobrowsing.honeysuckle.core.network.headers.HsyChannel
 import com.videobrowsing.honeysuckle.core.network.headers.HsyHeaderFactory
 import java.io.File
@@ -13,7 +14,6 @@ import java.io.FileOutputStream
 import java.io.IOException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import okhttp3.OkHttpClient
 import okhttp3.Request
 
 /**
@@ -29,7 +29,7 @@ import okhttp3.Request
  * 实测不带这两样,部分节点会回 403。
  */
 internal class OfflineDownloader(
-    private val client: OkHttpClient,
+    private val client: HsyClientSource,
     private val playbackRepository: PlaybackRepository,
 ) {
 
@@ -96,7 +96,7 @@ internal class OfflineDownloader(
             .forEach { (name, value) -> builder.header(name, value) }
         if (existing > 0L) builder.header("Range", "bytes=$existing-")
 
-        client.newCall(builder.build()).execute().use { response ->
+        client.current().newCall(builder.build()).execute().use { response ->
             // 416 = 要的范围已经在文件末尾之外:文件其实已经完整,不必再下一次
             if (response.code == HTTP_RANGE_NOT_SATISFIABLE) return existing
             if (!response.isSuccessful) throw IOException("下载失败:HTTP ${response.code}")

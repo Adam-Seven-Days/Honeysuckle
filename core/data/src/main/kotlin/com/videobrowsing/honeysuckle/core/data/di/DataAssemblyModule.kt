@@ -12,12 +12,12 @@ import com.videobrowsing.honeysuckle.core.data.remote.SearchSuggestApi
 import com.videobrowsing.honeysuckle.core.data.remote.VideoSearchApi
 import com.videobrowsing.honeysuckle.core.data.remote.VideoViewApi
 import com.videobrowsing.honeysuckle.core.network.buvid.HsyBuvidSource
-import com.videobrowsing.honeysuckle.core.network.buvid.SpiBuvid
 import com.videobrowsing.honeysuckle.core.network.client.HsyBytesSource
 import com.videobrowsing.honeysuckle.core.network.client.HsyFormHttp
 import com.videobrowsing.honeysuckle.core.network.client.HsyFormHttpWithHeaders
 import com.videobrowsing.honeysuckle.core.network.client.HsyFormSource
 import com.videobrowsing.honeysuckle.core.network.client.HsyFormWithHeadersSource
+import com.videobrowsing.honeysuckle.core.network.client.HsyHttpClients
 import com.videobrowsing.honeysuckle.core.network.client.HsyHttpFactory
 import com.videobrowsing.honeysuckle.core.network.client.HsyJsonHttp
 import com.videobrowsing.honeysuckle.core.network.client.HsyJsonHttpWithHeaders
@@ -34,7 +34,6 @@ import dagger.hilt.components.SingletonComponent
 import java.io.File
 import javax.inject.Singleton
 import okhttp3.Cache
-import okhttp3.OkHttpClient
 
 /**
  * 数据层的装配:一块客户端 → 四类交换层(JSON / 带响应头 JSON / 表单 POST / 字节)→ 各裸接口。
@@ -59,18 +58,11 @@ object DataAssemblyModule {
     private const val HTTP_CACHE_BYTES = 20L * 1024 * 1024
 
     /**
-     * 访客身份单例。
+     * 网络栈单例:主通道 + 换身份通道。
      *
-     * 旧装配里 `HsyHeaderInterceptor()` 自己 new 了一个 `SpiBuvid`,而 `SpiBuvid` 又各建一块
-     * `buvidClient` —— 每条链各问一次身份、各起一个连接池。收到这里之后,整个进程只有一枚 buvid3,
-     * 启动期也只需要预热一次。
-     */
-    @Provides
-    @Singleton
-    fun provideBuvidSource(): HsyBuvidSource = SpiBuvid()
-
-    /**
-     * WEB 主通道。
+     * 装配顺序在持有者内部:先用裸通道建出访客身份,再用这份身份去装主通道 ——
+     * 主通道的拦截器要给每条请求补 buvid3,而补之前它得先问一次身份,
+     * 若这条问话也过同一层拦截,就是自己叫自己。连接池与调度器仍由工厂统一共享。
      *
      * 响应缓存只兜"平台明确允许缓存"的那部分(GET + 缓存头),不改变鉴权与写路径:
      * OkHttp 的 Cache 不缓存带 `Authorization` 的请求,写请求也不是 GET。
@@ -78,31 +70,40 @@ object DataAssemblyModule {
      */
     @Provides
     @Singleton
-    fun provideWebClient(buvid: HsyBuvidSource, @ApplicationContext context: Context): OkHttpClient =
-        HsyHttpFactory.webClient(
-            buvid = buvid,
-            httpCache = Cache(File(context.cacheDir, HTTP_CACHE_DIR), HTTP_CACHE_BYTES),
+    fun provideHttpClients(@ApplicationContext context: Context): HsyHttpClients {
+        val cache = Cache(File(context.cacheDir, HTTP_CACHE_DIR), HTTP_CACHE_BYTES)
+        return HsyHttpClients(
+            initialBuvidClient = HsyHttpFactory.buvidClient(),
+            buildWebClient = { buvid -> HsyHttpFactory.webClient(buvid = buvid, httpCache = cache) },
         )
+    }
+
+    /** 访客身份单例:整个进程只问一次 `/finger/spi`,启动期也只预热一次 */
+    @Provides
+    @Singleton
+    fun provideBuvidSource(clients: HsyHttpClients): HsyBuvidSource = clients.buvidSource
 
     @Provides
     @Singleton
-    fun provideJsonSource(client: OkHttpClient): HsyJsonSource = HsyJsonHttp(client)
+    fun provideJsonSource(clients: HsyHttpClients): HsyJsonSource = HsyJsonHttp(clients.web)
 
     @Provides
     @Singleton
-    fun provideJsonWithHeadersSource(client: OkHttpClient): HsyJsonWithHeadersSource = HsyJsonHttpWithHeaders(client)
+    fun provideJsonWithHeadersSource(clients: HsyHttpClients): HsyJsonWithHeadersSource =
+        HsyJsonHttpWithHeaders(clients.web)
 
     @Provides
     @Singleton
-    fun provideFormSource(client: OkHttpClient): HsyFormSource = HsyFormHttp(client)
+    fun provideFormSource(clients: HsyHttpClients): HsyFormSource = HsyFormHttp(clients.web)
 
     @Provides
     @Singleton
-    fun provideFormWithHeadersSource(client: OkHttpClient): HsyFormWithHeadersSource = HsyFormHttpWithHeaders(client)
+    fun provideFormWithHeadersSource(clients: HsyHttpClients): HsyFormWithHeadersSource =
+        HsyFormHttpWithHeaders(clients.web)
 
     @Provides
     @Singleton
-    fun provideBytesSource(client: OkHttpClient): HsyBytesSource = HsyRawHttp(client)
+    fun provideBytesSource(clients: HsyHttpClients): HsyBytesSource = HsyRawHttp(clients.web)
 
     @Provides
     @Singleton

@@ -50,6 +50,7 @@ private val KEY_DOWNLOAD_QUALITY = stringPreferencesKey("app.downloadQuality")
 private val KEY_HOME_LAYOUT = stringPreferencesKey("app.homeLayout")
 private val KEY_REMEMBER_BRIGHTNESS = booleanPreferencesKey("app.rememberBrightness")
 private val KEY_REMEMBERED_BRIGHTNESS = floatPreferencesKey("app.rememberedBrightness")
+private val KEY_HTTP2_ENABLED = booleanPreferencesKey("app.http2Enabled")
 
 /** 旧版"中间三格一起关"的键:只读不写,给已经关过三格的用户迁移用 */
 private val KEY_MIDDLE_TABS_VISIBLE_LEGACY = booleanPreferencesKey("app.middleTabsVisible")
@@ -278,6 +279,10 @@ class AppPreferenceRepository @Inject constructor(@GeneralStore private val data
         dataStore.edit { it[KEY_REMEMBERED_BRIGHTNESS] = brightness.coerceRememberedBrightness() }
     }
 
+    override suspend fun setHttp2Enabled(enabled: Boolean) {
+        dataStore.edit { it[KEY_HTTP2_ENABLED] = enabled }
+    }
+
     override suspend fun resetAppearanceHome() = resetKeys(GROUP_APPEARANCE_HOME)
 
     override suspend fun resetNavigation() = resetKeys(GROUP_NAVIGATION)
@@ -371,6 +376,7 @@ internal fun Preferences.toAppPreferences(): AppPreferences = AppPreferences(
     rememberBrightnessEnabled = this[KEY_REMEMBER_BRIGHTNESS] ?: AppPreferences.DEFAULT_REMEMBER_BRIGHTNESS_ENABLED,
     rememberedBrightness = (this[KEY_REMEMBERED_BRIGHTNESS] ?: AppPreferences.DEFAULT_REMEMBERED_BRIGHTNESS)
         .coerceRememberedBrightness(),
+    http2Enabled = this[KEY_HTTP2_ENABLED] ?: AppPreferences.DEFAULT_HTTP2_ENABLED,
 )
 
 /** 三格的读序:自己的新键 → 旧版"三格总开关" → 默认(全开) */

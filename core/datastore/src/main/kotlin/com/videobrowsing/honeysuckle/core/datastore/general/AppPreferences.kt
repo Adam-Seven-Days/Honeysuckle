@@ -112,6 +112,13 @@ data class AppPreferences(
      * 也不会替用户动系统设置。
      */
     val rememberedBrightness: Float = DEFAULT_REMEMBERED_BRIGHTNESS,
+    /**
+     * 网络协议档:开启时整条 OkHttp 通道优先 HTTP/2(服务端不支持时回落 HTTP/1.1),
+     * 关闭时只用 HTTP/1.1。默认开。
+     *
+     * 它管的是接口、图床与离线下载;视频播放走播放器内核自己的 HTTP 栈,不受这把键约束。
+     */
+    val http2Enabled: Boolean = DEFAULT_HTTP2_ENABLED,
 ) {
     companion object {
         /** 与弹幕那块盘同一个口径:空串不是档名,是"没设过"(定义在 `TIER_ID_UNSET`) */
@@ -153,6 +160,9 @@ data class AppPreferences(
         const val DEFAULT_WIFI_ONLY_DOWNLOAD = true
         const val DEFAULT_BACKGROUND_PLAY_ENABLED = true
         const val DEFAULT_REMEMBER_BRIGHTNESS_ENABLED = false
+
+        /** 网络协议档默认开:优先 HTTP/2,谈不成 h2 的节点仍回落 HTTP/1.1 */
+        const val DEFAULT_HTTP2_ENABLED = true
 
         /** 还没记过亮度:`-1f` 与 Android 窗口亮度"跟着系统走"是同一个取值,不必再翻一层 */
         const val DEFAULT_REMEMBERED_BRIGHTNESS = -1f

@@ -4,7 +4,6 @@ import com.videobrowsing.honeysuckle.core.common.AppError
 import com.videobrowsing.honeysuckle.core.common.HsyResult
 import java.io.IOException
 import okhttp3.HttpUrl
-import okhttp3.OkHttpClient
 import okhttp3.Request
 
 /** 字节数据源抽象:protobuf 分片走这里,业务只依赖这个接口 */
@@ -26,12 +25,12 @@ interface HsyBytesSource {
  *
  * 弹幕分片是幂等 GET:换片/seek 取消收集时,底层请求随协程一起取消;瞬时 5xx 会退避重试。
  */
-class HsyRawHttp(private val client: OkHttpClient) : HsyBytesSource {
+class HsyRawHttp(private val client: HsyClientSource) : HsyBytesSource {
 
     override suspend fun getBytes(url: HttpUrl): HsyResult<ByteArray> {
         val request = Request.Builder().url(url).get().build()
         return try {
-            client.awaitGet(request).use { response ->
+            client.current().awaitGet(request).use { response ->
                 if (!response.isSuccessful && response.code != HTTP_NOT_MODIFIED) {
                     return@use HsyResult.Failure(AppError.Server(response.code, response.message))
                 }

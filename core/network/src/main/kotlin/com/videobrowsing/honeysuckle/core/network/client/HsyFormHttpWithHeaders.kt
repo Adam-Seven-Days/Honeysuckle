@@ -9,7 +9,6 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.decodeFromStream
 import okhttp3.FormBody
 import okhttp3.HttpUrl
-import okhttp3.OkHttpClient
 import okhttp3.Request
 
 interface HsyFormWithHeadersSource {
@@ -22,7 +21,7 @@ interface HsyFormWithHeadersSource {
  * 账号密码登录与扫码轮询一样,凭证只在 `Set-Cookie` 上出现;普通的 [HsyFormSource]
  * 交不出响应头,所以单开这一层。错误归一化与 [HsyFormHttp] 保持同一条线。
  */
-class HsyFormHttpWithHeaders(private val client: OkHttpClient, private val json: Json = HsyJson) :
+class HsyFormHttpWithHeaders(private val client: HsyClientSource, private val json: Json = HsyJson) :
     HsyFormWithHeadersSource {
 
     override suspend fun postFormWithHeaders(url: HttpUrl, fields: Map<String, String>): HsyResult<HsyJsonResponse> {
@@ -31,7 +30,7 @@ class HsyFormHttpWithHeaders(private val client: OkHttpClient, private val json:
         }.build()
         val request = Request.Builder().url(url).post(form).build()
         return try {
-            client.awaitResponse(request).use { response ->
+            client.current().awaitResponse(request).use { response ->
                 if (!response.isSuccessful) {
                     return@use HsyResult.Failure(AppError.Server(response.code, response.message))
                 }

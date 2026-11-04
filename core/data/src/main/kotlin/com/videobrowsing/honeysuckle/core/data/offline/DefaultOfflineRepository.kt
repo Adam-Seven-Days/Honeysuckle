@@ -7,6 +7,7 @@ import com.videobrowsing.honeysuckle.core.model.DownloadRequest
 import com.videobrowsing.honeysuckle.core.model.DownloadState
 import com.videobrowsing.honeysuckle.core.model.DownloadTask
 import com.videobrowsing.honeysuckle.core.model.OfflineSource
+import com.videobrowsing.honeysuckle.core.network.client.HsyHttpClients
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.io.IOException
@@ -25,7 +26,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
 
 /**
  * [OfflineRepository] 的实现:应用私有目录 + 内存任务表 + 一条前台下载协程。
@@ -40,13 +40,13 @@ import okhttp3.OkHttpClient
 class DefaultOfflineRepository @Inject constructor(
     @ApplicationContext context: Context,
     playbackRepository: PlaybackRepository,
-    client: OkHttpClient,
+    clients: HsyHttpClients,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
 ) : OfflineRepository {
 
     private val root = OfflineFiles.root(context.filesDir)
     private val index = OfflineIndex(File(root, OfflineFiles.INDEX))
-    private val downloader = OfflineDownloader(client, playbackRepository)
+    private val downloader = OfflineDownloader(clients.web, playbackRepository)
 
     private val scope = CoroutineScope(SupervisorJob() + ioDispatcher)
     private val jobs = java.util.concurrent.ConcurrentHashMap<String, Job>()

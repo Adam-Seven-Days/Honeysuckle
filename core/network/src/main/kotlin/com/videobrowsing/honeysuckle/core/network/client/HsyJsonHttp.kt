@@ -8,7 +8,6 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.decodeFromStream
 import okhttp3.HttpUrl
-import okhttp3.OkHttpClient
 import okhttp3.Request
 
 /** JSON 数据源抽象:业务只依赖这个接口,换实现不必动网络栈 */
@@ -31,12 +30,12 @@ val HsyJson: Json = Json { ignoreUnknownKeys = true }
  * 错误归一化:任何异常收敛为 [AppError],UI 层拿到的是错误分类而非原始栈。
  * 仅读 GET;写行为(投币/评论/弹幕)必须由用户显式触发,走另一条链路。
  */
-class HsyJsonHttp(private val client: OkHttpClient, private val json: Json = HsyJson) : HsyJsonSource {
+class HsyJsonHttp(private val client: HsyClientSource, private val json: Json = HsyJson) : HsyJsonSource {
 
     override suspend fun getJson(url: HttpUrl): HsyResult<JsonElement> {
         val request = Request.Builder().url(url).get().build()
         return try {
-            client.awaitGet(request).use { response ->
+            client.current().awaitGet(request).use { response ->
                 if (!response.isSuccessful) {
                     return@use HsyResult.Failure(AppError.Server(response.code, response.message))
                 }

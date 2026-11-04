@@ -9,7 +9,6 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.decodeFromStream
 import okhttp3.Headers
 import okhttp3.HttpUrl
-import okhttp3.OkHttpClient
 import okhttp3.Request
 
 /** 一次带响应头的 JSON 取回;登录轮询要靠 `Set-Cookie` 那一组头补全会话 */
@@ -28,13 +27,13 @@ interface HsyJsonWithHeadersSource {
  *
  * 扫码轮询是反复 GET,取消必须能真的停掉:用户关掉登录页后,不该还有一条请求在后台轮询。
  */
-class HsyJsonHttpWithHeaders(private val client: OkHttpClient, private val json: Json = HsyJson) :
+class HsyJsonHttpWithHeaders(private val client: HsyClientSource, private val json: Json = HsyJson) :
     HsyJsonWithHeadersSource {
 
     override suspend fun getJsonWithHeaders(url: HttpUrl): HsyResult<HsyJsonResponse> {
         val request = Request.Builder().url(url).get().build()
         return try {
-            client.awaitGet(request).use { response ->
+            client.current().awaitGet(request).use { response ->
                 if (!response.isSuccessful) {
                     return@use HsyResult.Failure(AppError.Server(response.code, response.message))
                 }

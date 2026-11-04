@@ -1,5 +1,6 @@
 package com.videobrowsing.honeysuckle.core.network.buvid
 
+import com.videobrowsing.honeysuckle.core.network.client.HsyClientSource
 import com.videobrowsing.honeysuckle.core.network.client.HsyHttpFactory
 import com.videobrowsing.honeysuckle.core.network.client.HsyJson
 import com.videobrowsing.honeysuckle.core.network.headers.HsyChannel
@@ -10,7 +11,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import okhttp3.OkHttpClient
 import okhttp3.Request
 
 /**
@@ -39,8 +39,10 @@ interface HsyBuvidSource {
  *
  * 换身份用的是 [HsyHttpFactory.buvidClient] 那块**裸客户端**:它不挂指纹头拦截器,
  * 否则"拦截器为了发请求先要 buvid → 要 buvid 又得发一条会过拦截器的请求"就自递归了。
+ * 客户端从 [HsyClientSource] 现取而不是构造时抓死:设置页切换协议档后,下一次取身份也会跟着换。
  */
-class SpiBuvid(private val client: OkHttpClient = HsyHttpFactory.buvidClient()) : HsyBuvidSource {
+class SpiBuvid(private val client: HsyClientSource = HsyClientSource { HsyHttpFactory.buvidClient() }) :
+    HsyBuvidSource {
 
     @Volatile
     private var cached: String? = null
@@ -69,7 +71,7 @@ class SpiBuvid(private val client: OkHttpClient = HsyHttpFactory.buvidClient()) 
             }
             .get()
             .build()
-        client.newCall(request).execute().use { response ->
+        client.current().newCall(request).execute().use { response ->
             if (!response.isSuccessful) return null
             val data = (HsyJson.parseToJsonElement(response.body?.string().orEmpty()) as? JsonObject)
                 ?.get("data") as? JsonObject

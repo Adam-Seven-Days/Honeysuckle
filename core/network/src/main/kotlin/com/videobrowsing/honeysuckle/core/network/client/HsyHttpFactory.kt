@@ -8,6 +8,7 @@ import okhttp3.Cache
 import okhttp3.ConnectionPool
 import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
 
 /**
  * OkHttp 客户端工厂:
@@ -66,6 +67,15 @@ object HsyHttpFactory {
     fun buvidClient(): OkHttpClient = baseBuilder()
         .callTimeout(Duration.ofSeconds(BUVID_CALL_TIMEOUT_SEC))
         .build()
+
+    /**
+     * 协议档:开启时优先 HTTP/2,关闭时只用 HTTP/1.1。
+     *
+     * 开启档仍留着 HTTP/1.1 作回落:强制只留 `HTTP_2` 会让任何谈不成 ALPN h2 的节点直接失败,
+     * 而这条链上既有 API 也有图床与下载 CDN,不可能保证每一台都支持 h2。
+     */
+    fun protocols(http2Enabled: Boolean): List<Protocol> =
+        if (http2Enabled) listOf(Protocol.HTTP_2, Protocol.HTTP_1_1) else listOf(Protocol.HTTP_1_1)
 
     private fun baseBuilder(): OkHttpClient.Builder = OkHttpClient.Builder()
         .connectionPool(connectionPool)

@@ -20,6 +20,7 @@ import com.videobrowsing.honeysuckle.core.designsystem.theme.Hsy
 import com.videobrowsing.honeysuckle.core.designsystem.theme.HsyAccent
 import com.videobrowsing.honeysuckle.core.designsystem.theme.HsyThemeMode
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Icon
+import com.videobrowsing.honeysuckle.core.designsystem.ui.Switch
 import com.videobrowsing.honeysuckle.core.model.CommentSort
 import com.videobrowsing.honeysuckle.core.model.HomeFeedSource
 import com.videobrowsing.honeysuckle.core.model.HomeLayout
@@ -29,7 +30,7 @@ import com.videobrowsing.honeysuckle.core.player.danmaku.DanmakuDensity
 import com.videobrowsing.honeysuckle.core.player.danmaku.DanmakuSpeed
 
 /**
- * 设置首页:只摆五行入口,每一行把盘上现状折成一句副题。
+ * 设置首页:五组入口、一张网络卡片,每一行把盘上现状折成一句副题。
  *
  * 为什么拆两层:一个页面里同时塞滑条、胶囊、开关和输入框,用户改完"主题"要滑半屏才看见"屏蔽词";
  * 而入口行的副题让"不点进去也知道现在是深色还是跟随系统"。
@@ -93,6 +94,8 @@ fun SettingsScreen(
                 onClick = { onOpenSection(SettingsSection.COMMENTS) },
             )
         }
+
+        NetworkCard(state.app, onAction = viewModel::onAction)
 
         HsySectionCard(title = "本机") {
             SettingsEntry(
@@ -181,4 +184,33 @@ private fun commentLine(app: AppPreferences): String {
     val like = if (app.commentLikeReadOnly) "点赞只读" else "点赞可点"
     val replies = if (app.replyLikesVisible) "回复可赞" else "回复不摆点赞"
     return "排序$sort · $like · $replies"
+}
+
+/**
+ * 网络协议档。
+ *
+ * 只装一行也单独成卡:它不是任何一组设置的一部分,塞进「通用」会让"恢复本组默认"的语义变得含糊;
+ * 而它又只有这一项,再开一层二级页等于让用户多点一下。
+ *
+ * 副题如实说明覆盖范围:开关管的是 OkHttp 这条通道(接口、图床、离线下载),
+ * 视频播放走播放器内核自己的 HTTP 栈,由内核与服务端协商,不受这里约束。
+ */
+@Composable
+private fun NetworkCard(app: AppPreferences, onAction: (SettingsAction) -> Unit) {
+    HsySectionCard(title = "网络") {
+        HsySettingRow(
+            title = "使用 HTTP/2",
+            supporting = if (app.http2Enabled) {
+                "接口、图床与下载优先走 HTTP/2,服务端不支持时自动回落 HTTP/1.1;视频播放由播放器内核自行协商"
+            } else {
+                "接口、图床与下载只用 HTTP/1.1;视频播放由播放器内核自行协商"
+            },
+            trailing = {
+                Switch(
+                    checked = app.http2Enabled,
+                    onCheckedChange = { onAction(SettingsAction.Http2Enabled(it)) },
+                )
+            },
+        )
+    }
 }

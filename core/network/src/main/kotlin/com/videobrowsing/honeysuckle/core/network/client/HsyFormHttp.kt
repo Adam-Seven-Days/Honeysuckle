@@ -9,7 +9,6 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.decodeFromStream
 import okhttp3.FormBody
 import okhttp3.HttpUrl
-import okhttp3.OkHttpClient
 import okhttp3.Request
 
 /**
@@ -32,7 +31,7 @@ interface HsyFormSource {
  * 写操作**不做自动重试**:一次超时并不代表服务端没收到,重发可能变成两笔业务。
  * 取消仍会打断底层 call,避免用户已经离开后还占着连接。
  */
-class HsyFormHttp(private val client: OkHttpClient, private val json: Json = HsyJson) : HsyFormSource {
+class HsyFormHttp(private val client: HsyClientSource, private val json: Json = HsyJson) : HsyFormSource {
 
     override suspend fun postForm(url: HttpUrl, fields: Map<String, String>): HsyResult<JsonElement> {
         val form = FormBody.Builder().apply {
@@ -40,7 +39,7 @@ class HsyFormHttp(private val client: OkHttpClient, private val json: Json = Hsy
         }.build()
         val request = Request.Builder().url(url).post(form).build()
         return try {
-            client.awaitResponse(request).use { response ->
+            client.current().awaitResponse(request).use { response ->
                 if (!response.isSuccessful) {
                     return@use HsyResult.Failure(AppError.Server(response.code, response.message))
                 }

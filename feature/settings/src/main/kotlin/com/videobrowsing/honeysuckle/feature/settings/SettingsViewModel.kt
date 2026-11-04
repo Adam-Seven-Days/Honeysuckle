@@ -98,6 +98,9 @@ sealed interface SettingsAction {
     data class HomeLayout(val storageId: String) : SettingsAction
     data class RememberBrightness(val enabled: Boolean) : SettingsAction
 
+    /** 网络协议档:true = 优先 HTTP/2,false = 只用 HTTP/1.1 */
+    data class Http2Enabled(val enabled: Boolean) : SettingsAction
+
     /** 弹幕三格类型各自画不画 */
     data class DanmakuScrollVisible(val visible: Boolean) : SettingsAction
     data class DanmakuTopVisible(val visible: Boolean) : SettingsAction
@@ -252,6 +255,8 @@ class SettingsViewModel @Inject constructor(
             is SettingsAction.ReplyLikesVisible,
             is SettingsAction.CommentSort,
             -> writeComment(action)
+
+            is SettingsAction.Http2Enabled -> appPreferences.setHttp2Enabled(action.enabled)
 
             else -> Unit
         }
