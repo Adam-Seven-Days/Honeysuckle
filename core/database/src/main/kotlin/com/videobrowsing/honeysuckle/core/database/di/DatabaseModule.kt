@@ -3,7 +3,6 @@ package com.videobrowsing.honeysuckle.core.database.di
 import android.content.Context
 import androidx.room.Room
 import com.videobrowsing.honeysuckle.core.database.HsyDatabase
-import com.videobrowsing.honeysuckle.core.database.favorite.FavoriteDao
 import com.videobrowsing.honeysuckle.core.database.history.HistoryDao
 import com.videobrowsing.honeysuckle.core.database.search.SearchHistoryDao
 import dagger.Module
@@ -35,7 +34,4 @@ object DatabaseModule {
 
     @Provides
     fun provideSearchHistoryDao(database: HsyDatabase): SearchHistoryDao = database.searchHistoryDao()
-
-    @Provides
-    fun provideFavoriteDao(database: HsyDatabase): FavoriteDao = database.favoriteDao()
 }

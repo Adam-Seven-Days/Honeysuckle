@@ -338,6 +338,7 @@ private fun DetailFeed(
                     viewModel = comments.viewModel,
                     onOpenLogin = intents.onOpenLogin,
                     onOpenSpace = intents.onOpenSpace,
+                    onOpenThread = intents.onOpenThread,
                 )
             }
         }
@@ -424,6 +425,7 @@ private fun WideDetailFeed(
                 viewModel = comments.viewModel,
                 onOpenLogin = intents.onOpenLogin,
                 onOpenSpace = intents.onOpenSpace,
+                onOpenThread = intents.onOpenThread,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
             )
         }

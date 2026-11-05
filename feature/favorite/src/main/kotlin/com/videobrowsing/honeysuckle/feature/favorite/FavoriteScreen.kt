@@ -21,7 +21,8 @@ import com.videobrowsing.honeysuckle.core.model.FavoriteItem
 /**
  * 收藏管理页(收藏夹管理)。
  *
- * 两段并排:**本地收藏**断网与游客态都看得见;平台收藏夹要有登录态才列得出来。
+ * 夹列表与夹内条目都直接读账号:本机不留收藏副本,所以游客这一页只有扫码引导,
+ * 断网时这一页读不出东西 —— 少了"两本账要对齐"这一整类问题。
  * 夹内列表是同一屏的第二种形态(不是另一个路由),因为"返回"在这里的含义是"退回夹列表",
  * 与从本页退回上级不是一回事 —— 两种动作各占一个 BackHandler 分支。
  */
@@ -62,7 +63,6 @@ fun FavoriteScreen(
             FolderList(
                 state = state,
                 onAction = viewModel::onAction,
-                onOpenVideo = onOpenVideo,
                 onOpenLogin = onOpenLogin,
                 modifier = Modifier.weight(1f),
             )

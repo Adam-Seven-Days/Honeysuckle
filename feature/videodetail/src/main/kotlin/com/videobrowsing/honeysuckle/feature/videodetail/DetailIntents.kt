@@ -19,6 +19,7 @@ internal class DetailIntents(
     val onOpenVideo: (String) -> Unit,
     val onOpenSpace: (Long) -> Unit,
     val onOpenLogin: () -> Unit,
+    val onOpenThread: (aid: Long, rootId: Long, upMid: Long) -> Unit,
 )
 
 /**
@@ -41,5 +42,6 @@ internal fun rememberDetailIntents(
         onOpenVideo = callbacks.onOpenVideo,
         onOpenSpace = callbacks.onOpenSpace,
         onOpenLogin = callbacks.onOpenLogin,
+        onOpenThread = callbacks.onOpenThread,
     )
 }

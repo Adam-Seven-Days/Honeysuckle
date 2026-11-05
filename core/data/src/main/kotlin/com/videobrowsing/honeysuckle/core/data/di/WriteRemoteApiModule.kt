@@ -4,6 +4,7 @@ import com.videobrowsing.honeysuckle.core.data.remote.CommentApi
 import com.videobrowsing.honeysuckle.core.data.remote.DanmakuPostApi
 import com.videobrowsing.honeysuckle.core.data.remote.FavoriteApi
 import com.videobrowsing.honeysuckle.core.data.remote.RelationApi
+import com.videobrowsing.honeysuckle.core.data.remote.WatchLaterApi
 import com.videobrowsing.honeysuckle.core.network.client.HsyFormSource
 import com.videobrowsing.honeysuckle.core.network.client.HsyJsonSource
 import dagger.Module
@@ -35,4 +36,8 @@ object WriteRemoteApiModule {
     @Provides
     fun provideFavoriteApi(jsonSource: HsyJsonSource, formSource: HsyFormSource): FavoriteApi =
         FavoriteApi(jsonSource, formSource)
+
+    @Provides
+    fun provideWatchLaterApi(jsonSource: HsyJsonSource, formSource: HsyFormSource): WatchLaterApi =
+        WatchLaterApi(jsonSource, formSource)
 }

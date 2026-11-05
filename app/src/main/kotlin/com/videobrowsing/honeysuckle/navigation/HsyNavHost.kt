@@ -46,6 +46,7 @@ import com.videobrowsing.honeysuckle.feature.dynamic.ARTICLE_ID_ARG
 import com.videobrowsing.honeysuckle.feature.dynamic.ArticleScreen
 import com.videobrowsing.honeysuckle.feature.dynamic.DynamicScreen
 import com.videobrowsing.honeysuckle.feature.favorite.FavoriteScreen
+import com.videobrowsing.honeysuckle.feature.favorite.WatchLaterScreen
 import com.videobrowsing.honeysuckle.feature.history.HistoryScreen
 import com.videobrowsing.honeysuckle.feature.home.HomeScreen
 import com.videobrowsing.honeysuckle.feature.live.LIVE_ROOM_ID_ARG
@@ -64,26 +65,13 @@ import com.videobrowsing.honeysuckle.feature.space.SPACE_MID_ARG
 import com.videobrowsing.honeysuckle.feature.space.SpaceScreen
 import com.videobrowsing.honeysuckle.feature.user.MineScreen
 import com.videobrowsing.honeysuckle.feature.user.MineViewModel
+import com.videobrowsing.honeysuckle.feature.videodetail.CommentThreadScreen
+import com.videobrowsing.honeysuckle.feature.videodetail.THREAD_AID_ARG
+import com.videobrowsing.honeysuckle.feature.videodetail.THREAD_ROOT_ARG
+import com.videobrowsing.honeysuckle.feature.videodetail.THREAD_UP_MID_ARG
 import com.videobrowsing.honeysuckle.feature.videodetail.VIDEO_BVID_ARG
 import com.videobrowsing.honeysuckle.feature.videodetail.VideoDetailCallbacks
 import com.videobrowsing.honeysuckle.feature.videodetail.VideoDetailScreen
-
-/** 底栏五个顶层:只有真能开的屏才进这条栏;中间三格按设置各自取舍 */
-private val TOP_LEVEL_TABS = listOf(
-    HsyRoute.HOME to Tab("首页", HsyIcons.home),
-    HsyRoute.DYNAMIC to Tab("动态", HsyIcons.list),
-    HsyRoute.LIVE to Tab("直播", HsyIcons.play),
-    HsyRoute.ANIME to Tab("番剧", HsyIcons.calendar),
-    HsyRoute.MINE to Tab("我的", HsyIcons.person),
-)
-
-private data class Tab(val label: String, val icon: ImageVector)
-
-/**
- * 底栏这份清单同时是过渡的判据:两端都在栏上 = 顶层之间来回(走淡化),否则是压在栈上的二三级页(走推入)。
- * 与 [TOP_LEVEL_TABS] 同源,免得"栏上有格子"和"来回算哪一档"记成两份。
- */
-internal val TOP_LEVEL_ROUTES: Set<String> = TOP_LEVEL_TABS.map { (route, _) -> route }.toSet()
 
 /**
  * 全局导航图。
@@ -109,6 +97,8 @@ fun HsyNavHost(
     val currentEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentEntry?.destination?.route
     val onVideoRoute = currentRoute?.startsWith(VIDEO_ROUTE_PREFIX) == true
+    // 楼中楼页是这一支视频评论区的上一层:小窗压在它脚下会把输入框整个盖住,而这里回播放就是按返回
+    val miniBarHidden = onVideoRoute || currentRoute?.startsWith(THREAD_ROUTE_PREFIX) == true
     // 设置里三个开关管的就是中间这三条;首页与我的永远在场
     val tabs = visibleTabs(tabVisibility)
     val showTabs = !inPip && tabs.any { it.first == currentRoute }
@@ -138,7 +128,6 @@ fun HsyNavHost(
     // 两种壳层共用同一束回调:画中画关着时手动入口直接为 null,详情页据此收起按钮
     val shell = ShellCallbacks(
         inPip = inPip,
-        onVideoRouteChanged = onVideoRouteChanged,
         onEnterPip = onEnterPip.takeIf { pipEnabled },
         pipEnabled = pipEnabled,
         stageFullscreen = stageFullscreen,
@@ -158,7 +147,7 @@ fun HsyNavHost(
             }
             Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
                 Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                    HsyGraph(navController, engine, onVideoRoute, NavActions(openVideo, openSpace), shell)
+                    HsyGraph(navController, engine, miniBarHidden, NavActions(openVideo, openSpace), shell)
                 }
                 if (!wide && showTabs) HsyTabBar(tabs, currentRoute) { navController.switchTab(it) }
             }
@@ -169,7 +158,6 @@ fun HsyNavHost(
 /** 壳层替导航图转交的窗口状态与回调:收成一束,免得 HsyGraph 的参数越加越长 */
 private class ShellCallbacks(
     val inPip: Boolean,
-    val onVideoRouteChanged: (Boolean) -> Unit,
     /** null = 画中画已关,详情页不摆手动入口 */
     val onEnterPip: (() -> Unit)?,
     val pipEnabled: Boolean,
@@ -196,18 +184,17 @@ private fun visibleTabs(visibility: TabVisibility): List<Pair<String, Tab>> = TO
  *
  * 窄屏放在带底栏的 Scaffold 里、宽屏放在侧栏右边:两处的边距由各自的壳层给,
  * 这一层只管"内容画哪一屏",所以两种窗口形态共用同一份目的地表。
+ *
+ * [miniBarHidden] 由壳层算好:小窗是浮在内容上的,凡是脚下要有输入框或播放器的页面都得给它让位。
  */
 @Composable
 private fun HsyGraph(
     navController: NavHostController,
     engine: PlaybackEngine,
-    onVideoRoute: Boolean,
+    miniBarHidden: Boolean,
     nav: NavActions,
     shell: ShellCallbacks,
 ) {
-    // 壳层不替系统做决定,只把"现在是不是详情页"这一格交出去:按 Home 时进不进画中画由 Activity 判
-    LaunchedEffect(onVideoRoute) { shell.onVideoRouteChanged(onVideoRoute) }
-
     Box(modifier = Modifier.fillMaxSize()) {
         val context = LocalContext.current
         NavHost(
@@ -224,7 +211,7 @@ private fun HsyGraph(
             tabDestinations(navController, nav.openVideo, nav.openSpace)
             pushedDestinations(navController, nav, shell)
         }
-        if (shell.pipEnabled && !shell.inPip && !onVideoRoute) {
+        if (shell.pipEnabled && !shell.inPip && !miniBarHidden) {
             PlaybackMiniBar(
                 engine = engine,
                 onOpen = nav.openVideo,
@@ -237,6 +224,9 @@ private fun HsyGraph(
 }
 
 private const val VIDEO_ROUTE_PREFIX = "video/"
+
+/** 楼中楼页:同一支视频的评论区再往上一层,脚下要留输入框,小窗同样得让位 */
+private const val THREAD_ROUTE_PREFIX = "comment-thread/"
 
 /** 底栏五个顶层的家:首页 / 动态 / 直播 / 番剧 / 我的 */
 private fun NavGraphBuilder.tabDestinations(
@@ -321,6 +311,9 @@ private fun NavGraphBuilder.pushedDestinations(
                 onOpenVideo = openVideo,
                 onOpenSpace = openSpace,
                 onOpenLogin = { navController.navigate(HsyRoute.LOGIN) },
+                onOpenThread = { aid, rootId, upMid ->
+                    navController.navigate(HsyRoute.commentThread(aid, rootId, upMid))
+                },
                 onEnterPip = shell.onEnterPip,
             ),
             inPip = shell.inPip,
@@ -328,7 +321,32 @@ private fun NavGraphBuilder.pushedDestinations(
             onFullscreenChange = shell.onStageFullscreen,
         )
     }
+    commentThreadDestination(navController, openSpace)
     extendedDestinations(navController, openVideo)
+}
+
+/**
+ * 某一楼的楼中楼页:压在详情页之上,返回回评论区原来那一屏。
+ *
+ * 三个参数都进路由而不是从上一页的内存里取 —— 进程被系统回收后重建这一屏时,
+ * 只有路由上的数还认得"哪一楼"。
+ */
+private fun NavGraphBuilder.commentThreadDestination(navController: NavHostController, openSpace: (Long) -> Unit) {
+    composable(
+        route = HsyRoute.COMMENT_THREAD_PATTERN,
+        arguments = listOf(
+            navArgument(THREAD_AID_ARG) { type = NavType.LongType },
+            navArgument(THREAD_ROOT_ARG) { type = NavType.LongType },
+            navArgument(THREAD_UP_MID_ARG) { type = NavType.LongType },
+        ),
+    ) {
+        CommentThreadScreen(
+            viewModel = hiltViewModel(),
+            onBack = { navController.popBackStack() },
+            onOpenLogin = { navController.navigate(HsyRoute.LOGIN) },
+            onOpenSpace = openSpace,
+        )
+    }
 }
 
 /** 扩展屏的二级页:直播间 / 番剧详情 / UP 主空间(从各处深入,返回回上一页) */
@@ -376,7 +394,7 @@ private fun NavGraphBuilder.extendedDestinations(navController: NavHostControlle
     }
 }
 
-/** 管理类二三级页(历史 / 收藏 / 设置 / 缓存 / 关于):它们只从「我的」或设置页深入,与播放链无关 */
+/** 管理类二三级页(历史 / 收藏与稍后再看 / 设置 / 缓存 / 关于):它们只从「我的」或设置页深入,与播放链无关 */
 private fun NavGraphBuilder.managementDestinations(navController: NavHostController, openVideo: (String) -> Unit) {
     composable(HsyRoute.HISTORY) {
         HistoryScreen(
@@ -385,14 +403,7 @@ private fun NavGraphBuilder.managementDestinations(navController: NavHostControl
             onOpenVideo = openVideo,
         )
     }
-    composable(HsyRoute.FAVORITES) {
-        FavoriteScreen(
-            viewModel = hiltViewModel(),
-            onBack = { navController.popBackStack() },
-            onOpenVideo = openVideo,
-            onOpenLogin = { navController.navigate(HsyRoute.LOGIN) },
-        )
-    }
+    collectionDestinations(navController, openVideo)
     composable(HsyRoute.SETTINGS) {
         SettingsScreen(
             viewModel = hiltViewModel(),
@@ -434,47 +445,32 @@ private fun NavGraphBuilder.managementDestinations(navController: NavHostControl
 }
 
 /**
- * 宽屏侧栏。
+ * 账号名下那两份清单:收藏夹与稍后再看。
  *
- * 与底栏共用同一份格子表 [tabs]:加一个顶层目的地只改一处。宽屏上它常驻,
- * 详情/搜索这些压在栈上的页也留着 —— 平板横向空间够,导航突然消失反而让人以为退回了另一套界面。
+ * 两页都在 `:feature:favorite` 里,都是账号在平台上的清单(本机不留副本),都要给游客留一条进扫码页的路,
+ * 所以摆在一起注册 —— 第三份清单要加的时候,照这一处抄就够。
  */
-@Composable
-private fun HsyNavRail(tabs: List<Pair<String, Tab>>, currentRoute: String?, onSelect: (String) -> Unit) {
-    NavigationRail {
-        tabs.forEach { (route, tab) ->
-            NavigationRailItem(
-                selected = currentRoute == route,
-                onClick = { onSelect(route) },
-                icon = { Icon(imageVector = tab.icon, contentDescription = null) },
-                label = { Text(tab.label) },
-            )
-        }
+private fun NavGraphBuilder.collectionDestinations(navController: NavHostController, openVideo: (String) -> Unit) {
+    composable(HsyRoute.WATCH_LATER) {
+        WatchLaterScreen(
+            viewModel = hiltViewModel(),
+            onBack = { navController.popBackStack() },
+            onOpenVideo = openVideo,
+            onOpenLogin = { navController.navigate(HsyRoute.LOGIN) },
+        )
+    }
+    composable(HsyRoute.FAVORITES) {
+        FavoriteScreen(
+            viewModel = hiltViewModel(),
+            onBack = { navController.popBackStack() },
+            onOpenVideo = openVideo,
+            onOpenLogin = { navController.navigate(HsyRoute.LOGIN) },
+        )
     }
 }
 
 /** Material 的 medium 断点:再窄就不够"内容 + 一条侧栏"并排 */
 private val WIDE_BREAKPOINT = 600.dp
-
-/**
- * 底部那条栏。
- *
- * 单独拆出来不只为省行数:它只认传进来的格子表(由 [TOP_LEVEL_TABS] 过滤),所以"屏能开"与"栏上有格子"
- * 天然是同一件事 —— 加一个目的地时改一处,不会出现栏上有格子、点了却没有目的地的中间态。
- */
-@Composable
-private fun HsyTabBar(tabs: List<Pair<String, Tab>>, currentRoute: String?, onSelect: (String) -> Unit) {
-    NavigationBar {
-        tabs.forEach { (route, tab) ->
-            NavigationBarItem(
-                selected = currentRoute == route,
-                onClick = { onSelect(route) },
-                icon = { Icon(imageVector = tab.icon, contentDescription = null) },
-                label = { Text(tab.label) },
-            )
-        }
-    }
-}
 
 /**
  * 顶层 tab 之间来回切,而不是把新的一份堆上返回栈。

@@ -5,7 +5,7 @@ import com.videobrowsing.honeysuckle.feature.user.MineTarget
 /**
  * 路由名。
  *
- * 只有真能打开的那些:首页 / 我的 / 历史 / 设置(及其四组二级页)/ 缓存 / 关于 / 搜索 / 登录 / 详情播放
+ * 只有真能打开的那些:首页 / 我的 / 历史 / 稍后再看 / 设置(及其四组二级页)/ 缓存 / 关于 / 搜索 / 登录 / 详情播放
  * (`:app` 的 `HsyNavHost` 一一对应)。详情页带走一个 bvid 参数,参数名与
  * `VideoDetailViewModel` 读的那个字面量必须一致(见 `VIDEO_BVID_ARG`);设置二级页同理,
  * 参数名由 `SETTINGS_SECTION_ARG` 给。
@@ -19,6 +19,7 @@ object HsyRoute {
     const val LIVE = "live"
     const val ANIME = "anime"
     const val HISTORY = "history"
+    const val WATCH_LATER = "watch-later"
     const val FAVORITES = "favorites"
     const val SETTINGS = "settings"
     const val SETTINGS_SECTION_PATTERN = "settings/{section}"
@@ -28,6 +29,7 @@ object HsyRoute {
     const val LOGIN = "login"
     const val MESSAGES = "messages"
     const val VIDEO_PATTERN = "video/{bvid}"
+    const val COMMENT_THREAD_PATTERN = "comment-thread/{aid}/{root}/{upMid}"
     const val LIVE_ROOM_PATTERN = "live/{roomId}"
     const val ANIME_PATTERN = "anime/{seasonId}"
     const val SPACE_PATTERN = "space/{mid}"
@@ -35,6 +37,14 @@ object HsyRoute {
 
     /** bvid 只由字母数字组成(如 `BV1xx411c7mD`),不含需要转义的字符 */
     fun video(bvid: String): String = "video/$bvid"
+
+    /**
+     * 某一楼的楼中楼页。
+     *
+     * 三个数都是那一页开篇就要用的读数(稿件 aid、楼主 rpid、UP 的 mid —— 只给楼层 id 就认不出
+     * 哪条是 UP 主发言),数字不含需要转义的字符。
+     */
+    fun commentThread(aid: Long, rootId: Long, upMid: Long): String = "comment-thread/$aid/$rootId/$upMid"
 
     /** 直播间只带房间号;标题由房间状态端取,不塞进 URL */
     fun liveRoom(roomId: Long): String = "live/$roomId"
@@ -54,6 +64,7 @@ object HsyRoute {
     /** 我的页的入口 → 路由:路由字面量留在导航层,`feature:user` 不必知道页面怎么被压栈 */
     fun mine(target: MineTarget): String = when (target) {
         MineTarget.HISTORY -> HISTORY
+        MineTarget.WATCH_LATER -> WATCH_LATER
         MineTarget.FAVORITES -> FAVORITES
         MineTarget.SEARCH -> SEARCH
         MineTarget.CACHE -> CACHE

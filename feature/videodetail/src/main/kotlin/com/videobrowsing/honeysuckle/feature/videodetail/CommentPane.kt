@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -39,6 +40,7 @@ import com.videobrowsing.honeysuckle.core.designsystem.component.HsyEmptyState
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsyErrorState
 import com.videobrowsing.honeysuckle.core.designsystem.theme.Hsy
 import com.videobrowsing.honeysuckle.core.designsystem.ui.CircularProgressIndicator
+import com.videobrowsing.honeysuckle.core.designsystem.ui.EmojiText
 import com.videobrowsing.honeysuckle.core.designsystem.ui.FilterChip
 import com.videobrowsing.honeysuckle.core.designsystem.ui.OutlinedTextField
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Surface
@@ -50,12 +52,15 @@ import com.videobrowsing.honeysuckle.core.model.CommentSort
 private val AvatarSize = 36.dp
 internal val ReplyIndent = 48.dp
 
+/** 评论区每行下面露几条楼中楼:平台内嵌带回的就是这个数,不必另发请求 */
+private const val PREVIEW_REPLIES = 2
+
 /**
  * 评论区(详情页的"评论"分页):列表 → 发表 → 回复,按页拉全量。
  *
  * 三条口径:
  *  - **空、错、加载中三态分开**:评论数经常是 0,但"还没评论"与"没拉到"必须说成两句话;
- *  - **楼中楼按需展开**:楼里失败只影响这一楼,不把整块判失败;
+ *  - **楼中楼只露两条**,整楼全貌压在评论区之上另开一页 —— 那一页自己按页拉,这一屏不再展开/收起;
  *  - **写入口随登录态换形**:游客看到的是"去登录",不是一个点了必然失败的发送按钮。
  */
 @Composable
@@ -63,6 +68,7 @@ internal fun CommentPane(
     viewModel: CommentViewModel,
     onOpenLogin: () -> Unit,
     onOpenSpace: (Long) -> Unit,
+    onOpenThread: (aid: Long, rootId: Long, upMid: Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -93,6 +99,7 @@ internal fun CommentPane(
                 onAction = viewModel::onAction,
                 onOpenLogin = onOpenLogin,
                 onOpenSpace = onOpenSpace,
+                onOpenThread = onOpenThread,
             )
         }
 
@@ -135,6 +142,7 @@ private fun CommentBody(
     onAction: (CommentAction) -> Unit,
     onOpenLogin: () -> Unit,
     onOpenSpace: (Long) -> Unit,
+    onOpenThread: (aid: Long, rootId: Long, upMid: Long) -> Unit,
 ) {
     when {
         state.loading && state.comments.isEmpty() -> Centered { CircularProgressIndicator() }
@@ -155,6 +163,7 @@ private fun CommentBody(
             onAction = onAction,
             onOpenLogin = onOpenLogin,
             onOpenSpace = onOpenSpace,
+            onOpenThread = onOpenThread,
         )
     }
 }
@@ -165,21 +174,10 @@ private fun CommentList(
     onAction: (CommentAction) -> Unit,
     onOpenLogin: () -> Unit,
     onOpenSpace: (Long) -> Unit,
+    onOpenThread: (aid: Long, rootId: Long, upMid: Long) -> Unit,
 ) {
     val listState = rememberLazyListState()
-    val atBottom by remember {
-        derivedStateOf {
-            val info = listState.layoutInfo
-            info.totalItemsCount > 0 &&
-                info.visibleItemsInfo.lastOrNull()?.index == info.totalItemsCount - 1
-        }
-    }
-    // 内容增长后仍停在底部就接着要下一页:这样"划到底"真的能把几百条拉完,
-    // 而不是停在第一页的几条上;失败后不再自动重试,把"再要一页"留给用户。
-    LaunchedEffect(atBottom, state.comments.size, state.moreAvailable, state.loadingMore, state.errorMessage) {
-        val canLoad = state.moreAvailable && !state.loadingMore && state.errorMessage == null
-        if (atBottom && canLoad) onAction(CommentAction.LoadMore)
-    }
+    AutoLoadMore(listState = listState, state = state, onAction = onAction)
 
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
         items(state.comments, key = { it.id }) { comment ->
@@ -188,25 +186,34 @@ private fun CommentList(
                 state = state,
                 onAction = onAction,
                 onOpenSpace = onOpenSpace,
+                onOpenThread = onOpenThread,
             )
         }
         item(key = "footer") { ListFooter(state = state, onAction = onAction, onOpenLogin = onOpenLogin) }
     }
 }
 
+/**
+ * 一条顶层评论:正文、动作行,下面固定接它内嵌带回的那两条楼中楼。
+ *
+ * 回复多于两条才摆「查看全部」入口 —— 两条以下已经全在屏上,再摆一个"看全部"是废话。
+ * 入口进的那一页自己按页拉全量,所以平台哪天不内嵌带回这两条,这里只是空一格,跳页仍能看全。
+ */
 @Composable
 private fun CommentRow(
     comment: Comment,
     state: CommentUiState,
     onAction: (CommentAction) -> Unit,
     onOpenSpace: (Long) -> Unit,
+    onOpenThread: (aid: Long, rootId: Long, upMid: Long) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
         CommentHeader(comment = comment, onOpenSpace = onOpenSpace)
-        Text(
+        EmojiText(
             text = comment.content,
-            style = Hsy.typography.bodyMedium,
+            emotes = comment.emotes,
             color = Hsy.colors.onSurface,
+            style = Hsy.typography.bodyMedium,
             modifier = Modifier.padding(start = ReplyIndent, top = 4.dp),
         )
         Row(
@@ -227,17 +234,16 @@ private fun CommentRow(
             TextButton(onClick = { onAction(CommentAction.ReplyTo(comment)) }) { Text("回复") }
         }
 
-        if (comment.replyCount > 0) {
-            val expanded = state.expandedRoots.contains(comment.id)
+        comment.foldedReplies.take(PREVIEW_REPLIES).forEach { reply ->
+            ReplyRow(reply = reply, state = state, onAction = onAction, onOpenSpace = onOpenSpace)
+        }
+        if (comment.replyCount > PREVIEW_REPLIES) {
             TextButton(
-                onClick = { onAction(CommentAction.ToggleReplies(comment)) },
+                onClick = { onOpenThread(state.aid, comment.id, state.upMid) },
                 modifier = Modifier.padding(start = ReplyIndent),
             ) {
-                Text(if (expanded) "收起回复" else "展开 ${comment.replyCount} 条回复")
+                Text("查看全部 ${formatCount(comment.replyCount.toLong())} 条回复 ›")
             }
-        }
-        if (state.expandedRoots.contains(comment.id)) {
-            Replies(comment = comment, state = state, onAction = onAction, onOpenSpace = onOpenSpace)
         }
     }
 }
@@ -295,7 +301,7 @@ internal fun CommentHeader(
 }
 
 @Composable
-private fun ListFooter(state: CommentUiState, onAction: (CommentAction) -> Unit, onOpenLogin: () -> Unit) {
+internal fun ListFooter(state: CommentUiState, onAction: (CommentAction) -> Unit, onOpenLogin: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -343,7 +349,7 @@ private fun ListFooter(state: CommentUiState, onAction: (CommentAction) -> Unit,
 }
 
 @Composable
-private fun Composer(
+internal fun Composer(
     state: CommentUiState,
     draft: String,
     onDraftChange: (String) -> Unit,
@@ -352,7 +358,9 @@ private fun Composer(
 ) {
     Surface(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).imePadding()) {
-            state.replyTo?.let { target ->
+            // 落点是"这一句会回到谁身上":挑过的那条优先,楼中楼页没挑就显示这一楼的主评论。
+            // 没挑过就没有"取消"可点 —— 在那一页它本来就是默认落点,不是用户临时改出来的。
+            state.postTarget?.let { target ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = "回复 @${target.userName.ifBlank { "匿名用户" }}",
@@ -360,7 +368,9 @@ private fun Composer(
                         color = Hsy.colors.accent,
                         modifier = Modifier.weight(1f),
                     )
-                    TextButton(onClick = { onAction(CommentAction.ReplyTo(null)) }) { Text("取消") }
+                    if (state.replyTo != null) {
+                        TextButton(onClick = { onAction(CommentAction.ReplyTo(null)) }) { Text("取消") }
+                    }
                 }
             }
             if (state.loggedIn) {
@@ -393,5 +403,26 @@ private fun Composer(
                 }
             }
         }
+    }
+}
+
+/**
+ * 滚到底就接着要下一页 —— 评论区与楼中楼页共用这一句。
+ *
+ * 内容增长后仍停在底部就再要一次,这样"划到底"真的能把几百条拉完,而不是停在第一页的几条上;
+ * 失败之后不再自动重试,把"再要一页"留给用户按。它不摆任何东西,所以名字不按界面组件那样起。
+ */
+@Composable
+internal fun AutoLoadMore(listState: LazyListState, state: CommentUiState, onAction: (CommentAction) -> Unit) {
+    val atBottom by remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            info.totalItemsCount > 0 &&
+                info.visibleItemsInfo.lastOrNull()?.index == info.totalItemsCount - 1
+        }
+    }
+    LaunchedEffect(atBottom, state.comments.size, state.moreAvailable, state.loadingMore, state.errorMessage) {
+        val canLoad = state.moreAvailable && !state.loadingMore && state.errorMessage == null
+        if (atBottom && canLoad) onAction(CommentAction.LoadMore)
     }
 }

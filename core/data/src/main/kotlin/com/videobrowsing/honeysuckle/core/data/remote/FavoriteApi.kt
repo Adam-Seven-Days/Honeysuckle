@@ -26,7 +26,8 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
  * 收藏夹管理(`x/v3/fav/folder` 的增删改名 与 `x/v3/fav/resource/list|deal`)。
  *
  * 与 [InteractionApi] 的收藏写入是同一组平台端点的两个视角:那一侧只做"收藏到默认夹",
- * 这一侧要管理夹本身。读取(夹列表、夹内资源)游客态不可访,写全部要 csrf。
+ * 这一侧要管理夹本身。读取(夹列表、夹内资源)游客态不可访,写全部要 csrf;
+ * 收藏夹是账号在平台上的那份清单,本机不留副本。
  *
  * 夹内资源列表的 `medias` 里偶有缺少 bvid 的旧数据(平台把已失效稿件留了一个壳),
  * 这种条目直接跳过并交调用方计数,不拿一个点不开的行充数。
@@ -104,15 +105,15 @@ class FavoriteApi(
         folderEditUrl,
         listOf("media_id" to folderId.toString(), "title" to title.trim(), "privacy" to PRIVACY_PUBLIC),
         csrf,
-    ).flatMap { HsyResult.Success(Unit) }
+    ).flatMap(HsyEnvelope::writeOk)
 
     suspend fun deleteFolder(folderId: Long, csrf: String): HsyResult<Unit> = postWithCsrf(
         folderDelUrl,
         listOf("media_ids" to folderId.toString()),
         csrf,
-    ).flatMap { HsyResult.Success(Unit) }
+    ).flatMap(HsyEnvelope::writeOk)
 
-    /** 从某个夹里移走一条;本地那份镜像由仓库顺手清掉 */
+    /** 从某个夹里移走一条 */
     suspend fun removeItem(aid: Long, folderId: Long, csrf: String): HsyResult<Unit> = postWithCsrf(
         resourceDealUrl,
         listOf(
@@ -122,7 +123,7 @@ class FavoriteApi(
             "del_media_ids" to folderId.toString(),
         ),
         csrf,
-    ).flatMap { HsyResult.Success(Unit) }
+    ).flatMap(HsyEnvelope::writeOk)
 
     /** 夹间移动:目标夹进 add_media_ids、来源夹进 del_media_ids,一次写完成 */
     suspend fun moveItem(aid: Long, fromFolderId: Long, toFolderId: Long, csrf: String): HsyResult<Unit> = postWithCsrf(
@@ -134,7 +135,7 @@ class FavoriteApi(
             "del_media_ids" to fromFolderId.toString(),
         ),
         csrf,
-    ).flatMap { HsyResult.Success(Unit) }
+    ).flatMap(HsyEnvelope::writeOk)
 
     private suspend fun postWithCsrf(
         url: HttpUrl,

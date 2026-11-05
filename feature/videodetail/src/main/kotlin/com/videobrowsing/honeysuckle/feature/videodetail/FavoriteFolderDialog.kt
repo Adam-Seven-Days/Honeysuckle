@@ -23,7 +23,10 @@ import com.videobrowsing.honeysuckle.core.model.FavoriteFolder
  * 收藏夹选择面板。
  *
  * 逐夹勾选而不是"选一个单选框":平台允许一条稿同时在多个夹里,单选框会把多归属的事实压成
- * 一次移动。底部单独给"取消收藏",那是"从所有夹移走",与逐夹取消不是同一个动作。
+ * 一次移动。
+ *
+ * 点夹只改屏上的勾选,一次请求都不发 —— 按下「完成」才把这一轮的增减一次写回。
+ * 「取消」是丢弃勾选,不是取消收藏:要把这条稿从所有夹里移走,就逐个取消勾选再按「完成」。
  */
 @Composable
 internal fun FavoriteFolderDialog(state: VideoDetailUiState, intents: DetailIntents) {
@@ -40,15 +43,13 @@ internal fun FavoriteFolderDialog(state: VideoDetailUiState, intents: DetailInte
             }
         },
         confirmButton = {
-            TextButton(onClick = { intents.onAction(VideoDetailAction.CloseFavoritePicker) }) { Text("完成") }
+            TextButton(
+                onClick = { intents.onAction(VideoDetailAction.ConfirmFavoriteFolders) },
+                enabled = idle,
+            ) { Text("完成") }
         },
         dismissButton = {
-            if (state.favoriteFolderIds.isNotEmpty()) {
-                TextButton(
-                    onClick = { intents.onAction(VideoDetailAction.RemoveFavorite) },
-                    enabled = idle,
-                ) { Text("取消收藏") }
-            }
+            TextButton(onClick = { intents.onAction(VideoDetailAction.CloseFavoritePicker) }) { Text("取消") }
         },
     )
 }
@@ -79,13 +80,16 @@ private fun FolderOptions(state: VideoDetailUiState, intents: DetailIntents, idl
             color = Hsy.colors.onSurfaceVariant,
         )
 
-        else -> state.favoriteFolders.forEach { folder ->
-            FolderOptionRow(
-                folder = folder,
-                checked = state.favoriteFolderIds.contains(folder.id),
-                idle = idle,
-                onToggle = { intents.onAction(VideoDetailAction.ToggleFavoriteIn(folder.id)) },
-            )
+        else -> {
+            state.favoriteFolders.forEach { folder ->
+                FolderOptionRow(
+                    folder = folder,
+                    checked = state.favoriteDraftIds.contains(folder.id),
+                    idle = idle,
+                    onToggle = { intents.onAction(VideoDetailAction.ToggleFavoriteDraft(folder.id)) },
+                )
+            }
+            DraftHint(state = state)
         }
     }
     if (state.favoriteFoldersError != null && state.favoriteFolders.isNotEmpty()) {
@@ -97,6 +101,27 @@ private fun FolderOptions(state: VideoDetailUiState, intents: DetailIntents, idl
     }
 }
 
+/**
+ * 勾选与账号那份的差值念成一句:按「完成」之前先看清这一笔会改什么。
+ *
+ * 没改过就不占位置 —— 一屏"没有待写入的改动"挂在下面,比不写更让人怀疑按钮按下去有没有用。
+ */
+@Composable
+private fun DraftHint(state: VideoDetailUiState) {
+    val addCount = (state.favoriteDraftIds - state.favoriteFolderIds).size
+    val delCount = (state.favoriteFolderIds - state.favoriteDraftIds).size
+    if (addCount == 0 && delCount == 0) return
+    val parts = listOfNotNull(
+        "收进 $addCount 个".takeIf { addCount > 0 },
+        "移走 $delCount 个".takeIf { delCount > 0 },
+    )
+    Text(
+        text = "待写入:${parts.joinToString(" · ")} · 按「完成」生效",
+        style = Hsy.typography.labelSmall,
+        color = Hsy.colors.onSurfaceVariant,
+    )
+}
+
 @Composable
 private fun FolderOptionRow(folder: FavoriteFolder, checked: Boolean, idle: Boolean, onToggle: () -> Unit) {
     Row(
@@ -105,7 +130,7 @@ private fun FolderOptionRow(folder: FavoriteFolder, checked: Boolean, idle: Bool
             .clip(RoundedCornerShape(Hsy.shapes.small))
             .clickable(
                 enabled = idle,
-                onClickLabel = if (checked) "从「${folder.title}」移走" else "收进「${folder.title}」",
+                onClickLabel = if (checked) "取消勾选「${folder.title}」" else "勾选「${folder.title}」",
                 onClick = onToggle,
             )
             .padding(horizontal = 8.dp, vertical = 10.dp),

@@ -34,7 +34,7 @@ internal fun favoriteLabel(state: VideoDetailUiState): String = when (state.inte
 /**
  * 标题下面那一行统计。
  *
- * 只剩播放与弹幕:回复/投币/收藏/分享这四个数改挂在互动区那四枚动作下面(见 `MetaAction`),
+ * 只剩播放与弹幕:回复/投币/收藏/分享这四个数改挂在互动区那几枚动作下面(见 `MetaAction`),
  * 同一屏里同一件事念两遍。
  */
 internal fun statsLineOf(stat: VideoStat): String = listOf(

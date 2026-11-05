@@ -118,7 +118,7 @@ class AnimeApi(
         return formSource.postForm(
             if (follow) followAddUrl else followDelUrl,
             mapOf("season_id" to seasonId.toString(), "csrf" to csrf),
-        ).flatMap { HsyResult.Success(Unit) }
+        ).flatMap(HsyEnvelope::writeOk)
     }
 
     /** 数组里每一项都有 `name`;拼成一声"日本 / 奇幻"给人读,而不是把数组原样丢给 UI */

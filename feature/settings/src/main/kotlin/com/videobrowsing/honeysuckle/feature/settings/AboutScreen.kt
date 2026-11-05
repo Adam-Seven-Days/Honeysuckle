@@ -30,7 +30,8 @@ import com.videobrowsing.honeysuckle.core.designsystem.ui.TextButton
  *
  * 这一页只放**已经是事实**的话:隐私与免责、常见问题各一张卡,内容与 `docs/` 同源;
  * 崩溃记录读的是本机 `CrashStore`,可复制、可清除 —— Beta 里没有服务端,导出只能靠用户自己带走。
- * 没有"检查更新"(没有更新源)、没有"意见反馈"(没有服务端),摆一个点了打不开下一屏的入口比少一个更伤。
+ * 「检查更新」在这一页是有据可依的:更新源就是仓库的 Release 页,点了真能问出结果,
+ * 结果要么是一句实话,要么是一张能跳去下载的弹窗,不是一个打不开下一屏的空入口。
  */
 @Composable
 fun AboutScreen(viewModel: AboutViewModel, onBack: () -> Unit, modifier: Modifier = Modifier) {
@@ -68,6 +69,11 @@ fun AboutScreen(viewModel: AboutViewModel, onBack: () -> Unit, modifier: Modifie
         AboutSections(state = state, onAction = viewModel::onAction)
 
         AboutDialogs(state = state, onAction = viewModel::onAction)
+
+        // 手动查出来的新版本:与冷启动那一张是同一个弹窗、同一份文案口径
+        state.updateRelease?.let { release ->
+            AppUpdateDialog(release = release, onAcknowledged = { viewModel.onAction(AboutAction.DismissUpdate) })
+        }
     }
 }
 
@@ -88,6 +94,8 @@ private fun AboutSections(state: AboutUiState, onAction: (AboutAction) -> Unit) 
             supporting = "不上架、不商用。第三方客户端与平台用户协议可能冲突,风险由使用者自担",
         )
     }
+
+    UpdateCard(state, onAction)
 
     HsySectionCard(title = "隐私与数据") {
         HsySettingRow(
@@ -123,6 +131,26 @@ private fun AboutSections(state: AboutUiState, onAction: (AboutAction) -> Unit) 
             title = "第三方依赖与许可",
             supporting = "Media3 / OkHttp / Room / DataStore / Coil 等,点开看完整清单",
             onClick = { onAction(AboutAction.Open(AboutDialog.LICENSES)) },
+        )
+    }
+}
+
+/**
+ * 「更新」那一格:这一页里唯一一条会自己改字的行 —— 问出去的那一段时间它得看着像在进行,
+ * 而且不能再点(连点三下等于发三条同样的请求)。
+ */
+@Composable
+private fun UpdateCard(state: AboutUiState, onAction: (AboutAction) -> Unit) {
+    HsySectionCard(title = "更新") {
+        HsySettingRow(
+            title = if (state.updateChecking) "正在检查更新" else "检查更新",
+            icon = HsyIcons.refresh,
+            supporting = "对一下仓库上最新发布的版本;下载在浏览器里完成,应用不经手安装包",
+            onClick = if (state.updateChecking) {
+                null
+            } else {
+                { onAction(AboutAction.CheckUpdate) }
+            },
         )
     }
 }

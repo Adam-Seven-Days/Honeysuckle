@@ -33,6 +33,7 @@ import com.videobrowsing.honeysuckle.core.designsystem.theme.HsyTheme
 import com.videobrowsing.honeysuckle.core.player.PIP_WIDE_ASPECT
 import com.videobrowsing.honeysuckle.core.player.PipAspect
 import com.videobrowsing.honeysuckle.core.player.PlaybackEngine
+import com.videobrowsing.honeysuckle.feature.settings.AppUpdateDialog
 import com.videobrowsing.honeysuckle.feature.splash.SplashScreen
 import com.videobrowsing.honeysuckle.navigation.HsyNavHost
 import dagger.hilt.android.AndroidEntryPoint
@@ -97,6 +98,8 @@ class MainActivity : ComponentActivity() {
             val appViewModel: HsyAppViewModel = viewModel()
             // 壳层只订阅一份快照:主题、底栏显隐、画中画与后台播放来自同一次读盘
             val ui by appViewModel.uiState.collectAsStateWithLifecycle()
+            val updateViewModel: UpdatePromptViewModel = viewModel()
+            val newRelease by updateViewModel.release.collectAsStateWithLifecycle()
             SideEffect {
                 autoPipEnabled = ui.autoPipEnabled
                 pipOnlyWhilePlaying = ui.pipOnlyWhilePlaying
@@ -109,6 +112,13 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(Unit) {
                 withFrameNanos { }
                 requestNotificationPermissionIfNeeded()
+            }
+
+            // 检查更新也排在首帧之后:它是一次会自己决定要不要开口的背景问话,
+            // 抢在画面前面只会让用户以为启动卡住了
+            LaunchedEffect(Unit) {
+                withFrameNanos { }
+                updateViewModel.checkOnStartup()
             }
 
             val dark = ui.themeMode.resolveDark(systemDark = isSystemInDarkTheme())
@@ -141,6 +151,13 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     if (showSplash) SplashScreen(onDone = { showSplash = false })
+                    // 更新弹窗要等闪屏交棒之后才有资格出现:那一帧是给首屏取数争取的时间,
+                    // 在它上面压一张模态等于把用户刚点开的图标堵死
+                    if (!showSplash) {
+                        newRelease?.let { release ->
+                            AppUpdateDialog(release = release, onAcknowledged = updateViewModel::acknowledged)
+                        }
+                    }
                 }
             }
         }

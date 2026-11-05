@@ -15,6 +15,7 @@ import com.videobrowsing.honeysuckle.core.model.CommentPage
 import com.videobrowsing.honeysuckle.core.model.CommentSort
 import com.videobrowsing.honeysuckle.core.network.client.HsyFormSource
 import com.videobrowsing.honeysuckle.core.network.client.HsyJsonSource
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -108,7 +109,7 @@ class CommentApi(
                 "parent" to parentId.coerceAtLeast(0L).toString(),
                 "csrf" to csrf,
             ),
-        ).flatMap { HsyResult.Success(Unit) }
+        ).flatMap(HsyEnvelope::writeOk)
     }
 
     /**
@@ -128,7 +129,7 @@ class CommentApi(
                 "action" to if (liked) ACTION_LIKE else ACTION_CANCEL,
                 "csrf" to csrf,
             ),
-        ).flatMap { HsyResult.Success(Unit) }
+        ).flatMap(HsyEnvelope::writeOk)
     }
 
     /**
@@ -154,10 +155,10 @@ class CommentApi(
                 val nextCursor = cursor?.objOr("pagination_reply")?.stringOr("next_offset").orEmpty()
                 val ended = cursor?.boolOr("is_end") ?: true
                 val moreAvailable = !ended && nextCursor.isNotBlank()
+                val comments = replies?.mapNotNull { commentRow(it, upMid, fold = true) }.orEmpty()
                 HsyResult.Success(
                     CommentPage(
-                        comments = replies?.mapNotNull { (it as? JsonObject)?.let { obj -> commentOf(obj, upMid) } }
-                            .orEmpty(),
+                        comments = comments,
                         moreAvailable = moreAvailable,
                         total = cursor?.intOr("all_count") ?: data.pageCount(),
                         nextCursor = if (moreAvailable) nextCursor else "",
@@ -166,33 +167,47 @@ class CommentApi(
             }
         }
 
-    /** 楼中楼仍按页码翻:这一端一次给满 20 条,`page.count` 是真实总数 */
+    /**
+     * 楼中楼仍按页码翻:这一端一次给满 20 条,`page.count` 是真实总数。
+     *
+     * `data.root` 是楼主本体,平台每一页都带着它 —— 楼中楼页顶部那条因此不必另找接口,
+     * 从详情页带过来反而是错的(那份读数可能已经旧了)。
+     */
     private suspend fun readReplies(url: HttpUrl, page: Int, upMid: Long): HsyResult<CommentPage> =
         jsonSource.getJson(url).flatMap { root ->
             HsyEnvelope.dataOf(root).flatMap { data ->
+                val threadRoot = data.objOr("root")?.let { commentOf(it, upMid, fold = false) }
                 val replies = data.arrOr("replies")
                     ?: if (data.containsKey("replies")) {
                         // 键在、值为 null = 这一楼还没有回复
-                        return@flatMap HsyResult.Success(CommentPage(total = data.pageCount()))
+                        return@flatMap HsyResult.Success(CommentPage(total = data.pageCount(), root = threadRoot))
                     } else {
                         return@flatMap HsyResult.Failure(AppError.Decode("评论响应缺 replies 字段"))
                     }
-                val comments = replies.mapNotNull { (it as? JsonObject)?.let { obj -> commentOf(obj, upMid) } }
+                val comments = replies.mapNotNull { commentRow(it, upMid, fold = false) }
                 HsyResult.Success(
                     CommentPage(
                         comments = comments,
                         moreAvailable = comments.isNotEmpty() && page * PAGE_SIZE < data.pageCount(),
                         total = data.pageCount(),
+                        root = threadRoot,
                     ),
                 )
             }
         }
 
-    private fun commentOf(obj: JsonObject, upMid: Long): Comment? {
+    /**
+     * 一条评论读数。
+     *
+     * [fold] 决定要不要再读它内嵌的 `replies`:顶层那一页折一层(评论区要露的那两条),
+     * 楼中楼页与折叠进去的回复行都不折 —— 再往下嵌就成树了,而这一屏的形状是"一楼 + 它的全部回复"。
+     */
+    private fun commentOf(obj: JsonObject, upMid: Long, fold: Boolean): Comment? {
         val id = obj.longOr("rpid").takeIf { it > 0L } ?: obj.longOr("rpid_str").takeIf { it > 0L }
             ?: return null
         val member = obj.objOr("member")
         val memberMid = member?.longOr("mid") ?: obj.longOr("mid")
+        val content = obj.objOr("content")
         return Comment(
             id = id,
             rootId = obj.longOr("root"),
@@ -200,12 +215,39 @@ class CommentApi(
             mid = memberMid,
             userName = member?.stringOr("uname").orEmpty(),
             avatarUrl = httpsCover(member?.stringOr("avatar").orEmpty()),
-            content = obj.objOr("content")?.stringOr("message").orEmpty(),
+            content = content?.stringOr("message").orEmpty(),
+            emotes = content.emoteUrls(),
             likeCount = obj.intOr("like"),
             replyCount = obj.intOr("rcount"),
             createEpochSec = obj.longOr("ctime"),
             isUp = upMid > 0L && memberMid == upMid,
+            foldedReplies = if (fold) {
+                obj.arrOr("replies").orEmpty().mapNotNull { commentRow(it, upMid, fold = false) }
+            } else {
+                emptyList()
+            },
         )
+    }
+
+    private fun commentRow(element: JsonElement?, upMid: Long, fold: Boolean): Comment? =
+        (element as? JsonObject)?.let { commentOf(it, upMid, fold) }
+
+    /**
+     * 表情表读成"占位符 → 图片地址":平台把它按条放在 `content.emote` 里
+     * (`{"[doge]": {"url": "https://i0.hdslb.com/bfs/emote/….png", …}}`,2026-11-05 实网)。
+     *
+     * 只取这一对,不自己补一份全量表情清单:那份清单总有一天和平台对不上,而对不上的后果是
+     * 把用户没权限的表情画成图。表里没有的占位符原样留给界面当文本摆。
+     */
+    private fun JsonObject?.emoteUrls(): Map<String, String> {
+        val table = this?.objOr("emote") ?: return emptyMap()
+        return buildMap {
+            table.forEach { (placeholder, entry) ->
+                (entry as? JsonObject)?.stringOr("url")
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { url -> put(placeholder, httpsCover(url)) }
+            }
+        }
     }
 
     private fun JsonObject.pageCount(): Int = objOr("page")?.intOr("count") ?: 0

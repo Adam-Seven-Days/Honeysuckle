@@ -7,9 +7,6 @@ import com.videobrowsing.honeysuckle.core.common.flatMap
 import com.videobrowsing.honeysuckle.core.data.auth.WriteGuard
 import com.videobrowsing.honeysuckle.core.data.di.IoDispatcher
 import com.videobrowsing.honeysuckle.core.data.remote.FavoriteApi
-import com.videobrowsing.honeysuckle.core.database.favorite.FavoriteDao
-import com.videobrowsing.honeysuckle.core.database.favorite.toDomain
-import com.videobrowsing.honeysuckle.core.database.favorite.toEntity
 import com.videobrowsing.honeysuckle.core.datastore.account.AccountPreferenceRepository
 import com.videobrowsing.honeysuckle.core.model.FavoriteFolder
 import com.videobrowsing.honeysuckle.core.model.FavoriteItem
@@ -18,28 +15,16 @@ import com.videobrowsing.honeysuckle.core.model.FavoriteSort
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
 @Singleton
 class DefaultFavoriteRepository @Inject constructor(
     private val api: FavoriteApi,
-    private val dao: FavoriteDao,
     private val accountStore: AccountPreferenceRepository,
     private val writeGuard: WriteGuard,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
 ) : FavoriteRepository {
-
-    override fun observeLocal(limit: Int): Flow<List<FavoriteItem>> =
-        dao.observeRecent(limit).map { rows -> rows.map { it.toDomain() } }
-
-    override fun observeLocalCount(): Flow<Int> = dao.observeCount()
-
-    override suspend fun recordLocal(item: FavoriteItem) {
-        withContext(ioDispatcher) { dao.upsert(item.toEntity()) }
-    }
 
     override suspend fun folders(): HsyResult<List<FavoriteFolder>> = withContext(ioDispatcher) {
         val mid = accountStore.preferences.first().mid
@@ -79,28 +64,17 @@ class DefaultFavoriteRepository @Inject constructor(
     }
 
     override suspend fun removeItem(item: FavoriteItem): HsyResult<Unit> = withContext(ioDispatcher) {
-        // 本地镜像的那一份没有平台归属:删它不需要网络,也不需要登录
-        if (item.isLocal) {
-            dao.delete(item.bvid)
-            return@withContext HsyResult.Success(Unit)
-        }
-        writeGuard.requireCsrf().flatMap { csrf ->
-            api.removeItem(item.aid, item.folderId, csrf).also { result ->
-                if (result is HsyResult.Success) dao.delete(item.bvid)
-            }
-        }
+        writeGuard.requireCsrf().flatMap { csrf -> api.removeItem(item.aid, item.folderId, csrf) }
     }
 
+    /** 同夹移动是空操作:不先问 csrf,免得一次无事可做也占一发写配额 */
     override suspend fun moveItem(item: FavoriteItem, targetFolderId: Long): HsyResult<Unit> =
         withContext(ioDispatcher) {
-            when {
-                item.isLocal -> HsyResult.Failure(AppError.Decode("本地收藏不是平台夹,不能直接移动"))
-
-                targetFolderId == item.folderId -> HsyResult.Success(Unit)
-
-                else -> writeGuard.requireCsrf().flatMap { csrf ->
-                    api.moveItem(item.aid, item.folderId, targetFolderId, csrf)
-                }
+            if (targetFolderId == item.folderId) {
+                return@withContext HsyResult.Success(Unit)
+            }
+            writeGuard.requireCsrf().flatMap { csrf ->
+                api.moveItem(item.aid, item.folderId, targetFolderId, csrf)
             }
         }
 }

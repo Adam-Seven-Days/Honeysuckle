@@ -62,10 +62,27 @@ internal object HsyEnvelope {
         }
     }
 
-    /** 拆出 code=0 的 data 原样;data 为 null 与缺失同罪 —— 没有内容就不该演成成功 */
+    /** 拆出 code=0 的 `data` 原样,不假定它是对象还是数组。
+     *
+     * 只给"同一端点在不同版本里把载荷摆在两种形状"用(稍后再看就是):
+     * [dataOf] 与 [dataArrayOf] 各认一种,拿其中一个去试另一种形状会把一次正常的返回读成失败。
+     */
+    fun dataElementOf(root: JsonElement): HsyResult<JsonElement> = envelopeData(root)
+
+    /** 拆出 code=0 的 `data` 原样;data 为 null 与缺失同罪 —— 没有内容就不该演成成功 */
     private fun envelopeData(root: JsonElement): HsyResult<JsonElement> = envelopePayload(root, DATA_KEY)
 
-    private fun envelopePayload(root: JsonElement, key: String): HsyResult<JsonElement> {
+    /**
+     * 写接口的成败:`code == 0` 才算这一笔成了。
+     *
+     * 写口回的是同一套信封,把载荷丢掉不等于把失败丢掉 —— HTTP 200 配 `code:-104`
+     * 是平台在说"这枚币我没收",上层若只看到 200 就演一次成功,用户收到的是一句假话
+     * (投币如此,点赞、收藏、评论、关注都如此)。这里只判成败不取载荷:多数写口本就 `data: null`。
+     */
+    fun writeOk(root: JsonElement): HsyResult<Unit> = envelopeStatus(root).flatMap { HsyResult.Success(Unit) }
+
+    /** 信封的成败判定:根不是对象(风控 HTML)、缺 code、code≠0 三类都在这里归一,读与写共用一份 */
+    private fun envelopeStatus(root: JsonElement): HsyResult<JsonObject> {
         val obj = root as? JsonObject
             ?: return HsyResult.Failure(AppError.Decode("响应根节点不是 JSON 对象(疑似被风控拦截返回 HTML)"))
 
@@ -77,10 +94,15 @@ internal object HsyEnvelope {
                 ?: "平台返回错误码 $code"
             return HsyResult.Failure(AppError.Server(code.toInt(), message))
         }
-
-        val payload = obj[key] ?: return HsyResult.Failure(AppError.Decode("code=0 但 $key 缺失"))
-        return HsyResult.Success(payload)
+        return HsyResult.Success(obj)
     }
+
+    private fun envelopePayload(root: JsonElement, key: String): HsyResult<JsonElement> =
+        envelopeStatus(root).flatMap { obj ->
+            val payload = obj[key]
+                ?: return@flatMap HsyResult.Failure(AppError.Decode("code=0 但 $key 缺失"))
+            HsyResult.Success(payload)
+        }
 
     private const val DATA_KEY = "data"
     private const val RESULT_KEY = "result"

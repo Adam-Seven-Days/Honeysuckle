@@ -101,7 +101,7 @@ fun SettingsScreen(
             SettingsEntry(
                 title = "存储与缓存",
                 icon = HsyIcons.delete,
-                supporting = "看本机缓存占了多少、一键清掉;不碰历史与收藏",
+                supporting = "看本机缓存占了多少、一键清掉;不碰历史与离线视频",
                 onClick = onOpenCache,
             )
         }
@@ -209,6 +209,20 @@ private fun NetworkCard(app: AppPreferences, onAction: (SettingsAction) -> Unit)
                 Switch(
                     checked = app.http2Enabled,
                     onCheckedChange = { onAction(SettingsAction.Http2Enabled(it)) },
+                )
+            },
+        )
+        HsySettingRow(
+            title = "启动时检查更新",
+            supporting = if (app.updateCheckEnabled) {
+                "每次冷启动问一次仓库上有没有新版本,只在确实有新版时弹窗提醒;不自动下载,也不安装"
+            } else {
+                "不再自动去问;想确认版本,自己在「关于」页点一下检查"
+            },
+            trailing = {
+                Switch(
+                    checked = app.updateCheckEnabled,
+                    onCheckedChange = { onAction(SettingsAction.UpdateCheckEnabled(it)) },
                 )
             },
         )

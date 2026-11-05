@@ -106,7 +106,7 @@ private fun UsageRows(usage: CacheUsage) {
     HsySettingRow(title = "其他缓存", supporting = "播放与浏览留下的临时文件", trailing = {
         Text(formatBytes(usage.otherBytes), style = Hsy.typography.bodyMedium)
     })
-    HsySettingRow(title = "合计", supporting = "只清缓存,不碰历史与收藏", trailing = {
+    HsySettingRow(title = "合计", supporting = "只清缓存,不碰历史与离线视频", trailing = {
         Text(formatBytes(usage.totalBytes), style = Hsy.typography.titleMedium)
     })
 }

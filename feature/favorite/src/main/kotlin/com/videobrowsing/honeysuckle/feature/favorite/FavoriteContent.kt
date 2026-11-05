@@ -85,34 +85,10 @@ private fun FavoriteTopActions(loggedIn: Boolean, inFolder: Boolean, onOpen: (Fa
 internal fun FolderList(
     state: FavoriteUiState,
     onAction: (FavoriteAction) -> Unit,
-    onOpenVideo: (String) -> Unit,
     onOpenLogin: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(modifier = modifier.fillMaxWidth()) {
-        item(key = "local-title") {
-            SectionTitle("本地收藏 ${state.localCount}")
-        }
-        if (state.local.isEmpty()) {
-            item(key = "local-empty") {
-                Text(
-                    text = "在详情页点收藏之后,这里会留一份本机镜像;游客也看得见。",
-                    style = Hsy.typography.bodySmall,
-                    color = Hsy.colors.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                )
-            }
-        } else {
-            items(state.local, key = { "local-${it.bvid}" }) { item ->
-                FavoriteRow(
-                    item = item,
-                    supporting = "本地收藏 · ${formatClock(item.durationSec.toLong())}",
-                    onOpen = { onOpenVideo(item.bvid) },
-                    onRemove = { onAction(FavoriteAction.RemoveItem(item)) },
-                )
-            }
-        }
-
         item(key = "folders-title") { SectionTitle("平台收藏夹") }
         when {
             !state.loggedIn -> item(key = "folders-guest") {
@@ -130,7 +106,7 @@ internal fun FolderList(
                 HsyErrorState(
                     message = checkNotNull(state.foldersError),
                     onRetry = { onAction(FavoriteAction.Reload) },
-                    hint = "本地收藏不受影响,仍可查看与移除",
+                    hint = "收藏夹只存在账号里 · 这一页读不到就是没有可看的",
                 )
             }
 

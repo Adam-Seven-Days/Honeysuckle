@@ -12,13 +12,13 @@ import com.videobrowsing.honeysuckle.core.data.auth.AuthRepository
 import com.videobrowsing.honeysuckle.core.data.danmaku.DanmakuPostRepository
 import com.videobrowsing.honeysuckle.core.data.danmaku.DanmakuRepository
 import com.videobrowsing.honeysuckle.core.data.detail.VideoDetailRepository
-import com.videobrowsing.honeysuckle.core.data.favorite.FavoriteRepository
 import com.videobrowsing.honeysuckle.core.data.history.HistoryRepository
 import com.videobrowsing.honeysuckle.core.data.interaction.InteractionRepository
 import com.videobrowsing.honeysuckle.core.data.network.NetworkReader
 import com.videobrowsing.honeysuckle.core.data.offline.OfflineRepository
 import com.videobrowsing.honeysuckle.core.data.playback.PlaybackRepository
 import com.videobrowsing.honeysuckle.core.data.relation.RelationRepository
+import com.videobrowsing.honeysuckle.core.data.watchlater.WatchLaterRepository
 import com.videobrowsing.honeysuckle.core.datastore.danmaku.DanmakuPreferenceRepository
 import com.videobrowsing.honeysuckle.core.datastore.danmaku.DanmakuPreferences
 import com.videobrowsing.honeysuckle.core.datastore.general.AppPreferenceRepository
@@ -51,9 +51,6 @@ const val VIDEO_BVID_ARG = "bvid"
 
 /** 互动回执在屏上留多久 */
 private const val MESSAGE_LINGER_MS = 4_000L
-
-/** 一次投币投几枚(与 `InteractionApi` 表单里的 multiply 对齐) */
-private const val COIN_PER_TAP = 1L
 
 /** 赞与"点赞"下面那个数之间的一次翻动量 */
 private const val LIKE_BUMP = 1L
@@ -126,10 +123,20 @@ data class VideoDetailUiState(
     val interaction: VideoInteraction = VideoInteraction(),
     val interactionBusy: Boolean = false,
     val interactionMessage: String? = null,
-    /** 收藏夹选择面板:只有登录态会打开;列表与"这条稿在哪些夹里"分开读 */
+    /** 投币弹窗:选 1 枚还是 2 枚;按下其中一枚才发这一笔写 */
+    val coinDialogVisible: Boolean = false,
+    /** 在不在平台的稍后再看列表里;`null` = 游客态或还没读回来,界面据此只给"稍后再看"不给"已加入" */
+    val watchLater: Boolean? = null,
+    /**
+     * 收藏夹选择面板:只有登录态会打开。
+     *
+     * [favoriteFolderIds] 是账号里的那一份,[favoriteDraftIds] 是面板上此刻的勾选 ——
+     * 点一个夹只动草稿,按下"完成"才把两者的差异写回平台。
+     */
     val favoritePickerVisible: Boolean = false,
     val favoriteFolders: List<FavoriteFolder> = emptyList(),
     val favoriteFolderIds: Set<Long> = emptySet(),
+    val favoriteDraftIds: Set<Long> = emptySet(),
     val favoriteFoldersLoading: Boolean = false,
     val favoriteFoldersError: String? = null,
     /** 关注状态;`null` = 游客态或还没读回来,界面据此只给"关注"不给"已关注" */
@@ -186,16 +193,23 @@ sealed interface VideoDetailAction {
     data class SelectQuality(val qualityId: Int) : VideoDetailAction
     data class SetSpeed(val speed: Float) : VideoDetailAction
     data object ToggleLike : VideoDetailAction
-    data object AddCoin : VideoDetailAction
 
-    /** 打开收藏夹面板;面板里点某个夹就是"收进它 / 从它移走" */
+    /** 投币:点按钮只开弹窗,弹窗里按下哪一枚就投几枚 */
+    data object OpenCoinDialog : VideoDetailAction
+    data object CloseCoinDialog : VideoDetailAction
+    data class ConfirmCoin(val multiply: Int) : VideoDetailAction
+
+    /** 打开收藏夹面板;面板里点夹只是勾选,落库要等"完成"那一下 */
     data object OpenFavoritePicker : VideoDetailAction
     data object CloseFavoritePicker : VideoDetailAction
     data object RetryFavoriteFolders : VideoDetailAction
-    data class ToggleFavoriteIn(val folderId: Long) : VideoDetailAction
+    data class ToggleFavoriteDraft(val folderId: Long) : VideoDetailAction
 
-    /** 从所有收藏夹里一次移走(取消收藏) */
-    data object RemoveFavorite : VideoDetailAction
+    /** 把面板上的勾选与账号里那份对账,一次写完这一轮的差异 */
+    data object ConfirmFavoriteFolders : VideoDetailAction
+
+    /** 稍后再看:把这一条加入 / 移走平台的稍后再看(本机不留副本) */
+    data object ToggleWatchLater : VideoDetailAction
 
     /** 播放器上的弹幕开关:写同一份弹幕偏好,设置页的开关会跟着变 */
     data object ToggleDanmaku : VideoDetailAction
@@ -247,7 +261,7 @@ class VideoDetailViewModel @Inject constructor(
     private val interactionRepository: InteractionRepository,
     private val relationRepository: RelationRepository,
     private val danmakuPostRepository: DanmakuPostRepository,
-    private val favoriteRepository: FavoriteRepository,
+    private val watchLaterRepository: WatchLaterRepository,
     private val authRepository: AuthRepository,
     private val offlineRepository: OfflineRepository,
     private val networkReader: NetworkReader,
@@ -391,16 +405,19 @@ class VideoDetailViewModel @Inject constructor(
         }
     }
 
-    /** 写侧动作:点赞 / 投币 / 收藏 / 关注 / 发弹幕;拆开只为两边都留在各自的复杂度阈值内 */
+    /** 写侧动作:点赞 / 投币 / 收藏 / 稍后再看 / 关注 / 发弹幕;拆开只为两边都留在各自的复杂度阈值内 */
     private fun handleWriteAction(action: VideoDetailAction) {
         when (action) {
             VideoDetailAction.ToggleLike -> toggleLike()
-            VideoDetailAction.AddCoin -> addCoin()
+            VideoDetailAction.OpenCoinDialog -> mutableState.update { it.copy(coinDialogVisible = true) }
+            VideoDetailAction.CloseCoinDialog -> mutableState.update { it.copy(coinDialogVisible = false) }
+            is VideoDetailAction.ConfirmCoin -> addCoin(action.multiply)
             VideoDetailAction.OpenFavoritePicker -> openFavoritePicker()
             VideoDetailAction.CloseFavoritePicker -> mutableState.update { it.copy(favoritePickerVisible = false) }
             VideoDetailAction.RetryFavoriteFolders -> loadFavoriteFolders()
-            is VideoDetailAction.ToggleFavoriteIn -> toggleFavoriteIn(action.folderId)
-            VideoDetailAction.RemoveFavorite -> removeFavorite()
+            is VideoDetailAction.ToggleFavoriteDraft -> toggleFavoriteDraft(action.folderId)
+            VideoDetailAction.ConfirmFavoriteFolders -> applyFavoriteDraft()
+            VideoDetailAction.ToggleWatchLater -> toggleWatchLater()
             VideoDetailAction.ToggleFollow -> toggleFollow()
             is VideoDetailAction.SendDanmaku -> sendDanmaku(action.text, action.progressMs)
             else -> Unit
@@ -448,12 +465,13 @@ class VideoDetailViewModel @Inject constructor(
                     mutableState.value.detail?.let { detail ->
                         loadInteraction(detail)
                         loadRelation(detail)
+                        loadWatchLater()
                     }
                 }
                 if (!loggedIn) {
                     // 退出后屏上不该还挂着"已关注/已点赞"的上一个身份的回声
                     mutableState.update {
-                        it.copy(following = null, interaction = VideoInteraction())
+                        it.copy(following = null, interaction = VideoInteraction(), watchLater = null)
                     }
                 }
                 wasLoggedIn = loggedIn
@@ -486,6 +504,7 @@ class VideoDetailViewModel @Inject constructor(
                     mutableState.update { it.copy(detail = detail, detailLoading = false, partIndex = 0) }
                     loadRelated()
                     loadInteraction(detail)
+                    loadWatchLater()
                     if (mutableState.value.loggedIn) loadRelation(detail)
                     loadPart(0)
                 }
@@ -676,17 +695,23 @@ class VideoDetailViewModel @Inject constructor(
         }
     }
 
-    private fun addCoin() {
+    /**
+     * 投币:弹窗里按下那一枚才发这一笔写,`multiply` 是用户选的枚数。
+     *
+     * 成功之后才把屏上的投币数加上去 —— 上一版是"先加一、再报投币成功",
+     * 而写口的 `code != 0` 被当成成功吃掉,于是退出重进就复原了。
+     */
+    private fun addCoin(multiply: Int) {
         val current = mutableState.value
         val detail = current.detail ?: return
         if (current.interactionBusy) return
         viewModelScope.launch {
-            mutableState.update { it.copy(interactionBusy = true) }
-            when (val result = interactionRepository.addCoin(detail.brief.aid)) {
+            mutableState.update { it.copy(interactionBusy = true, coinDialogVisible = false) }
+            when (val result = interactionRepository.addCoin(detail.brief.aid, multiply)) {
                 is HsyResult.Success -> {
-                    // 投币没有"我投过没"的读口:成功就地把读数加一,下一次进页面再由平台读数覆盖
-                    mutableState.update { it.withCoinBumped() }
-                    showMessage("投币成功")
+                    // 投币没有"我投过没"的读口:成功就地把读数加上这几枚,下一次进页面再由平台读数覆盖
+                    mutableState.update { it.withCoinBumped(multiply) }
+                    showMessage("已投 $multiply 枚硬币")
                 }
 
                 is HsyResult.Failure -> {
@@ -704,7 +729,7 @@ class VideoDetailViewModel @Inject constructor(
         viewModelScope.launch { danmakuPreferences.setEnabled(target) }
     }
 
-    /** 打开面板时才读收藏夹与归属:没点开收藏就不为它多发两条请求 */
+    /** 打开面板时才读:没点开收藏就不为它发这条请求 */
     private fun openFavoritePicker() {
         val current = mutableState.value
         if (!current.loggedIn) {
@@ -721,27 +746,18 @@ class VideoDetailViewModel @Inject constructor(
         loadFavoriteFolders()
     }
 
+    /** 夹列表与逐夹归属一次读回:它们本来就是同一条路由的两个读数,拆开只是多一个会失败的地方 */
     private fun loadFavoriteFolders() {
-        val detail = mutableState.value.detail ?: return
+        val aid = mutableState.value.detail?.brief?.aid ?: return
         mutableState.update { it.copy(favoriteFoldersLoading = true, favoriteFoldersError = null) }
         viewModelScope.launch {
-            when (val folders = favoriteRepository.folders()) {
-                is HsyResult.Success -> {
-                    val ids = interactionRepository.favoritedFolderIds(detail.brief.aid)
-                    mutableState.update {
-                        it.withFavoritePanel(
-                            folders = folders.value,
-                            ids = (ids as? HsyResult.Success)?.value.orEmpty(),
-                            ownershipError = (ids as? HsyResult.Failure)
-                                ?.let { failure -> "收藏归属没读到:${failure.error.userMessage()}" },
-                        )
-                    }
-                }
+            when (val result = interactionRepository.favoriteFolders(aid)) {
+                is HsyResult.Success -> mutableState.update { it.withFavoritePanel(result.value) }
 
                 is HsyResult.Failure -> mutableState.update {
                     it.copy(
                         favoriteFoldersLoading = false,
-                        favoriteFoldersError = folders.error.userMessage(),
+                        favoriteFoldersError = result.error.userMessage(),
                     )
                 }
             }
@@ -749,47 +765,62 @@ class VideoDetailViewModel @Inject constructor(
     }
 
     /**
-     * 面板里点一个夹 = 在它里面翻转这条稿。
+     * 面板里点一个夹 = 只翻转这一格的勾选,一个请求都不发。
      *
-     * 已收的夹再点一下是"从这个夹移走",不是"取消整个收藏" —— 一条稿可以同时在多个夹里,
-     * 这一点由面板上逐夹的勾选状态表达,不压成一个布尔。
+     * 一条稿可以同时在多个夹里,所以勾选是多选而不是单选;落库等到按"完成"。
+     * 点一下写一下看着省一步,代价是"改了三个夹、第二个失败"会留下半套归属,
+     * 屏上的勾选从此和账号里那份对不上。
      */
-    private fun toggleFavoriteIn(folderId: Long) {
+    private fun toggleFavoriteDraft(folderId: Long) {
+        if (folderId <= 0L) return
+        mutableState.update { state ->
+            val draft = if (folderId in state.favoriteDraftIds) {
+                state.favoriteDraftIds - folderId
+            } else {
+                state.favoriteDraftIds + folderId
+            }
+            state.copy(favoriteDraftIds = draft)
+        }
+    }
+
+    /**
+     * 面板上的"完成":草稿与账号里那份对一次账,差异一次写回。
+     *
+     * 没改过就只是把面板关上 —— 按"完成"未必是为了改东西,不该占一发写配额。
+     */
+    private fun applyFavoriteDraft() {
         val current = mutableState.value
         val detail = current.detail ?: return
-        if (current.interactionBusy || folderId <= 0L) return
-        val contained = current.favoriteFolderIds.contains(folderId)
+        if (current.interactionBusy) return
+        val add = current.favoriteDraftIds - current.favoriteFolderIds
+        val del = current.favoriteFolderIds - current.favoriteDraftIds
+        if (add.isEmpty() && del.isEmpty()) {
+            mutableState.update { it.copy(favoritePickerVisible = false) }
+        } else {
+            writeFavoriteDiff(detail.brief.aid, current.favoriteFolders, add, del)
+        }
+    }
+
+    /** 这一轮的增减一发写完:拆成每夹一发会留下"改到一半失败"的半套归属 */
+    private fun writeFavoriteDiff(aid: Long, folders: List<FavoriteFolder>, add: Set<Long>, del: Set<Long>) {
         viewModelScope.launch {
             mutableState.update { it.copy(interactionBusy = true) }
-            val result = if (contained) {
-                interactionRepository.removeFavorite(detail.brief.aid, listOf(folderId))
-            } else {
-                interactionRepository.addFavorite(detail.brief.aid, folderId)
-            }
+            val result = interactionRepository.applyFavoriteFolders(aid, add.toList(), del.toList())
             when (result) {
                 is HsyResult.Success -> {
-                    val ids = if (contained) {
-                        current.favoriteFolderIds - folderId
-                    } else {
-                        current.favoriteFolderIds + folderId
-                    }
-                    mutableState.update {
-                        it.copy(
-                            favoriteFolderIds = ids,
-                            interaction = it.interaction.copy(favorited = ids.isNotEmpty()),
+                    mutableState.update { state ->
+                        val committed = state.favoriteDraftIds
+                        state.copy(
+                            favoriteFolderIds = committed,
+                            interaction = state.interaction.copy(favorited = committed.isNotEmpty()),
                             interactionBusy = false,
+                            favoritePickerVisible = false,
                         )
                     }
-                    if (contained) {
-                        if (ids.isEmpty()) clearLocalMirror(detail)
-                        showMessage("已从这个收藏夹移走")
-                    } else {
-                        recordLocalMirror(detail, folderId)
-                        showMessage("已收进「${folderTitleOf(folderId)}」")
-                    }
-                    loadFavoriteFolders()
+                    showMessage(favoriteChangedMessage(folders, add, del))
                 }
 
+                // 面板留着:草稿还是用户点的那一份,改一笔就能重来,不必从头再勾一遍
                 is HsyResult.Failure -> {
                     mutableState.update { it.copy(interactionBusy = false) }
                     showMessage(writeErrorText("收藏", result.error))
@@ -798,48 +829,45 @@ class VideoDetailViewModel @Inject constructor(
         }
     }
 
-    /** 面板底部的"取消收藏":把这条稿从它所在的每个夹里一次移走 */
-    private fun removeFavorite() {
-        val current = mutableState.value
-        val detail = current.detail ?: return
-        val ids = current.favoriteFolderIds
-        if (current.interactionBusy || ids.isEmpty()) return
+    /**
+     * 这一条在不在稍后再看:只能问平台 —— 本机不留副本,也就没有"一问即答"。
+     *
+     * 读回来之前屏上是"未知"(null),不猜一个"未加入":猜错时那一枚按钮的读数就是假的。
+     * 游客不读:这个端点在平台上要登录,发出去只会换回一句未登录。
+     */
+    private fun loadWatchLater() {
+        if (!mutableState.value.loggedIn) return
         viewModelScope.launch {
-            mutableState.update { it.copy(interactionBusy = true) }
-            when (val result = interactionRepository.removeFavorite(detail.brief.aid, ids)) {
-                is HsyResult.Success -> {
-                    mutableState.update {
-                        it.copy(
-                            favoriteFolderIds = emptySet(),
-                            interaction = it.interaction.copy(favorited = false),
-                            interactionBusy = false,
-                            favoritePickerVisible = false,
-                        )
-                    }
-                    clearLocalMirror(detail)
-                    showMessage("已取消收藏")
-                }
+            when (val result = watchLaterRepository.contains(bvid)) {
+                is HsyResult.Success -> mutableState.update { it.copy(watchLater = result.value) }
 
-                is HsyResult.Failure -> {
-                    mutableState.update { it.copy(interactionBusy = false) }
-                    showMessage(writeErrorText("取消收藏", result.error))
-                }
+                // 读不到就停在"未知":按钮仍能把这一条加进去,只是屏上不说它本来在不在
+                is HsyResult.Failure -> Unit
             }
         }
     }
 
-    /** 收藏这一条在本机的镜像:收进某个夹时写下,移走时删掉 —— 那一行的形状在文件末尾 */
-    private fun recordLocalMirror(detail: VideoDetail, folderId: Long) {
-        viewModelScope.launch { favoriteRepository.recordLocalMirror(detail, folderTitleOf(folderId)) }
-    }
+    /** 稍后再看:加入与移走共用一枚按钮,差别只在平台写的是 add 还是 del */
+    private fun toggleWatchLater() {
+        val current = mutableState.value
+        if (current.detail == null || current.interactionBusy) return
+        val target = current.watchLater != true
+        viewModelScope.launch {
+            mutableState.update { it.copy(interactionBusy = true) }
+            val result = if (target) watchLaterRepository.add(bvid) else watchLaterRepository.remove(bvid)
+            when (result) {
+                is HsyResult.Success -> {
+                    mutableState.update { it.copy(watchLater = target, interactionBusy = false) }
+                    showMessage(if (target) "已加入稍后再看" else "已从稍后再看移走")
+                }
 
-    /** 本地镜像没有平台归属,走 removeItem 的本地分支即可删掉,不用网络 */
-    private fun clearLocalMirror(detail: VideoDetail) {
-        viewModelScope.launch { favoriteRepository.clearLocalMirror(detail) }
+                is HsyResult.Failure -> {
+                    mutableState.update { it.copy(interactionBusy = false) }
+                    showMessage(writeErrorText("稍后再看", result.error))
+                }
+            }
+        }
     }
-
-    private fun folderTitleOf(folderId: Long): String =
-        mutableState.value.favoriteFolders.firstOrNull { it.id == folderId }?.title.orEmpty()
 
     private fun toggleFollow() {
         val current = mutableState.value
@@ -951,6 +979,38 @@ internal fun qualityOptionsOf(playback: Playback): List<QualityOption> {
 private fun autoStartOf(prefs: AppPreferences, metered: Boolean): Boolean =
     AutoPlayPolicy.fromStorageId(prefs.autoPlayPolicyId).allowsAutoStart(metered)
 
+/**
+ * 收藏面板的读数:夹列表 + 这条稿此刻所在的夹。
+ *
+ * 草稿与已落库那份在这里同时起手:面板打开时两者一致,之后点夹只动草稿,
+ * 按"完成"写完差异才把 [VideoDetailUiState.favoriteFolderIds] 顶上去。
+ */
+private fun VideoDetailUiState.withFavoritePanel(folders: List<FavoriteFolder>): VideoDetailUiState {
+    val ids = folders.filter { it.containsResource }.mapTo(mutableSetOf()) { it.id }
+    return copy(
+        favoriteFolders = folders,
+        favoriteFolderIds = ids,
+        favoriteDraftIds = ids,
+        favoriteFoldersLoading = false,
+        favoriteFoldersError = null,
+    )
+}
+
+/**
+ * 一次写入的两笔账都念出来:只说"收藏成功"的话,用户得自己回想刚才点了哪几个夹。
+ *
+ * 名字取自读回来的那份夹列表 —— 写完之后才发消息,列表还在屏上,不需要另存一份。
+ */
+private fun favoriteChangedMessage(folders: List<FavoriteFolder>, add: Set<Long>, del: Set<Long>): String {
+    val added = folders.filter { it.id in add }.joinToString("、") { "「${it.title}」" }
+    val removed = folders.filter { it.id in del }.joinToString("、") { "「${it.title}」" }
+    return when {
+        added.isNotEmpty() && removed.isNotEmpty() -> "已收进$added · 已从${removed}移走"
+        added.isNotEmpty() -> "已收进$added"
+        else -> "已从${removed}移走"
+    }
+}
+
 /** 换 P 那一刻的清空:上一 P 的流、弹幕与续播点都不许留到这一 P 的屏上 */
 private fun VideoDetailUiState.resetForPart(index: Int, cid: Long, prefs: AppPreferences): VideoDetailUiState = copy(
     partIndex = index,
@@ -977,9 +1037,9 @@ private fun VideoDetailUiState.acceptsQuality(qualityId: Int): Boolean {
     return qualityId == PlaybackTrackSelector.AUTO_QUALITY || qualities.any { it.id == qualityId }
 }
 
-/** 投币成功后的那一拍:读数加一、解除忙态;详情还没回来时只解忙态 */
-private fun VideoDetailUiState.withCoinBumped(): VideoDetailUiState {
-    val bumped = detail?.let { it.copy(stat = it.stat.copy(coin = it.stat.coin + COIN_PER_TAP)) }
+/** 投币成功后的那一拍:读数加上这几枚、解除忙态;详情还没回来时只解忙态 */
+private fun VideoDetailUiState.withCoinBumped(multiply: Int): VideoDetailUiState {
+    val bumped = detail?.let { it.copy(stat = it.stat.copy(coin = it.stat.coin + multiply.toLong())) }
     return copy(detail = bumped ?: detail, interactionBusy = false)
 }
 

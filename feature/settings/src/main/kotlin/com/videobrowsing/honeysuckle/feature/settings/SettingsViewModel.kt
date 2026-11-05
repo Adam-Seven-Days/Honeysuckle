@@ -101,6 +101,9 @@ sealed interface SettingsAction {
     /** 网络协议档:true = 优先 HTTP/2,false = 只用 HTTP/1.1 */
     data class Http2Enabled(val enabled: Boolean) : SettingsAction
 
+    /** 启动时检查更新:true = 每次冷启动问一次仓库上有没有新版本 */
+    data class UpdateCheckEnabled(val enabled: Boolean) : SettingsAction
+
     /** 弹幕三格类型各自画不画 */
     data class DanmakuScrollVisible(val visible: Boolean) : SettingsAction
     data class DanmakuTopVisible(val visible: Boolean) : SettingsAction
@@ -257,6 +260,8 @@ class SettingsViewModel @Inject constructor(
             -> writeComment(action)
 
             is SettingsAction.Http2Enabled -> appPreferences.setHttp2Enabled(action.enabled)
+
+            is SettingsAction.UpdateCheckEnabled -> appPreferences.setUpdateCheckEnabled(action.enabled)
 
             else -> Unit
         }

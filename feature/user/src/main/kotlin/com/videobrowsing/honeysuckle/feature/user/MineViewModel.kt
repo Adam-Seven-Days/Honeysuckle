@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.videobrowsing.honeysuckle.core.data.auth.AuthRepository
 import com.videobrowsing.honeysuckle.core.data.cache.CacheRepository
-import com.videobrowsing.honeysuckle.core.data.favorite.FavoriteRepository
 import com.videobrowsing.honeysuckle.core.data.history.HistoryRepository
 import com.videobrowsing.honeysuckle.core.data.search.SearchRepository
 import com.videobrowsing.honeysuckle.core.datastore.danmaku.DanmakuPreferenceRepository
@@ -30,7 +29,6 @@ data class MineUiState(
     /** null = 偏好盘还没读回来。这里不用 `true` 顶上去:开关状态猜错,用户看到的是骗人的承诺 */
     val danmakuEnabled: Boolean? = null,
     val historyCount: Int = 0,
-    val favoriteCount: Int = 0,
     /** 本机记着的搜索词条数;0 也是真读数(还没搜过) */
     val searchCount: Int = 0,
     /** null = 还没量出来(或正重新量);屏上不拿 0 冒充"没有缓存" */
@@ -52,7 +50,6 @@ private class MineContent(
     val historyCount: Int,
     val recent: List<HistoryEntry>,
     val danmakuEnabled: Boolean,
-    val favoriteCount: Int,
     val searchCount: Int,
     val themeMode: HsyThemeMode,
 )
@@ -60,16 +57,15 @@ private class MineContent(
 /**
  * "我的"页的读数装配。
  *
- * 这一屏没有远端请求:读数全部来自本地存储(历史表、收藏表、搜索记录、缓存目录、两块偏好盘
- * 与账号盘),所以断网、游客态、接口风控都影响不到它 —— 屏上每一个数都能从盘上对账。
+ * 这一屏没有远端请求:读数全部来自本地存储(历史表、搜索记录、缓存目录、两块偏好盘与账号盘),
+ * 所以断网、游客态、接口风控都影响不到它 —— 屏上每一个数都能从盘上对账。
+ * 收藏与稍后再看在这一屏**没有数**:它们是账号在平台上的清单,本机不留副本,屏上只给入口。
  *
  * 时间戳与秒数**原样递出**,不在这里折成"5 分钟前"或"03:05":文案与刻度归 UI。
  */
 @HiltViewModel
-@Suppress("LongParameterList") // 这一屏是"本机读数"的汇总处,每一路都对应屏上真的一行
 class MineViewModel @Inject constructor(
     historyRepository: HistoryRepository,
-    favoriteRepository: FavoriteRepository,
     searchRepository: SearchRepository,
     private val cacheRepository: CacheRepository,
     private val appPreferences: AppPreferenceRepository,
@@ -90,25 +86,21 @@ class MineViewModel @Inject constructor(
     private val themeMode: Flow<HsyThemeMode> = appPreferences.preferences
         .map { HsyThemeMode.fromStorageId(it.themeModeId) }
 
-    /** 收藏与搜索记录都来自本机盘;计数归成一束,主 combine 才留得下位置 */
-    private val localCounts = combine(
-        favoriteRepository.observeLocalCount(),
-        searchRepository.history(SEARCH_TERM_LIMIT),
-    ) { favorites, terms -> favorites to terms.size }
+    /** 搜索记录来自本机盘;这一路的条数只用来报"记了多少个词" */
+    private val searchCount = searchRepository.history(SEARCH_TERM_LIMIT).map { it.size }
 
     private val content = combine(
         historyRepository.observeCount(),
         historyRepository.observeRecent(PREVIEW_LIMIT),
         danmakuPreferences.preferences,
-        localCounts,
+        searchCount,
         themeMode,
-    ) { count, recent, prefs, counts, mode ->
+    ) { count, recent, prefs, terms, mode ->
         MineContent(
             historyCount = count,
             recent = recent,
             danmakuEnabled = prefs.enabled,
-            favoriteCount = counts.first,
-            searchCount = counts.second,
+            searchCount = terms,
             themeMode = mode,
         )
     }
@@ -122,7 +114,6 @@ class MineViewModel @Inject constructor(
         MineUiState(
             danmakuEnabled = content.danmakuEnabled,
             historyCount = content.historyCount,
-            favoriteCount = content.favoriteCount,
             searchCount = content.searchCount,
             cacheBytes = bytes,
             recent = content.recent,

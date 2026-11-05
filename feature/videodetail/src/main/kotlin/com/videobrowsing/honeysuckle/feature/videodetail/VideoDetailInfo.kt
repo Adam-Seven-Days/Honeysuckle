@@ -46,11 +46,15 @@ import com.videobrowsing.honeysuckle.core.designsystem.ui.minimumInteractiveComp
 import com.videobrowsing.honeysuckle.core.model.VideoDetail
 
 /**
- * 标题上面那行续播注记,外加取流失败时那一句。
+ * 标题上面那行续播注记。
  *
  * 弹幕本机取到多少条、覆盖几片不再往屏上说 —— 那是取数侧的事,观众要的是画面上的字在不在。
  * "从头开始"也不算新闻:只有真的从历史点接着放、或者从后台沿过来,才值得提一句。
- * 两句都没话说时整块不占高度,免得留一条空槽。
+ * 没话说时整块不占高度,免得留一条空槽。
+ *
+ * **取流失败不写在这一块**:同一句在播放器画面上已经带"重试"出现过一次(见 `VideoPlayerStage`
+ * 的 `PlayerPlaceholders`),简介流再抄一遍等于让一条坏消息占两个位置,还把标题往下推。
+ * 这一格只报进度;真要重试,重试按钮在画面上。
  */
 @Composable
 internal fun PlaybackNotes(state: VideoDetailUiState, continuing: Boolean) {
@@ -61,27 +65,13 @@ internal fun PlaybackNotes(state: VideoDetailUiState, continuing: Boolean) {
         resume > 0 -> "上次看到 ${formatClock(resume.toLong())},已从那里继续"
         else -> null
     }
-    val error = state.playbackError
-    if (resumeNote == null && error == null) return
-    Column(
+    if (resumeNote == null) return
+    Text(
+        text = resumeNote,
+        style = Hsy.typography.bodySmall,
+        color = Hsy.colors.onSurfaceVariant,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        resumeNote?.let {
-            Text(
-                text = it,
-                style = Hsy.typography.bodySmall,
-                color = Hsy.colors.onSurfaceVariant,
-            )
-        }
-        error?.let {
-            Text(
-                text = "取流失败:$it",
-                style = Hsy.typography.bodySmall,
-                color = Hsy.colors.error,
-            )
-        }
-    }
+    )
 }
 
 @Composable
@@ -117,22 +107,33 @@ internal fun VideoMeta(state: VideoDetailUiState, detail: VideoDetail, intents: 
                 modifier = Modifier.clickable { intents.onAction(VideoDetailAction.DismissMessage) },
             )
         }
+        if (state.coinDialogVisible) CoinDialog(state = state, intents = intents)
         if (state.favoritePickerVisible) FavoriteFolderDialog(state = state, intents = intents)
     }
 }
 
-/** 互动区那一排:点赞 / 投币 / 收藏 / 分享,每枚下面挂自己的读数;游客态多一个扫码入口 */
+/** 互动区那一排:点赞 / 投币 / 收藏 / 稍后再看 / 分享,每枚下面挂自己的读数;游客态多一个扫码入口 */
 @Composable
 private fun MetaActionRow(state: VideoDetailUiState, detail: VideoDetail, intents: DetailIntents) {
     val context = LocalContext.current
     val idle = !state.interactionBusy
     val favorited = state.interaction.favorited == true
+    // 投币、收藏与稍后再看都读账号:游客那一路直接送进扫码页,而不是先弹一句"未登录"
+    val loggedInFirst: (() -> Unit) -> () -> Unit = { action ->
+        { if (state.loggedIn) action() else intents.onOpenLogin() }
+    }
+    val openCoin = loggedInFirst { intents.onAction(VideoDetailAction.OpenCoinDialog) }
+    val openFavorite = loggedInFirst { intents.onAction(VideoDetailAction.OpenFavoritePicker) }
+    val openWatchLater = loggedInFirst { intents.onAction(VideoDetailAction.ToggleWatchLater) }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // 每枚占等宽一格:互动区从四枚变五枚(再加游客那枚"去登录")之后,
+        // 让内容自己定宽会在窄屏上把最右边挤出屏幕 —— 等分之后窄屏只是字变紧,不再丢动作
         MetaAction(
+            modifier = Modifier.weight(1f),
             icon = HsyIcons.thumbUp,
             label = if (state.interaction.liked) "已点赞" else "点赞",
             count = formatCount(detail.stat.like),
@@ -141,32 +142,43 @@ private fun MetaActionRow(state: VideoDetailUiState, detail: VideoDetail, intent
             onClick = { intents.onAction(VideoDetailAction.ToggleLike) },
         )
         MetaAction(
+            modifier = Modifier.weight(1f),
             icon = HsyIcons.coin,
             label = "投币",
             count = formatCount(detail.stat.coin),
             enabled = idle,
-            onClick = { intents.onAction(VideoDetailAction.AddCoin) },
+            onClick = openCoin,
         )
         MetaAction(
+            modifier = Modifier.weight(1f),
             icon = HsyIcons.star,
             label = favoriteLabel(state),
             count = formatCount(detail.stat.favorite),
             active = favorited,
             enabled = idle,
-            onClick = {
-                // 游客先登录:收藏夹要读账号,面板开了也只会是空的
-                if (state.loggedIn) {
-                    intents.onAction(VideoDetailAction.OpenFavoritePicker)
-                } else {
-                    intents.onOpenLogin()
-                }
-            },
+            onClick = openFavorite,
         )
-        ShareAction(context = context, detail = detail, enabled = idle)
+        MetaAction(
+            modifier = Modifier.weight(1f),
+            icon = HsyIcons.clock,
+            label = "稍后再看",
+            count = watchLaterLabel(state.watchLater),
+            active = state.watchLater == true,
+            enabled = idle,
+            onClick = openWatchLater,
+        )
+        ShareAction(modifier = Modifier.weight(1f), context = context, detail = detail, enabled = idle)
         if (!state.loggedIn) {
-            TextButton(onClick = intents.onOpenLogin) { Text("去登录") }
+            TextButton(modifier = Modifier.weight(1f), onClick = intents.onOpenLogin) { Text("去登录") }
         }
     }
+}
+
+/** 稍后再看下面那行读数:这一枚没有平台计数,报的是"在不在账号的清单里";还没读回来就留空,不猜 */
+private fun watchLaterLabel(added: Boolean?): String = when (added) {
+    true -> "已加入"
+    false -> "未加入"
+    null -> ""
 }
 
 /**
@@ -180,6 +192,7 @@ private fun MetaAction(
     label: String,
     count: String,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
     active: Boolean = false,
     enabled: Boolean = true,
 ) {
@@ -189,11 +202,11 @@ private fun MetaAction(
         else -> Hsy.colors.onSurfaceVariant
     }
     Column(
-        modifier = Modifier
+        modifier = modifier
             .minimumInteractiveComponentSize()
             .clip(RoundedCornerShape(Hsy.shapes.medium))
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 4.dp),
+            .padding(horizontal = 6.dp, vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
@@ -210,9 +223,9 @@ private fun MetaAction(
 
 /** 分享:下面那行是平台的分享计数;菜单里两条路 —— 复制链接(离线可用)与系统分享面板 */
 @Composable
-private fun ShareAction(context: Context, detail: VideoDetail, enabled: Boolean) {
+private fun ShareAction(context: Context, detail: VideoDetail, enabled: Boolean, modifier: Modifier = Modifier) {
     var expanded by remember { mutableStateOf(false) }
-    Box {
+    Box(modifier = modifier) {
         MetaAction(
             icon = HsyIcons.share,
             label = "分享",

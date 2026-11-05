@@ -21,7 +21,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 private const val FIRST_PAGE = 1
-private const val LOCAL_LIMIT = 200
 private const val MESSAGE_LINGER_MS = 4_000L
 
 /** 夹内搜索等用户停手再发:每敲一个字查一次平台,既慢也容易招风控 */
@@ -30,13 +29,11 @@ private const val SEARCH_DEBOUNCE_MS = 350L
 /**
  * 收藏页读数。
  *
- * [selected] 为 null 时是"夹列表"(本地镜像 + 平台夹);选中平台夹之后同一屏切成夹内列表。
+ * [selected] 为 null 时是"夹列表"(账号建的那些夹);选中一个夹之后同一屏切成夹内列表。
  * 用一个状态而不是两个导航目的地:这一页的"返回"在两种形态下含义不同,
  * 而这个区别正是屏上 BackHandler 要处理的事。
  */
 data class FavoriteUiState(
-    val local: List<FavoriteItem> = emptyList(),
-    val localCount: Int = 0,
     val loggedIn: Boolean = false,
     val folders: List<FavoriteFolder> = emptyList(),
     val foldersLoading: Boolean = false,
@@ -73,7 +70,7 @@ sealed interface FavoriteAction {
 /**
  * 收藏页的读数与写入口。
  *
- * 本地镜像始终订阅:游客也能看见"我收藏过的";平台夹只在登录态下拉取,
+ * 收藏夹只在登录态下读得出来,屏上因此没有"本地那份":游客只看到扫码引导,
  * 退出登录当场把夹列表与夹内列表清掉,不把上一个身份的收藏留在屏上。
  */
 @HiltViewModel
@@ -90,16 +87,6 @@ class FavoriteViewModel @Inject constructor(
     private var searchJob: Job? = null
 
     init {
-        viewModelScope.launch {
-            favoriteRepository.observeLocal(LOCAL_LIMIT).collect { items ->
-                mutableState.update { it.copy(local = items) }
-            }
-        }
-        viewModelScope.launch {
-            favoriteRepository.observeLocalCount().collect { count ->
-                mutableState.update { it.copy(localCount = count) }
-            }
-        }
         observeLogin(authRepository)
     }
 
@@ -321,7 +308,7 @@ class FavoriteViewModel @Inject constructor(
                     mutableState.update { state ->
                         state.copy(items = state.items.filterNot { it.bvid == item.bvid })
                     }
-                    showMessage(if (item.isLocal) "已从本地收藏移除" else "已从收藏夹移除")
+                    showMessage("已从收藏夹移除")
                 }
 
                 is HsyResult.Failure -> showMessage(writeErrorText("移除收藏", result.error))

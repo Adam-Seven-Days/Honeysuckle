@@ -85,6 +85,9 @@ interface AppPreferenceStore {
     /** 网络协议档:true = 优先 HTTP/2,false = 只用 HTTP/1.1 */
     suspend fun setHttp2Enabled(enabled: Boolean)
 
+    /** 启动时检查更新:true = 每次冷启动问一次 GitHub Release */
+    suspend fun setUpdateCheckEnabled(enabled: Boolean)
+
     /**
      * 把设置首页某一组退回出厂档:「外观与首页」。
      *

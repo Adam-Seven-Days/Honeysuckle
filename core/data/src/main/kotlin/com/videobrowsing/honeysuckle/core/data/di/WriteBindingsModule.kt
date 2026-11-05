@@ -8,6 +8,8 @@ import com.videobrowsing.honeysuckle.core.data.favorite.DefaultFavoriteRepositor
 import com.videobrowsing.honeysuckle.core.data.favorite.FavoriteRepository
 import com.videobrowsing.honeysuckle.core.data.relation.DefaultRelationRepository
 import com.videobrowsing.honeysuckle.core.data.relation.RelationRepository
+import com.videobrowsing.honeysuckle.core.data.watchlater.DefaultWatchLaterRepository
+import com.videobrowsing.honeysuckle.core.data.watchlater.WatchLaterRepository
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -39,4 +41,8 @@ abstract class WriteBindingsModule {
     @Binds
     @Singleton
     abstract fun bindFavoriteRepository(impl: DefaultFavoriteRepository): FavoriteRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindWatchLaterRepository(impl: DefaultWatchLaterRepository): WatchLaterRepository
 }

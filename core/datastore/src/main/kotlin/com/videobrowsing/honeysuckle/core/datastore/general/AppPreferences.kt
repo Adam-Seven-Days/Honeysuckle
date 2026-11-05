@@ -122,6 +122,13 @@ data class AppPreferences(
      * 它管的是接口、图床与离线下载;视频播放走播放器内核自己的 HTTP 栈,不受这把键约束。
      */
     val http2Enabled: Boolean = DEFAULT_HTTP2_ENABLED,
+    /**
+     * 启动时检查更新:开启后每次冷启动问一次 GitHub 上最新的 Release,发现新版才弹窗。
+     * 默认开 —— 这一份是不上架的侧载包,没有商店替它兜住"你知道有新版本吗"这件事。
+     *
+     * 它只决定**要不要自动去问**;下载由用户在浏览器里自己完成,应用不接管安装,也不静默写任何文件。
+     */
+    val updateCheckEnabled: Boolean = DEFAULT_UPDATE_CHECK_ENABLED,
 ) {
     companion object {
         /** 与弹幕那块盘同一个口径:空串不是档名,是"没设过"(定义在 `TIER_ID_UNSET`) */
@@ -168,6 +175,9 @@ data class AppPreferences(
 
         /** 网络协议档默认开:优先 HTTP/2,谈不成 h2 的节点仍回落 HTTP/1.1 */
         const val DEFAULT_HTTP2_ENABLED = true
+
+        /** 检查更新默认开:侧载包没有商店提醒,冷启动问一次是它唯一能知道"有新版本"的机会 */
+        const val DEFAULT_UPDATE_CHECK_ENABLED = true
 
         /** 还没记过亮度:`-1f` 与 Android 窗口亮度"跟着系统走"是同一个取值,不必再翻一层 */
         const val DEFAULT_REMEMBERED_BRIGHTNESS = -1f

@@ -11,8 +11,9 @@ private const val CODE_RISK_CONTROL = -352
 private const val HTTP_RISK_CONTROL = 412
 private const val CODE_REQUEST_TOO_FREQUENT = -509
 
-/** 投币域的业务码:硬币不够是"换一次别的事",不是重试能好的 */
+/** 投币域的业务码:硬币不够与今日到上限都是"今天就这样",重试不会好 */
 private const val CODE_COIN_INSUFFICIENT = -104
+private const val CODE_COIN_DAILY_LIMIT = 34005
 
 /** 评论域的业务码 */
 private const val CODE_COMMENT_CLOSED = 12002
@@ -42,8 +43,22 @@ private fun serverWriteText(action: String, error: AppError.Server): String = wh
     CODE_COMMENT_TOO_FAST -> "评论发得太快 · 歇一会儿再发"
     CODE_COMMENT_REJECTED -> "内容没过审 · 换个说法再试"
     CODE_COIN_INSUFFICIENT -> "硬币不够了 · 这次没投出去"
-    else -> "${action}失败:${error.userMessage()}"
+    CODE_COIN_DAILY_LIMIT -> "今天投币到上限了 · 明天再来"
+    else -> "${action}失败:${humanPlatformMessage(error) ?: error.userMessage()}"
 }
+
+/**
+ * 码表没收录的那一枚,借平台自己那句中文给用户看。
+ *
+ * "稿件不支持投币""今日投币已达上限"这类话正是这一笔唯一可执行的下一步,而本项目不写日志,
+ * 屏上再不说就只剩一句"稍后再试"。形状不对(英文、超长、HTTP 那句 "Not Found")一律不上屏,
+ * 退回 [userMessage] 的通用话 —— 原话里可能夹着用户读不懂也做不了什么的东西。
+ */
+private fun humanPlatformMessage(error: AppError.Server): String? = error.message.trim().removeSuffix("。")
+    .takeIf { it.isNotEmpty() && it.length <= PLATFORM_MESSAGE_MAX && it.any { ch -> ch in PLATFORM_CJK } }
+
+private const val PLATFORM_MESSAGE_MAX = 24
+private val PLATFORM_CJK = '一'..'鿿'
 
 /** 这一发失败是不是"该去登录":界面据此把入口换成扫码页,而不是反复重试 */
 fun AppError.isLoginRequired(): Boolean = this is AppError.Server && code == CODE_NOT_LOGGED_IN

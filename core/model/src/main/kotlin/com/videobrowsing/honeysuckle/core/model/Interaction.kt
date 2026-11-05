@@ -1,7 +1,17 @@
 package com.videobrowsing.honeysuckle.core.model
 
-/** 用户的一个收藏夹(领域模型);基础版只用 id 与标题,条数给界面做副标题 */
-data class FavoriteFolder(val id: Long, val title: String, val mediaCount: Int = 0)
+/**
+ * 用户的一个收藏夹(领域模型);id 与标题给行本体,条数给副标题。
+ *
+ * [containsResource] 只在"带着某一条稿去问"时才有意义:平台那个 `fav_state` 说的就是
+ * "这条稿子此刻在不在这个夹里"。单独列夹时它没有对照对象,保持假。
+ */
+data class FavoriteFolder(
+    val id: Long,
+    val title: String,
+    val mediaCount: Int = 0,
+    val containsResource: Boolean = false,
+)
 
 /**
  * 一条视频的互动状态。

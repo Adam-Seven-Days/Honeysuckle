@@ -50,7 +50,7 @@ class RelationApi(
                 "re_src" to RE_SRC,
                 "csrf" to csrf,
             ),
-        ).flatMap { HsyResult.Success(Unit) }
+        ).flatMap(HsyEnvelope::writeOk)
     }
 
     companion object {

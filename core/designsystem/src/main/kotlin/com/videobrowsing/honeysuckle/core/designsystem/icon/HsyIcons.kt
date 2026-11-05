@@ -290,6 +290,18 @@ object HsyIcons {
         }
     }
 
+    /** 稍后再看:一只表盘 + 两根针;已加入与否同样只靠 tint 与文字,不另画"已选中的表盘" */
+    val clock: ImageVector by lazy {
+        icon("HsyIcons.Clock") {
+            strokePath(lineWidth = 1.6f) {
+                circleAt(12f, 12f, 8.5f)
+                moveTo(12f, 7.2f)
+                verticalLineTo(12f)
+                lineTo(15.8f, 14.2f)
+            }
+        }
+    }
+
     /** 搜索:放大镜 */
     val search: ImageVector by lazy {
         icon("HsyIcons.Search") {

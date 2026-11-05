@@ -51,7 +51,7 @@ class DanmakuPostApi(
                 "rnd" to rnd(),
                 "csrf" to csrf,
             ),
-        ).flatMap { HsyResult.Success(Unit) }
+        ).flatMap(HsyEnvelope::writeOk)
     }
 
     companion object {
