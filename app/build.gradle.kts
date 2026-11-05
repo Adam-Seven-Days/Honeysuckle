@@ -28,8 +28,8 @@ android {
         applicationId = "com.videobrowsing.honeysuckle"
         // targetSdk 暂留 36:抬到 37 会改变运行时行为口径,属产品决策,不随 compileSdk 被动跟版
         targetSdk = 36
-        versionCode = 11
-        versionName = "1.2.0"
+        versionCode = 12
+        versionName = "1.3.0"
     }
 
     signingConfigs {
