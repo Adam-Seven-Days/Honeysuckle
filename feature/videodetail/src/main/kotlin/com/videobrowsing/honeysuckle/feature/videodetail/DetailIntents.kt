@@ -20,6 +20,8 @@ internal class DetailIntents(
     val onOpenSpace: (Long) -> Unit,
     val onOpenLogin: () -> Unit,
     val onOpenThread: (aid: Long, rootId: Long, upMid: Long) -> Unit,
+    /** 简介页那枚「查看全部 N P」:把分 P 清单页压到整页之上 */
+    val onOpenParts: () -> Unit,
 )
 
 /**
@@ -32,6 +34,7 @@ internal class DetailIntents(
 internal fun rememberDetailIntents(
     viewModel: VideoDetailViewModel,
     callbacks: VideoDetailCallbacks,
+    onOpenParts: () -> Unit,
     onToggleFullscreen: () -> Unit,
 ): DetailIntents = remember(viewModel, callbacks) {
     DetailIntents(
@@ -43,5 +46,6 @@ internal fun rememberDetailIntents(
         onOpenSpace = callbacks.onOpenSpace,
         onOpenLogin = callbacks.onOpenLogin,
         onOpenThread = callbacks.onOpenThread,
+        onOpenParts = onOpenParts,
     )
 }

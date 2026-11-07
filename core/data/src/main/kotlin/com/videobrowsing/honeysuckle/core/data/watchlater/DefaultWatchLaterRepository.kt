@@ -38,8 +38,8 @@ class DefaultWatchLaterRepository @Inject constructor(
         writeGuard.requireCsrf().flatMap { csrf -> api.add(bvid, csrf) }
     }
 
-    override suspend fun remove(bvid: String): HsyResult<Unit> = withContext(ioDispatcher) {
-        writeGuard.requireCsrf().flatMap { csrf -> api.remove(bvid, csrf) }
+    override suspend fun remove(aid: Long): HsyResult<Unit> = withContext(ioDispatcher) {
+        writeGuard.requireCsrf().flatMap { csrf -> api.remove(aid, csrf) }
     }
 
     override suspend fun clearAll(): HsyResult<Unit> = withContext(ioDispatcher) {

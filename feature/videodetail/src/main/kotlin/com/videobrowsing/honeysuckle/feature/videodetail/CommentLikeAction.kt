@@ -35,7 +35,7 @@ private const val DISABLED_ALPHA = 0.45f
  * 数字用与全仓一致的大数刻度。
  */
 @Composable
-internal fun CommentLikeAction(comment: Comment, state: CommentUiState, onAction: (CommentAction) -> Unit) {
+internal fun CommentLikeAction(comment: Comment, state: CommentUiState, intents: CommentIntents) {
     val liked = comment.id in state.likedIds
     val alpha = when {
         state.likeReadOnly -> DISABLED_ALPHA
@@ -51,7 +51,14 @@ internal fun CommentLikeAction(comment: Comment, state: CommentUiState, onAction
         modifier = Modifier
             .minimumInteractiveComponentSize()
             .clip(RoundedCornerShape(LIKE_CORNER_DP))
-            .clickable(role = Role.Button) { onAction(CommentAction.ToggleLike(comment)) }
+            .clickable(role = Role.Button) {
+                // 游客点赞直接去登录,不在评论行里丢一句点了也不能继续的提醒
+                if (state.loggedIn) {
+                    intents.onAction(CommentAction.ToggleLike(comment))
+                } else {
+                    intents.onOpenLogin()
+                }
+            }
             .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

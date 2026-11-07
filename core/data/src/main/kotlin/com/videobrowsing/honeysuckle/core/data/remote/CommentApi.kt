@@ -214,6 +214,9 @@ class CommentApi(
             parentId = obj.longOr("parent"),
             mid = memberMid,
             userName = member?.stringOr("uname").orEmpty(),
+            level = member?.objOr("level_info")?.intOr("current_level")
+                ?: member?.intOr("level")
+                ?: 0,
             avatarUrl = httpsCover(member?.stringOr("avatar").orEmpty()),
             content = content?.stringOr("message").orEmpty(),
             emotes = content.emoteUrls(),

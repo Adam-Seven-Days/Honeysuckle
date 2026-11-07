@@ -49,18 +49,23 @@ class WatchLaterApi(
         }
     }
 
-    suspend fun add(bvid: String, csrf: String): HsyResult<Unit> = postWithCsrf(addUrl, bvid, csrf)
+    suspend fun add(bvid: String, csrf: String): HsyResult<Unit> {
+        val id = bvid.trim()
+        if (id.isEmpty()) return HsyResult.Failure(AppError.Decode("稍后再看缺少视频编号"))
+        return postForm(addUrl, mapOf("bvid" to id), csrf)
+    }
 
-    suspend fun remove(bvid: String, csrf: String): HsyResult<Unit> = postWithCsrf(deleteUrl, bvid, csrf)
+    /**
+     * 移走一条:**del 只认 `aid`**,送 `bvid` 会换回 `-400 请求错误` —— 与 add 的口径不同,
+     * 这里不能因为 add 收 bvid 就顺手也送 bvid。
+     */
+    suspend fun remove(aid: Long, csrf: String): HsyResult<Unit> {
+        if (aid <= 0L) return HsyResult.Failure(AppError.Decode("稍后再看缺少视频编号,移不走"))
+        return postForm(deleteUrl, mapOf("aid" to aid.toString()), csrf)
+    }
 
     /** 整表清空:只有一发请求,不按条循环删 —— 循环既慢又正好撞上写接口的频控 */
     suspend fun clear(csrf: String): HsyResult<Unit> = postForm(clearUrl, emptyMap(), csrf)
-
-    private suspend fun postWithCsrf(url: HttpUrl, bvid: String, csrf: String): HsyResult<Unit> {
-        val id = bvid.trim()
-        if (id.isEmpty()) return HsyResult.Failure(AppError.Decode("稍后再看缺少视频编号"))
-        return postForm(url, mapOf("bvid" to id), csrf)
-    }
 
     private suspend fun postForm(url: HttpUrl, fields: Map<String, String>, csrf: String): HsyResult<Unit> {
         // 缺 csrf 归"该去登录"而不是"报文读不懂":写口的失败分类决定了屏上给的是扫码页还是一句重试
@@ -80,8 +85,12 @@ class WatchLaterApi(
             coverUrl = httpsCover(row.stringOr("pic").ifBlank { row.stringOr("cover") }),
             durationSec = row.intOr("duration"),
             positionSec = row.intOr("progress"),
-            upName = row.objOr("upper")?.stringOr("name").orEmpty().ifBlank { row.stringOr("name") },
-            addedAtEpochSec = row.longOr("added_at").takeIf { it > 0L } ?: row.longOr("add_date"),
+            upName = row.objOr("upper")?.stringOr("name").orEmpty()
+                .ifBlank { row.objOr("owner")?.stringOr("name").orEmpty() }
+                .ifBlank { row.stringOr("name") },
+            addedAtEpochSec = row.longOr("added_at").takeIf { it > 0L }
+                ?: row.longOr("add_at").takeIf { it > 0L }
+                ?: row.longOr("add_date"),
         )
     }
 

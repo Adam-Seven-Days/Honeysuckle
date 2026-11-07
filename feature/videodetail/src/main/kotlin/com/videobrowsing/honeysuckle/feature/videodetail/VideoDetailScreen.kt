@@ -23,8 +23,11 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -98,11 +101,21 @@ fun VideoDetailScreen(
     // 进页那一刻引擎里是否已经在放这一支:决定注记说"接着后台"还是"从头/从历史点"
     val continuingOnEntry = remember(state.bvid) { engine.session.value?.bvid == state.bvid }
     val playerUi = remember { PlayerUi() }
+    // 分 P 清单压在整页之上;清单数据就在这一屏的 state 里,不必另开 ViewModel
+    var partsOpen by rememberSaveable { mutableStateOf(false) }
     // 回调/读数的容器缓存成同一实例,子组件的跳过判断才真正生效;总数传"怎么读"而不是值
-    val intents = rememberDetailIntents(viewModel, callbacks) { onFullscreenChange(true) }
+    val intents = rememberDetailIntents(viewModel, callbacks, onOpenParts = { partsOpen = true }) {
+        onFullscreenChange(true)
+    }
     val commentZone = remember(commentsViewModel) { CommentZone(commentsViewModel) { commentCount.value } }
 
-    BackHandler { if (fullscreen) onFullscreenChange(false) else callbacks.onBack() }
+    DetailBackHandler(
+        partsOpen = partsOpen,
+        fullscreen = fullscreen,
+        onCloseParts = { partsOpen = false },
+        onExitFullscreen = { onFullscreenChange(false) },
+        onBack = callbacks.onBack,
+    )
     VideoPageEffects(engine, host, playerUi, state, fullscreen)
     PlayerEndedEffect(host) { viewModel.onAction(VideoDetailAction.PartEnded) }
 
@@ -137,6 +150,13 @@ fun VideoDetailScreen(
 
             else -> DetailColumn(state, intents, stage, continuingOnEntry, commentZone)
         }
+        // 清单页铺满整屏,压在播放器与简介之上;返回键先退它,再才退详情页
+        PartsPageHost(
+            open = partsOpen && !inPip,
+            state = state,
+            viewModel = viewModel,
+            onClose = { partsOpen = false },
+        )
     }
 
     // 确认框摆在最外层而不塞进某一栏:窄屏、宽屏与全屏三种布局都可能被"只在 Wi-Fi 下缓存"拦下
@@ -145,6 +165,28 @@ fun VideoDetailScreen(
             onConfirm = { viewModel.onAction(VideoDetailAction.ConfirmDownload) },
             onDismiss = { viewModel.onAction(VideoDetailAction.CancelDownloadConfirm) },
         )
+    }
+}
+
+/**
+ * 返回键的三级优先级:分 P 清单在最上面,先收它;其次是全屏;最后才离开详情页。
+ *
+ * 与导航层的"楼中楼"是同一套读法:压在上面的那一页只退自己,不顺手把详情页也带走。
+ */
+@Composable
+private fun DetailBackHandler(
+    partsOpen: Boolean,
+    fullscreen: Boolean,
+    onCloseParts: () -> Unit,
+    onExitFullscreen: () -> Unit,
+    onBack: () -> Unit,
+) {
+    BackHandler {
+        when {
+            partsOpen -> onCloseParts()
+            fullscreen -> onExitFullscreen()
+            else -> onBack()
+        }
     }
 }
 
@@ -369,7 +411,7 @@ private fun IntroFeed(
         }
         if (state.parts.size > 1) {
             item(key = "parts") {
-                PartsRow(state, onSelect = { intents.onAction(VideoDetailAction.SelectPart(it)) })
+                PartsRow(state = state, onOpenAll = intents.onOpenParts)
             }
         }
         item(key = "related-title") { RelatedTitle() }

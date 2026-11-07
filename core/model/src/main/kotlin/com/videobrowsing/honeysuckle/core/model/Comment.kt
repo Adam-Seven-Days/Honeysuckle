@@ -19,6 +19,8 @@ data class Comment(
     val parentId: Long = 0,
     val mid: Long = 0,
     val userName: String = "",
+    /** 平台账号等级(1–6);0 = 回包里没给,屏上不念 */
+    val level: Int = 0,
     val avatarUrl: String = "",
     val content: String = "",
     /**

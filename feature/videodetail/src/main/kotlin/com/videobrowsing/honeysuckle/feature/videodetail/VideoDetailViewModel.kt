@@ -850,11 +850,17 @@ class VideoDetailViewModel @Inject constructor(
     /** 稍后再看:加入与移走共用一枚按钮,差别只在平台写的是 add 还是 del */
     private fun toggleWatchLater() {
         val current = mutableState.value
-        if (current.detail == null || current.interactionBusy) return
+        val detail = current.detail
+        if (detail == null || current.interactionBusy) return
         val target = current.watchLater != true
         viewModelScope.launch {
             mutableState.update { it.copy(interactionBusy = true) }
-            val result = if (target) watchLaterRepository.add(bvid) else watchLaterRepository.remove(bvid)
+            val result = if (target) {
+                watchLaterRepository.add(bvid)
+            } else {
+                // del 口只认 avid;bvid 是 add 口那一套,拿去 del 会被回 -400
+                watchLaterRepository.remove(detail.brief.aid)
+            }
             when (result) {
                 is HsyResult.Success -> {
                     mutableState.update { it.copy(watchLater = target, interactionBusy = false) }

@@ -23,6 +23,7 @@ import com.videobrowsing.honeysuckle.core.designsystem.component.HsyEmptyState
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsyErrorState
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsySettingRow
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsyTopBar
+import com.videobrowsing.honeysuckle.core.designsystem.component.HsyVideoThumb
 import com.videobrowsing.honeysuckle.core.designsystem.icon.HsyIcons
 import com.videobrowsing.honeysuckle.core.designsystem.theme.Hsy
 import com.videobrowsing.honeysuckle.core.designsystem.ui.CircularProgressIndicator
@@ -272,6 +273,7 @@ private fun FavoriteRow(
 ) {
     HsySettingRow(
         title = item.title,
+        leading = { HsyVideoThumb(coverUrl = item.coverUrl) },
         supporting = supporting,
         onClick = onOpen,
         trailing = {

@@ -119,7 +119,7 @@ class WatchLaterViewModel @Inject constructor(
     /** 移走一条:平台答应了才把它从屏上拿掉,风控回一句时那一行仍留在原位 */
     private fun remove(item: WatchLaterItem) {
         viewModelScope.launch {
-            when (val result = watchLaterRepository.remove(item.bvid)) {
+            when (val result = watchLaterRepository.remove(item.aid)) {
                 is HsyResult.Success -> {
                     mutableState.update { state ->
                         state.copy(items = state.items.filterNot { it.bvid == item.bvid })

@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -25,6 +25,7 @@ import com.videobrowsing.honeysuckle.core.designsystem.component.HsyTopBar
 import com.videobrowsing.honeysuckle.core.designsystem.theme.Hsy
 import com.videobrowsing.honeysuckle.core.designsystem.ui.CircularProgressIndicator
 import com.videobrowsing.honeysuckle.core.designsystem.ui.EmojiText
+import com.videobrowsing.honeysuckle.core.designsystem.ui.HorizontalDivider
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Text
 import com.videobrowsing.honeysuckle.core.designsystem.ui.TextButton
 import com.videobrowsing.honeysuckle.core.model.Comment
@@ -47,6 +48,13 @@ fun CommentThreadScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var draft by remember { mutableStateOf("") }
+    val intents = remember(viewModel, onOpenLogin, onOpenSpace) {
+        CommentIntents(
+            onAction = viewModel::onAction,
+            onOpenLogin = onOpenLogin,
+            onOpenSpace = onOpenSpace,
+        )
+    }
 
     // 发送成功才清空草稿:失败时用户不该重打一遍
     LaunchedEffect(state.sendAcceptedAt) {
@@ -66,19 +74,13 @@ fun CommentThreadScreen(
             )
         }
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            ThreadBody(
-                state = state,
-                onAction = viewModel::onAction,
-                onOpenLogin = onOpenLogin,
-                onOpenSpace = onOpenSpace,
-            )
+            ThreadBody(state = state, intents = intents)
         }
         Composer(
             state = state,
             draft = draft,
             onDraftChange = { draft = it },
-            onAction = viewModel::onAction,
-            onOpenLogin = onOpenLogin,
+            intents = intents,
         )
     }
 }
@@ -91,14 +93,9 @@ private fun threadTitle(state: CommentUiState): String = when {
 }
 
 @Composable
-private fun ThreadBody(
-    state: CommentUiState,
-    onAction: (CommentAction) -> Unit,
-    onOpenLogin: () -> Unit,
-    onOpenSpace: (Long) -> Unit,
-) {
+private fun ThreadBody(state: CommentUiState, intents: CommentIntents) {
     val listState = rememberLazyListState()
-    AutoLoadMore(listState = listState, state = state, onAction = onAction)
+    AutoLoadMore(listState = listState, state = state, onAction = intents.onAction)
     val nothingYet = state.comments.isEmpty() && state.threadRoot == null
 
     when {
@@ -108,37 +105,40 @@ private fun ThreadBody(
 
         state.errorMessage != null && nothingYet -> HsyErrorState(
             message = checkNotNull(state.errorMessage),
-            onRetry = { onAction(CommentAction.Reload) },
+            onRetry = { intents.onAction(CommentAction.Reload) },
             hint = "整楼的回复都在平台上 · 这一页读不到就没有可看的",
         )
 
         else -> LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
             state.threadRoot?.let { root ->
-                item(key = "root") { ThreadRootRow(root, state, onAction, onOpenSpace) }
+                item(key = "root") { ThreadRootRow(root, state, intents) }
             }
-            items(state.comments, key = { it.id }) { reply ->
-                ReplyRow(reply = reply, state = state, onAction = onAction, onOpenSpace = onOpenSpace)
+            itemsIndexed(state.comments, key = { _, reply -> reply.id }) { index, reply ->
+                ReplyRow(
+                    reply = reply,
+                    state = state,
+                    intents = intents,
+                    modifier = Modifier.padding(start = ReplyIndent, end = 16.dp),
+                )
+                if (index < state.comments.lastIndex) {
+                    HorizontalDivider(modifier = Modifier.padding(start = ReplyIndent, end = 16.dp))
+                }
             }
-            item(key = "footer") { ListFooter(state = state, onAction = onAction, onOpenLogin = onOpenLogin) }
+            item(key = "footer") { ListFooter(state = state, intents = intents) }
         }
     }
 }
 
 /** 主评论行:与评论区那一行同一种摆法,只是不再往下折回复 —— 全部回复就在下面 */
 @Composable
-private fun ThreadRootRow(
-    comment: Comment,
-    state: CommentUiState,
-    onAction: (CommentAction) -> Unit,
-    onOpenSpace: (Long) -> Unit,
-) {
+private fun ThreadRootRow(comment: Comment, state: CommentUiState, intents: CommentIntents) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(Hsy.colors.surfaceVariant.copy(alpha = ROOT_TINT_ALPHA))
             .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
-        CommentHeader(comment = comment, onOpenSpace = onOpenSpace)
+        CommentHeader(comment = comment, onOpenSpace = intents.onOpenSpace)
         EmojiText(
             text = comment.content,
             emotes = comment.emotes,
@@ -156,8 +156,16 @@ private fun ThreadRootRow(
                 color = Hsy.colors.onSurfaceVariant,
                 modifier = Modifier.weight(1f),
             )
-            CommentLikeAction(comment = comment, state = state, onAction = onAction)
-            TextButton(onClick = { onAction(CommentAction.ReplyTo(comment)) }) { Text("回复") }
+            CommentLikeAction(comment = comment, state = state, intents = intents)
+            TextButton(
+                onClick = {
+                    if (state.loggedIn) {
+                        intents.onAction(CommentAction.ReplyTo(comment))
+                    } else {
+                        intents.onOpenLogin()
+                    }
+                },
+            ) { Text("回复") }
         }
     }
 }

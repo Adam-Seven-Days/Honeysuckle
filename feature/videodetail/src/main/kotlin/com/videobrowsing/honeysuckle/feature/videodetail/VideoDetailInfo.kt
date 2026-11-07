@@ -11,8 +11,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -38,7 +36,6 @@ import com.videobrowsing.honeysuckle.core.designsystem.icon.HsyIcons
 import com.videobrowsing.honeysuckle.core.designsystem.theme.Hsy
 import com.videobrowsing.honeysuckle.core.designsystem.ui.DropdownMenu
 import com.videobrowsing.honeysuckle.core.designsystem.ui.DropdownMenuItem
-import com.videobrowsing.honeysuckle.core.designsystem.ui.FilterChip
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Icon
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Text
 import com.videobrowsing.honeysuckle.core.designsystem.ui.TextButton
@@ -112,16 +109,17 @@ internal fun VideoMeta(state: VideoDetailUiState, detail: VideoDetail, intents: 
     }
 }
 
-/** 互动区那一排:点赞 / 投币 / 收藏 / 稍后再看 / 分享,每枚下面挂自己的读数;游客态多一个扫码入口 */
+/** 互动区那一排:点赞 / 投币 / 收藏 / 稍后再看 / 分享;游客点需要账号的那几枚时直接去登录 */
 @Composable
 private fun MetaActionRow(state: VideoDetailUiState, detail: VideoDetail, intents: DetailIntents) {
     val context = LocalContext.current
     val idle = !state.interactionBusy
     val favorited = state.interaction.favorited == true
-    // 投币、收藏与稍后再看都读账号:游客那一路直接送进扫码页,而不是先弹一句"未登录"
+    // 点赞、投币、收藏与稍后再看都读账号:游客那一路直接送进扫码页,而不是先弹一句"未登录"
     val loggedInFirst: (() -> Unit) -> () -> Unit = { action ->
         { if (state.loggedIn) action() else intents.onOpenLogin() }
     }
+    val toggleLike = loggedInFirst { intents.onAction(VideoDetailAction.ToggleLike) }
     val openCoin = loggedInFirst { intents.onAction(VideoDetailAction.OpenCoinDialog) }
     val openFavorite = loggedInFirst { intents.onAction(VideoDetailAction.OpenFavoritePicker) }
     val openWatchLater = loggedInFirst { intents.onAction(VideoDetailAction.ToggleWatchLater) }
@@ -130,8 +128,7 @@ private fun MetaActionRow(state: VideoDetailUiState, detail: VideoDetail, intent
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // 每枚占等宽一格:互动区从四枚变五枚(再加游客那枚"去登录")之后,
-        // 让内容自己定宽会在窄屏上把最右边挤出屏幕 —— 等分之后窄屏只是字变紧,不再丢动作
+        // 每枚占等宽一格:让内容自己定宽会在窄屏上把最右边挤出屏幕 —— 等分之后窄屏只是字变紧,不再丢动作
         MetaAction(
             modifier = Modifier.weight(1f),
             icon = HsyIcons.thumbUp,
@@ -139,7 +136,7 @@ private fun MetaActionRow(state: VideoDetailUiState, detail: VideoDetail, intent
             count = formatCount(detail.stat.like),
             active = state.interaction.liked,
             enabled = idle,
-            onClick = { intents.onAction(VideoDetailAction.ToggleLike) },
+            onClick = toggleLike,
         )
         MetaAction(
             modifier = Modifier.weight(1f),
@@ -168,9 +165,6 @@ private fun MetaActionRow(state: VideoDetailUiState, detail: VideoDetail, intent
             onClick = openWatchLater,
         )
         ShareAction(modifier = Modifier.weight(1f), context = context, detail = detail, enabled = idle)
-        if (!state.loggedIn) {
-            TextButton(modifier = Modifier.weight(1f), onClick = intents.onOpenLogin) { Text("去登录") }
-        }
     }
 }
 
@@ -299,13 +293,7 @@ internal fun UpCard(
                 onClick = if (loggedIn) onToggleFollow else onOpenLogin,
                 enabled = !busy,
             ) {
-                Text(
-                    text = when {
-                        !loggedIn -> "关注 · 需登录"
-                        following == true -> "已关注"
-                        else -> "关注"
-                    },
-                )
+                Text(text = if (following == true) "已关注" else "关注")
             }
         }
     }
@@ -348,22 +336,6 @@ private fun Description(description: String) {
         )
         if (description.length > DESCRIPTION_PREVIEW_CHARS) {
             TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "收起" else "展开") }
-        }
-    }
-}
-
-@Composable
-internal fun PartsRow(state: VideoDetailUiState, onSelect: (Int) -> Unit) {
-    LazyRow(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        itemsIndexed(state.parts) { index, part ->
-            FilterChip(
-                selected = index == state.partIndex,
-                onClick = { onSelect(index) },
-                label = { Text("P${part.index} ${part.title}", maxLines = 1, overflow = TextOverflow.Ellipsis) },
-            )
         }
     }
 }

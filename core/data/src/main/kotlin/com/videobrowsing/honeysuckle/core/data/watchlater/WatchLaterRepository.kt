@@ -22,7 +22,8 @@ interface WatchLaterRepository {
 
     suspend fun add(bvid: String): HsyResult<Unit>
 
-    suspend fun remove(bvid: String): HsyResult<Unit>
+    /** 移走一条:平台 del 口只认 avid(见 [com.videobrowsing.honeysuckle.core.data.remote.WatchLaterApi]) */
+    suspend fun remove(aid: Long): HsyResult<Unit>
 
     /** 整表清空:只有一发请求,不逐条发 */
     suspend fun clearAll(): HsyResult<Unit>

@@ -24,6 +24,7 @@ import com.videobrowsing.honeysuckle.core.designsystem.component.HsyEmptyState
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsyErrorState
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsySettingRow
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsyTopBar
+import com.videobrowsing.honeysuckle.core.designsystem.component.HsyVideoThumb
 import com.videobrowsing.honeysuckle.core.designsystem.icon.HsyIcons
 import com.videobrowsing.honeysuckle.core.designsystem.theme.Hsy
 import com.videobrowsing.honeysuckle.core.designsystem.ui.AlertDialog
@@ -233,6 +234,7 @@ private fun GuestLine(onOpenLogin: () -> Unit) {
 private fun WatchLaterRow(item: WatchLaterItem, onOpen: () -> Unit, onRemove: () -> Unit) {
     HsySettingRow(
         title = item.title,
+        leading = { HsyVideoThumb(coverUrl = item.coverUrl) },
         supporting = listOfNotNull(
             item.upName.takeIf { it.isNotBlank() },
             formatClock(item.durationSec.toLong()).takeIf { item.durationSec > 0 },

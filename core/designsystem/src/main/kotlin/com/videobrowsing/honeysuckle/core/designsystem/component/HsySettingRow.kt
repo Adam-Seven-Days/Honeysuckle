@@ -33,9 +33,11 @@ private val ProgressTopGap = 4.dp
 /**
  * 通用条目行(设置页与"我的"页的每一行都是它)。
  *
- * 四条口径值得说明:
+ * 五条口径值得说明:
  *  - [onClick] 为 null 时**整行不可点**:像"弹幕总开关"那种交互在尾部控件上的行,
  *    如果标题也能点,用户就会在"点标题切换"和"点开关切换"之间猜;
+ *  - [leading] 用来换掉左边那格图标:视频封面比一个通用图标多给出一层信息,但尺寸由调用方定,
+ *    组件不替列表猜"封面该多宽";
  *  - [trailing] 是一个槽而不是一个布尔:开关、箭头、计数、档位名都要放在同一个位置上,
  *    组件不该替页面猜它长什么样;
  *  - [progress] 只给"进行到哪儿"这一类行(我的页的接着看):一条细线,`null` 就不画,
@@ -47,6 +49,7 @@ fun HsySettingRow(
     title: String,
     modifier: Modifier = Modifier,
     icon: ImageVector? = null,
+    leading: (@Composable () -> Unit)? = null,
     supporting: String? = null,
     progress: Float? = null,
     trailing: (@Composable () -> Unit)? = null,
@@ -65,14 +68,18 @@ fun HsySettingRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Box(modifier = Modifier.size(IconSlot), contentAlignment = Alignment.Center) {
-            if (icon != null) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    modifier = Modifier.size(24.dp),
-                    tint = Hsy.colors.accent,
-                )
+        if (leading != null) {
+            leading()
+        } else {
+            Box(modifier = Modifier.size(IconSlot), contentAlignment = Alignment.Center) {
+                if (icon != null) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                        tint = Hsy.colors.accent,
+                    )
+                }
             }
         }
 

@@ -15,9 +15,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -42,6 +43,7 @@ import com.videobrowsing.honeysuckle.core.designsystem.theme.Hsy
 import com.videobrowsing.honeysuckle.core.designsystem.ui.CircularProgressIndicator
 import com.videobrowsing.honeysuckle.core.designsystem.ui.EmojiText
 import com.videobrowsing.honeysuckle.core.designsystem.ui.FilterChip
+import com.videobrowsing.honeysuckle.core.designsystem.ui.HorizontalDivider
 import com.videobrowsing.honeysuckle.core.designsystem.ui.OutlinedTextField
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Surface
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Text
@@ -51,9 +53,6 @@ import com.videobrowsing.honeysuckle.core.model.CommentSort
 
 private val AvatarSize = 36.dp
 internal val ReplyIndent = 48.dp
-
-/** 评论区每行下面露几条楼中楼:平台内嵌带回的就是这个数,不必另发请求 */
-private const val PREVIEW_REPLIES = 2
 
 /**
  * 评论区(详情页的"评论"分页):列表 → 发表 → 回复,按页拉全量。
@@ -73,6 +72,14 @@ internal fun CommentPane(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var draft by remember { mutableStateOf("") }
+    val intents = remember(viewModel, onOpenLogin, onOpenSpace, onOpenThread) {
+        CommentIntents(
+            onAction = viewModel::onAction,
+            onOpenLogin = onOpenLogin,
+            onOpenSpace = onOpenSpace,
+            onOpenThread = onOpenThread,
+        )
+    }
 
     // 发送成功才清空草稿:失败时用户不该重打一遍
     LaunchedEffect(state.sendAcceptedAt) {
@@ -91,26 +98,17 @@ internal fun CommentPane(
             )
         }
 
-        SortRow(selected = state.sort, onSelect = { viewModel.onAction(CommentAction.ChangeSort(it)) })
+        SortRow(selected = state.sort, onSelect = { intents.onAction(CommentAction.ChangeSort(it)) })
 
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            CommentBody(
-                state = state,
-                onAction = viewModel::onAction,
-                onOpenLogin = onOpenLogin,
-                onOpenSpace = onOpenSpace,
-                onOpenThread = onOpenThread,
-            )
+            CommentBody(state = state, intents = intents)
         }
 
         Composer(
             state = state,
             draft = draft,
             onDraftChange = { draft = it },
-            onAction = { action ->
-                viewModel.onAction(if (action is CommentAction.Send) CommentAction.Send(draft) else action)
-            },
-            onOpenLogin = onOpenLogin,
+            intents = intents,
         )
     }
 }
@@ -137,19 +135,13 @@ private fun SortRow(selected: CommentSort, onSelect: (CommentSort) -> Unit) {
 }
 
 @Composable
-private fun CommentBody(
-    state: CommentUiState,
-    onAction: (CommentAction) -> Unit,
-    onOpenLogin: () -> Unit,
-    onOpenSpace: (Long) -> Unit,
-    onOpenThread: (aid: Long, rootId: Long, upMid: Long) -> Unit,
-) {
+private fun CommentBody(state: CommentUiState, intents: CommentIntents) {
     when {
         state.loading && state.comments.isEmpty() -> Centered { CircularProgressIndicator() }
 
         state.errorMessage != null && state.comments.isEmpty() -> HsyErrorState(
             message = checkNotNull(state.errorMessage),
-            onRetry = { onAction(CommentAction.Retry) },
+            onRetry = { intents.onAction(CommentAction.Retry) },
             hint = "评论没取回来,重试不会丢掉别的读数",
         )
 
@@ -158,38 +150,28 @@ private fun CommentBody(
             hint = "发第一条,或者换个排序看看",
         )
 
-        else -> CommentList(
-            state = state,
-            onAction = onAction,
-            onOpenLogin = onOpenLogin,
-            onOpenSpace = onOpenSpace,
-            onOpenThread = onOpenThread,
-        )
+        else -> CommentList(state = state, intents = intents)
     }
 }
 
 @Composable
-private fun CommentList(
-    state: CommentUiState,
-    onAction: (CommentAction) -> Unit,
-    onOpenLogin: () -> Unit,
-    onOpenSpace: (Long) -> Unit,
-    onOpenThread: (aid: Long, rootId: Long, upMid: Long) -> Unit,
-) {
+private fun CommentList(state: CommentUiState, intents: CommentIntents) {
     val listState = rememberLazyListState()
-    AutoLoadMore(listState = listState, state = state, onAction = onAction)
+    AutoLoadMore(listState = listState, state = state, onAction = intents.onAction)
 
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-        items(state.comments, key = { it.id }) { comment ->
+        itemsIndexed(state.comments, key = { _, comment -> comment.id }) { index, comment ->
             CommentRow(
                 comment = comment,
                 state = state,
-                onAction = onAction,
-                onOpenSpace = onOpenSpace,
-                onOpenThread = onOpenThread,
+                intents = intents,
             )
+            // 顶层评论之间留一条内缩的分隔线:不画到最后一条,列表底部不和 footer 抢线
+            if (index < state.comments.lastIndex) {
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+            }
         }
-        item(key = "footer") { ListFooter(state = state, onAction = onAction, onOpenLogin = onOpenLogin) }
+        item(key = "footer") { ListFooter(state = state, intents = intents) }
     }
 }
 
@@ -200,15 +182,9 @@ private fun CommentList(
  * 入口进的那一页自己按页拉全量,所以平台哪天不内嵌带回这两条,这里只是空一格,跳页仍能看全。
  */
 @Composable
-private fun CommentRow(
-    comment: Comment,
-    state: CommentUiState,
-    onAction: (CommentAction) -> Unit,
-    onOpenSpace: (Long) -> Unit,
-    onOpenThread: (aid: Long, rootId: Long, upMid: Long) -> Unit,
-) {
+private fun CommentRow(comment: Comment, state: CommentUiState, intents: CommentIntents) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        CommentHeader(comment = comment, onOpenSpace = onOpenSpace)
+        CommentHeader(comment = comment, onOpenSpace = intents.onOpenSpace)
         EmojiText(
             text = comment.content,
             emotes = comment.emotes,
@@ -226,25 +202,14 @@ private fun CommentRow(
                 color = Hsy.colors.onSurfaceVariant,
                 modifier = Modifier.weight(1f),
             )
-            CommentLikeAction(
-                comment = comment,
-                state = state,
-                onAction = onAction,
-            )
-            TextButton(onClick = { onAction(CommentAction.ReplyTo(comment)) }) { Text("回复") }
-        }
-
-        comment.foldedReplies.take(PREVIEW_REPLIES).forEach { reply ->
-            ReplyRow(reply = reply, state = state, onAction = onAction, onOpenSpace = onOpenSpace)
-        }
-        if (comment.replyCount > PREVIEW_REPLIES) {
+            CommentLikeAction(comment = comment, state = state, intents = intents)
             TextButton(
-                onClick = { onOpenThread(state.aid, comment.id, state.upMid) },
-                modifier = Modifier.padding(start = ReplyIndent),
-            ) {
-                Text("查看全部 ${formatCount(comment.replyCount.toLong())} 条回复 ›")
-            }
+                onClick = {
+                    if (state.loggedIn) intents.onAction(CommentAction.ReplyTo(comment)) else intents.onOpenLogin()
+                },
+            ) { Text("回复") }
         }
+        FoldedReplies(comment = comment, state = state, intents = intents)
     }
 }
 
@@ -283,6 +248,9 @@ internal fun CommentHeader(
                     color = Hsy.colors.onSurface,
                     fontWeight = FontWeight.Medium,
                 )
+                if (comment.level > 0) {
+                    CommentLevelTag(comment.level)
+                }
                 if (comment.isUp) {
                     Text(
                         text = " UP",
@@ -300,8 +268,23 @@ internal fun CommentHeader(
     }
 }
 
+/** 等级小徽标:与空间页同一套配色,评论行里收得更小,不抢昵称的字重 */
 @Composable
-internal fun ListFooter(state: CommentUiState, onAction: (CommentAction) -> Unit, onOpenLogin: () -> Unit) {
+private fun CommentLevelTag(level: Int) {
+    Text(
+        text = "LV$level",
+        style = Hsy.typography.labelSmall,
+        color = Hsy.colors.accent,
+        modifier = Modifier
+            .padding(start = 6.dp)
+            .clip(RoundedCornerShape(4.dp))
+            .background(Hsy.colors.surfaceVariant)
+            .padding(horizontal = 5.dp, vertical = 1.dp),
+    )
+}
+
+@Composable
+internal fun ListFooter(state: CommentUiState, intents: CommentIntents) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -316,7 +299,7 @@ internal fun ListFooter(state: CommentUiState, onAction: (CommentAction) -> Unit
                     style = Hsy.typography.bodySmall,
                     color = Hsy.colors.error,
                 )
-                TextButton(onClick = { onAction(CommentAction.LoadMore) }) { Text("再要一页") }
+                TextButton(onClick = { intents.onAction(CommentAction.LoadMore) }) { Text("再要一页") }
             }
 
             state.moreAvailable -> {
@@ -325,7 +308,7 @@ internal fun ListFooter(state: CommentUiState, onAction: (CommentAction) -> Unit
                     style = Hsy.typography.bodySmall,
                     color = Hsy.colors.onSurfaceVariant,
                 )
-                TextButton(onClick = { onAction(CommentAction.LoadMore) }) { Text("加载更多") }
+                TextButton(onClick = { intents.onAction(CommentAction.LoadMore) }) { Text("加载更多") }
             }
 
             // 平台对未登录用户只给预览:这时回包也说"到底了",但不是真的没有更多 —— 把原因说清
@@ -336,7 +319,7 @@ internal fun ListFooter(state: CommentUiState, onAction: (CommentAction) -> Unit
                     style = Hsy.typography.bodySmall,
                     color = Hsy.colors.onSurfaceVariant,
                 )
-                TextButton(onClick = onOpenLogin) { Text("去登录") }
+                TextButton(onClick = intents.onOpenLogin) { Text("去登录") }
             }
 
             else -> Text(
@@ -349,13 +332,7 @@ internal fun ListFooter(state: CommentUiState, onAction: (CommentAction) -> Unit
 }
 
 @Composable
-internal fun Composer(
-    state: CommentUiState,
-    draft: String,
-    onDraftChange: (String) -> Unit,
-    onAction: (CommentAction) -> Unit,
-    onOpenLogin: () -> Unit,
-) {
+internal fun Composer(state: CommentUiState, draft: String, onDraftChange: (String) -> Unit, intents: CommentIntents) {
     Surface(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).imePadding()) {
             // 落点是"这一句会回到谁身上":挑过的那条优先,楼中楼页没挑就显示这一楼的主评论。
@@ -369,7 +346,7 @@ internal fun Composer(
                         modifier = Modifier.weight(1f),
                     )
                     if (state.replyTo != null) {
-                        TextButton(onClick = { onAction(CommentAction.ReplyTo(null)) }) { Text("取消") }
+                        TextButton(onClick = { intents.onAction(CommentAction.ReplyTo(null)) }) { Text("取消") }
                     }
                 }
             }
@@ -384,7 +361,7 @@ internal fun Composer(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     TextButton(
-                        onClick = { onAction(CommentAction.Send(draft)) },
+                        onClick = { intents.onAction(CommentAction.Send(draft)) },
                         enabled = draft.isNotBlank() && !state.sending,
                     ) { Text(if (state.sending) "发送中" else "发送") }
                 }
@@ -399,7 +376,7 @@ internal fun Composer(
                         color = Hsy.colors.onSurfaceVariant,
                         modifier = Modifier.weight(1f),
                     )
-                    TextButton(onClick = onOpenLogin) { Text("去登录") }
+                    TextButton(onClick = intents.onOpenLogin) { Text("去登录") }
                 }
             }
         }
