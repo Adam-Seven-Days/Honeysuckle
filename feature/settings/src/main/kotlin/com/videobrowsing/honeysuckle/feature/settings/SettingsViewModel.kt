@@ -96,6 +96,12 @@ sealed interface SettingsAction {
 
     /** 首页排布(英文 id,与 `HomeLayout.storageId` 同表) */
     data class HomeLayout(val storageId: String) : SettingsAction
+
+    /** 首页刷新保留:true = 刷新把新批摆在前、旧内容留在后 */
+    data class HomeRefreshKeepEnabled(val enabled: Boolean) : SettingsAction
+
+    /** 刷新保留次数(英文 id,与 `HomeRefreshRetention.storageId` 同表) */
+    data class HomeRefreshRetention(val storageId: String) : SettingsAction
     data class RememberBrightness(val enabled: Boolean) : SettingsAction
 
     /** 网络协议档:true = 优先 HTTP/2,false = 只用 HTTP/1.1 */
@@ -225,6 +231,8 @@ class SettingsViewModel @Inject constructor(
             is SettingsAction.HomeFeedSource,
             is SettingsAction.PlaybackSpeed,
             is SettingsAction.HomeLayout,
+            is SettingsAction.HomeRefreshKeepEnabled,
+            is SettingsAction.HomeRefreshRetention,
             -> writeGeneral(action)
 
             is SettingsAction.DynamicTabVisible,
@@ -276,6 +284,8 @@ class SettingsViewModel @Inject constructor(
             is SettingsAction.HomeFeedSource -> appPreferences.setHomeFeedSourceId(action.storageId)
             is SettingsAction.PlaybackSpeed -> appPreferences.setPlaybackSpeed(action.speed)
             is SettingsAction.HomeLayout -> appPreferences.setHomeLayoutId(action.storageId)
+            is SettingsAction.HomeRefreshKeepEnabled -> appPreferences.setHomeRefreshKeepEnabled(action.enabled)
+            is SettingsAction.HomeRefreshRetention -> appPreferences.setHomeRefreshRetentionId(action.storageId)
             else -> Unit
         }
     }

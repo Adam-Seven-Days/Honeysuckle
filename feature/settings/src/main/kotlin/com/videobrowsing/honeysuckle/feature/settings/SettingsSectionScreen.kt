@@ -25,6 +25,7 @@ import com.videobrowsing.honeysuckle.core.designsystem.ui.Text
 import com.videobrowsing.honeysuckle.core.model.CommentSort
 import com.videobrowsing.honeysuckle.core.model.HomeFeedSource
 import com.videobrowsing.honeysuckle.core.model.HomeLayout
+import com.videobrowsing.honeysuckle.core.model.HomeRefreshRetention
 import com.videobrowsing.honeysuckle.core.player.danmaku.DanmakuDensity
 import com.videobrowsing.honeysuckle.core.player.danmaku.DanmakuFramePace
 import com.videobrowsing.honeysuckle.core.player.danmaku.DanmakuSpeed
@@ -148,6 +149,28 @@ private fun AppearanceSection(app: AppPreferences, onAction: (SettingsAction) ->
             name = { it.displayName },
             supporting = "双列一屏多几条、首条通栏;单列一行一条,封面与字都更大",
             onSelect = { onAction(SettingsAction.HomeLayout(it.storageId)) },
+        )
+        HsySettingRow(
+            title = "刷新保留内容",
+            supporting = "下拉刷新时新内容排在前面,已加载的留在后面;关掉则整批换新",
+            trailing = {
+                Switch(
+                    checked = app.homeRefreshKeepEnabled,
+                    onCheckedChange = { onAction(SettingsAction.HomeRefreshKeepEnabled(it)) },
+                )
+            },
+        )
+        TierRow(
+            label = "保留次数",
+            options = HomeRefreshRetention.entries.toList(),
+            selected = HomeRefreshRetention.fromStorageId(app.homeRefreshRetentionId),
+            name = { it.displayName },
+            supporting = if (app.homeRefreshKeepEnabled) {
+                "历史内容最多留几次,再刷新时最旧的一次被挤掉"
+            } else {
+                "先打开上面的开关,这一档才会生效"
+            },
+            onSelect = { onAction(SettingsAction.HomeRefreshRetention(it.storageId)) },
         )
     }
 }

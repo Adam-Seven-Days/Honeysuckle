@@ -78,6 +78,12 @@ interface AppPreferenceStore {
 
     suspend fun setHomeLayoutId(id: String)
 
+    /** 首页刷新保留:true = 刷新把新批摆在前、旧内容留在后 */
+    suspend fun setHomeRefreshKeepEnabled(enabled: Boolean)
+
+    /** 刷新保留次数(英文 id,词表在 `:core:model` 的 `HomeRefreshRetention`) */
+    suspend fun setHomeRefreshRetentionId(id: String)
+
     suspend fun setRememberBrightnessEnabled(enabled: Boolean)
 
     suspend fun setRememberedBrightness(brightness: Float)

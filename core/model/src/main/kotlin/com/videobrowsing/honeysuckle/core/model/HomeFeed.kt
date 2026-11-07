@@ -29,6 +29,32 @@ enum class HomeFeedSource(val storageId: String) {
     }
 }
 
+// 批次数集中在这里,detekt MagicNumber 不许把裸数字写进枚举构造(与 QualityTier 的高度同一条口径)
+private const val BATCHES_ONE = 1
+private const val BATCHES_TWO = 2
+private const val BATCHES_THREE = 3
+
+/**
+ * 首页刷新时保留几次历史内容。
+ *
+ * 开着"刷新保留"时,下拉刷新把新一批摆在前、旧批次留在后;这一档决定旧批次最多留几批,
+ * 再刷时最旧的一批被挤掉。[storageId] 落盘、[displayName] 上屏,与其余档位同一条口径。
+ */
+enum class HomeRefreshRetention(val storageId: String, val displayName: String, val batches: Int) {
+    /** 只留最近一次:列表 = 新批 + 上一批 */
+    ONE("one", "1 次", BATCHES_ONE),
+    TWO("two", "2 次", BATCHES_TWO),
+    THREE("three", "3 次", BATCHES_THREE),
+    ;
+
+    companion object {
+        val DEFAULT = ONE
+
+        /** 空串与认不出的英文名都退默认,与其余档位同一条读侧口径 */
+        fun fromStorageId(id: String): HomeRefreshRetention = entries.firstOrNull { it.storageId == id } ?: DEFAULT
+    }
+}
+
 /**
  * 首页卡片的一条(领域模型)。
  * 只收卡片真要渲染的字段(封面/时长/UP/发布时刻/两个计数/分区/推荐语),互动计数与分 P 留给详情接口 ——

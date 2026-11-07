@@ -9,10 +9,12 @@ import com.videobrowsing.honeysuckle.core.data.auth.AuthRepository
 import com.videobrowsing.honeysuckle.core.data.feed.HomeFeedRepository
 import com.videobrowsing.honeysuckle.core.data.message.MessageRepository
 import com.videobrowsing.honeysuckle.core.datastore.general.AppPreferenceStore
+import com.videobrowsing.honeysuckle.core.datastore.general.AppPreferences
 import com.videobrowsing.honeysuckle.core.model.FeedItem
 import com.videobrowsing.honeysuckle.core.model.FeedPage
 import com.videobrowsing.honeysuckle.core.model.HomeFeedSource
 import com.videobrowsing.honeysuckle.core.model.HomeLayout
+import com.videobrowsing.honeysuckle.core.model.HomeRefreshRetention
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
@@ -105,9 +107,20 @@ class HomeViewModel @Inject constructor(
     private var loadedPages = 0
     private var fetchJob: Job? = null
 
+    /**
+     * 批次账:index 0 是最新一批(翻页追加也进它),后面是刷新保留下来的历史批次。
+     * [HomeUiState.items] 永远是这本账摊平的样子;列表清空的地方这本账一起清。
+     */
+    private var batches: List<FeedBatch> = emptyList()
+
+    /** 刷新保留的两把偏好:跟盘回流,成功那一刻按它决定旧批次留不留、留几批 */
+    private var refreshKeepEnabled = AppPreferences.DEFAULT_HOME_REFRESH_KEEP_ENABLED
+    private var refreshRetention = HomeRefreshRetention.DEFAULT
+
     init {
         observePreferredSource()
         observeLayout()
+        observeRefreshRetention()
         observeLogin()
         refreshUnread()
     }
@@ -122,6 +135,22 @@ class HomeViewModel @Inject constructor(
                 .map { HomeLayout.fromStorageId(it.homeLayoutId) }
                 .distinctUntilChanged()
                 .collect { layout -> mutableState.update { it.copy(layout = layout) } }
+        }
+    }
+
+    /**
+     * 刷新保留那两档跟着盘走:它们只在取数成功那一刻被读,不发请求、不重取列表,
+     * 所以与 [observeLayout] 同形,首拍也照收。
+     */
+    private fun observeRefreshRetention() {
+        viewModelScope.launch {
+            appPreferences.preferences
+                .map { it.homeRefreshKeepEnabled to HomeRefreshRetention.fromStorageId(it.homeRefreshRetentionId) }
+                .distinctUntilChanged()
+                .collect { (keep, retention) ->
+                    refreshKeepEnabled = keep
+                    refreshRetention = retention
+                }
         }
     }
 
@@ -175,6 +204,7 @@ class HomeViewModel @Inject constructor(
 
     private fun markLoginRequired(source: HomeFeedSource) {
         fetchJob?.cancel()
+        batches = emptyList()
         mutableState.update {
             it.copy(
                 source = source,
@@ -254,8 +284,8 @@ class HomeViewModel @Inject constructor(
      *
      * 要不要当场清空已有列表,看的是这一趟的**性质**而不是它的成败:
      *  - `FIRST`(首屏、换档位、换分区)当场清空并归零账:骨架位上留着上一个档位的条目,等于把旧内容贴上新标签;
-     *  - `REFRESH` 与 `MORE` 不动列表,等 Success 那一刻再整批换掉 / 追加。
-     *    于是"失败不抹已有列表"不需要任何补救动作 —— 下拉刷新失败时屏上还是刚才那批,
+     *  - `REFRESH` 与 `MORE` 不动列表,等 Success 那一刻再并账 —— 刷新按"刷新保留"偏好决定旧批次留几批,
+     *    翻页接进最新一批。于是"失败不抹已有列表"不需要任何补救动作 —— 下拉刷新失败时屏上还是刚才那批,
      *    而不是先清空再报一句错,把一次网络抖动演成"视频全没了"。
      */
     private fun fetch(
@@ -267,6 +297,7 @@ class HomeViewModel @Inject constructor(
         fetchJob?.cancel()
         fetchJob = viewModelScope.launch {
             val clearNow = busy == HomeBusy.FIRST
+            if (clearNow) batches = emptyList()
             mutableState.update { current ->
                 current.copy(
                     source = source,
@@ -288,15 +319,14 @@ class HomeViewModel @Inject constructor(
     private fun reduce(current: HomeUiState, result: HsyResult<FeedPage>, pageIndex: Int): HomeUiState = when (result) {
         is HsyResult.Success -> {
             val page = result.value
-            if (pageIndex >= loadedPages) loadedPages = pageIndex
-            // 整批换还是往下接,同样由这一趟的性质决定:`FIRST`/`REFRESH` 换,`MORE` 接
-            val append = current.busy == HomeBusy.MORE
-            val base = if (append) current.items else emptyList()
+            // 游标跟着最新一批走:刷新/换档后这批从第 1 页重新起账,不能接着旧账往后翻
+            loadedPages = if (current.busy == HomeBusy.MORE) maxOf(loadedPages, pageIndex) else pageIndex
+            batches = mergeBatch(current.busy, page, current.items)
             current.copy(
-                items = base + page.items.filterDistinctAgainst(base),
+                items = batches.flatMap { it.items },
                 busy = HomeBusy.IDLE,
                 moreAvailable = page.moreAvailable,
-                skipped = if (append) current.skipped + page.skipped else page.skipped,
+                skipped = batches.sumOf { it.skipped },
                 errorMessage = null,
             )
         }
@@ -307,6 +337,7 @@ class HomeViewModel @Inject constructor(
             val server = result.error as? AppError.Server
             val needsLogin = current.source == HomeFeedSource.FOLLOWING &&
                 server?.code == HTTP_NOT_LOGGED_IN
+            if (needsLogin) batches = emptyList()
             current.copy(
                 busy = HomeBusy.IDLE,
                 errorMessage = result.error.userMessage(),
@@ -317,11 +348,37 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    /**
+     * 成功的一批并进批次账。怎么并,由这一趟的性质决定:
+     *  - `MORE` 接进最新一批(同一批的第 2 页起);
+     *  - `REFRESH` 开着保留时新批摆在前、旧批依次后排,超出保留次数的最旧一批被挤掉;
+     *    空批不占保留名额 —— 平台回了一批全见过的内容,等于这次什么都没刷到;
+     *  - 其余(`FIRST`、保留关掉的 `REFRESH`)整批换新。
+     */
+    private fun mergeBatch(busy: HomeBusy, page: FeedPage, visible: List<FeedItem>): List<FeedBatch> {
+        val fresh = page.items.filterDistinctAgainst(visible)
+        val incoming = FeedBatch(fresh, page.skipped)
+        return when {
+            busy == HomeBusy.MORE -> {
+                val head = batches.firstOrNull() ?: FeedBatch(emptyList(), 0)
+                listOf(head.copy(items = head.items + fresh, skipped = head.skipped + page.skipped)) + batches.drop(1)
+            }
+
+            busy == HomeBusy.REFRESH && refreshKeepEnabled ->
+                (listOf(incoming) + batches).filter { it.items.isNotEmpty() }.take(1 + refreshRetention.batches)
+
+            else -> listOf(incoming)
+        }
+    }
+
     private companion object {
         const val FIRST_PAGE = 1
         const val HTTP_NOT_LOGGED_IN = -101
     }
 }
+
+/** 一批内容 + 这批被剔出的条目数:历史批次被保留时,"没摆上来"的账跟着批次一起留、一起被挤掉 */
+private data class FeedBatch(val items: List<FeedItem>, val skipped: Int)
 
 /** 分区只属于最新投稿那一档;其余档位把盘外的 0 送出去(接口自己也忽略它) */
 private fun effectiveRid(source: HomeFeedSource, rid: Int): Int =
@@ -332,8 +389,9 @@ private fun shouldBackfillFollow(current: HomeUiState, loggedIn: Boolean, wasLog
     loggedIn && !wasLoggedIn && current.source == HomeFeedSource.FOLLOWING && current.loginRequired
 
 /**
- * 跨页去重:热门第 2 页与第 1 页实测可能有重叠条目,同一条视频在一列里出现两次比少一条更难读。
- * 换档位与刷新喂进来的是空表,所以同一批内部的重叠也一并去掉 —— 判据只有一条"见过就没有第二遍"。
+ * 跨页去重:热门第 2 页与第 1 页实测可能有重叠条目,同一条视频在一列里出现两次比少一条更难读
+ * (格子的 key 就是 bvid,重了直接崩)。刷新保留把历史批次也留在屏上,所以新批要对着**整条可见列表**去重 ——
+ * 判据只有一条"见过就没有第二遍"。
  */
 private fun List<FeedItem>.filterDistinctAgainst(existing: List<FeedItem>): List<FeedItem> {
     val seen = existing.mapTo(mutableSetOf()) { it.brief.bvid }

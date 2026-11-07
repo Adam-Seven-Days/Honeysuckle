@@ -104,6 +104,13 @@ data class AppPreferences(
     /** 首页排布的英文名(`two_column` / `single_column`);`""` = 没设过,退双列 */
     val homeLayoutId: String = DEFAULT_HOME_LAYOUT_ID,
     /**
+     * 首页刷新保留:开启后下拉刷新把新一批摆在前、已加载的内容留在后;关闭则整批换新。
+     * 默认开 —— 刷到新内容不该把刚看过的那批顶没。
+     */
+    val homeRefreshKeepEnabled: Boolean = DEFAULT_HOME_REFRESH_KEEP_ENABLED,
+    /** 刷新保留次数的英文名(`one` / `two` / `three`);`""` = 没设过,读侧退 1 次 */
+    val homeRefreshRetentionId: String = DEFAULT_HOME_REFRESH_RETENTION_ID,
+    /**
      * 记住播放亮度:开启后把这一次拖到的窗口亮度记进盘,下次进播放页直接回到那一格。
      * 默认关 —— 亮度是"这一晚被窝里"的临时读数,把它带进白天会让用户以为系统亮度坏了。
      */
@@ -166,6 +173,8 @@ data class AppPreferences(
         const val DEFAULT_FULLSCREEN_ORIENTATION_ID = TIER_ID_UNSET
         const val DEFAULT_DOWNLOAD_QUALITY_ID = TIER_ID_UNSET
         const val DEFAULT_HOME_LAYOUT_ID = TIER_ID_UNSET
+        const val DEFAULT_HOME_REFRESH_KEEP_ENABLED = true
+        const val DEFAULT_HOME_REFRESH_RETENTION_ID = TIER_ID_UNSET
         const val DEFAULT_KEEP_SCREEN_ON_ENABLED = true
         const val DEFAULT_WIFI_ONLY_DOWNLOAD = true
 

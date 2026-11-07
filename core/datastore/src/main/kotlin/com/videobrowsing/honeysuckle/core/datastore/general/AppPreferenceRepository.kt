@@ -48,6 +48,8 @@ private val KEY_BACKGROUND_PLAY = booleanPreferencesKey("app.backgroundPlay")
 private val KEY_FULLSCREEN_ORIENTATION = stringPreferencesKey("app.fullscreenOrientation")
 private val KEY_DOWNLOAD_QUALITY = stringPreferencesKey("app.downloadQuality")
 private val KEY_HOME_LAYOUT = stringPreferencesKey("app.homeLayout")
+private val KEY_HOME_REFRESH_KEEP = booleanPreferencesKey("app.homeRefreshKeep")
+private val KEY_HOME_REFRESH_RETENTION = stringPreferencesKey("app.homeRefreshRetention")
 private val KEY_REMEMBER_BRIGHTNESS = booleanPreferencesKey("app.rememberBrightness")
 private val KEY_REMEMBERED_BRIGHTNESS = floatPreferencesKey("app.rememberedBrightness")
 private val KEY_HTTP2_ENABLED = booleanPreferencesKey("app.http2Enabled")
@@ -67,6 +69,8 @@ private val GROUP_APPEARANCE_HOME = listOf<Preferences.Key<*>>(
     KEY_THEME_ACCENT,
     KEY_HOME_FEED_SOURCE,
     KEY_HOME_LAYOUT,
+    KEY_HOME_REFRESH_KEEP,
+    KEY_HOME_REFRESH_RETENTION,
 )
 
 private val GROUP_NAVIGATION = listOf<Preferences.Key<*>>(
@@ -266,6 +270,15 @@ class AppPreferenceRepository @Inject constructor(@GeneralStore private val data
         dataStore.edit { it[KEY_HOME_LAYOUT] = id.sanitizeStorageId() }
     }
 
+    override suspend fun setHomeRefreshKeepEnabled(enabled: Boolean) {
+        dataStore.edit { it[KEY_HOME_REFRESH_KEEP] = enabled }
+    }
+
+    /** 保留次数同样落英文名,读侧对不上词表即退默认档 */
+    override suspend fun setHomeRefreshRetentionId(id: String) {
+        dataStore.edit { it[KEY_HOME_REFRESH_RETENTION] = id.sanitizeStorageId() }
+    }
+
     override suspend fun setRememberBrightnessEnabled(enabled: Boolean) {
         dataStore.edit { it[KEY_REMEMBER_BRIGHTNESS] = enabled }
     }
@@ -378,6 +391,8 @@ internal fun Preferences.toAppPreferences(): AppPreferences = AppPreferences(
     fullscreenOrientationId = this[KEY_FULLSCREEN_ORIENTATION].sanitizeStorageId(),
     downloadQualityId = this[KEY_DOWNLOAD_QUALITY].sanitizeStorageId(),
     homeLayoutId = this[KEY_HOME_LAYOUT].sanitizeStorageId(),
+    homeRefreshKeepEnabled = this[KEY_HOME_REFRESH_KEEP] ?: AppPreferences.DEFAULT_HOME_REFRESH_KEEP_ENABLED,
+    homeRefreshRetentionId = this[KEY_HOME_REFRESH_RETENTION].sanitizeStorageId(),
     rememberBrightnessEnabled = this[KEY_REMEMBER_BRIGHTNESS] ?: AppPreferences.DEFAULT_REMEMBER_BRIGHTNESS_ENABLED,
     rememberedBrightness = (this[KEY_REMEMBERED_BRIGHTNESS] ?: AppPreferences.DEFAULT_REMEMBERED_BRIGHTNESS)
         .coerceRememberedBrightness(),
