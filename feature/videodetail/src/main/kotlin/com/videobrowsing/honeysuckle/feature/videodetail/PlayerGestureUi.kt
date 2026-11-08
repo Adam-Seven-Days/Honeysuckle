@@ -33,16 +33,16 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
 /**
- * 画面上的手势:单击显隐控制条,长按提速,横向拖动改播放位置,左右半屏竖向拖动改亮度 / 音量。
+ * 画面上的手势:单击显隐控制条,双击播放/暂停,长按提速,横向拖动改播放位置,左右半屏竖向拖动改亮度 / 音量。
  *
  * 拖动只改草稿,松手才 seek:逐像素 seek 会让播放器每帧重建缓冲,拖动看起来像卡死。
  * 亮度改的是**本应用的窗口亮度**(不写系统设置,无需权限);音量走音频流,退页后原样保留。
  * 手势读数由 [GestureHud] 摆中央,松手后自动消失 —— 拖动过程中每帧刷新会闪,所以只在值变化时更新。
  *
- * 单击与长按加速共用一条事件环,那条环在 `PlayerBoostGesture.kt`:两件事都从同一根手指的
- * 抬手取结论,拆成两处谁先看到抬手没有定数。这里只管把环装上,以及四件事各归各的开关 ——
- * 单击固定保留(它是控制条唯一的入口),横滑归"横向拖动调节进度",竖向归"亮度与音量手势",
- * 长按归"长按画面加速"。
+ * 单击、双击与长按加速共用一条事件环,那条环在 `PlayerBoostGesture.kt`:几件事都从同一根手指的
+ * 抬手取结论,拆成几处谁先看到抬手没有定数。这里只管把环装上,以及各归各的开关 ——
+ * 单击与双击固定保留(一个是控制条唯一的入口,一个是不动控制条也能停/走的入口),
+ * 横滑归"横向拖动调节进度",竖向归"亮度与音量手势",长按归"长按画面加速"。
  */
 @Composable
 internal fun GestureLayer(
@@ -69,7 +69,7 @@ internal fun GestureLayer(
         modifier = Modifier
             .fillMaxSize()
             .pointerInput(options) {
-                detectTapOrHoldBoost(ui, options)
+                detectTapOrHoldBoost(ui, options, host)
             }
             .then(
                 if (options.seekEnabled) {

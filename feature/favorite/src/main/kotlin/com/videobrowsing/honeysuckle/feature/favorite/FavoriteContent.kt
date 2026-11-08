@@ -24,9 +24,13 @@ import com.videobrowsing.honeysuckle.core.designsystem.component.HsyErrorState
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsySettingRow
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsyTopBar
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsyVideoThumb
+import com.videobrowsing.honeysuckle.core.designsystem.component.MoreMenu
+import com.videobrowsing.honeysuckle.core.designsystem.component.SelectionControls
 import com.videobrowsing.honeysuckle.core.designsystem.icon.HsyIcons
 import com.videobrowsing.honeysuckle.core.designsystem.theme.Hsy
+import com.videobrowsing.honeysuckle.core.designsystem.ui.Checkbox
 import com.videobrowsing.honeysuckle.core.designsystem.ui.CircularProgressIndicator
+import com.videobrowsing.honeysuckle.core.designsystem.ui.DropdownMenuItem
 import com.videobrowsing.honeysuckle.core.designsystem.ui.FilterChip
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Icon
 import com.videobrowsing.honeysuckle.core.designsystem.ui.IconButton
@@ -36,49 +40,74 @@ import com.videobrowsing.honeysuckle.core.designsystem.ui.TextButton
 import com.videobrowsing.honeysuckle.core.model.FavoriteItem
 import com.videobrowsing.honeysuckle.core.model.FavoriteSort
 
-/** 顶栏:标题跟着"夹列表 / 夹内"两种形态走,返回也按形态分派 */
+/** 顶栏:标题跟着"夹列表 / 夹内"两种形态走,返回也按形态分派;所有操作收进一颗菜单 */
 @Composable
-internal fun FavoriteTopBar(state: FavoriteUiState, onBack: () -> Unit, onOpenDialog: (FavoriteDialog) -> Unit) {
+internal fun FavoriteTopBar(
+    state: FavoriteUiState,
+    selection: SelectionControls,
+    onBack: () -> Unit,
+    onOpenDialog: (FavoriteDialog) -> Unit,
+) {
     HsyTopBar(
         title = state.selected?.title ?: "我的收藏",
         onBack = onBack,
         actions = {
-            FavoriteTopActions(
-                loggedIn = state.loggedIn,
-                inFolder = state.selected != null,
-                onOpen = onOpenDialog,
-            )
+            FavoriteTopActions(state = state, selection = selection, onOpen = onOpenDialog)
         },
     )
 }
 
-/** 顶栏那几颗按钮:夹列表上只有"新建",夹内只有"改名 / 删除" */
+/** 顶栏那颗菜单:夹列表只有"新建",夹内有"管理 / 改名 / 删除";勾选模式下换成退出管理的叉 */
 @Composable
-private fun FavoriteTopActions(loggedIn: Boolean, inFolder: Boolean, onOpen: (FavoriteDialog) -> Unit) {
-    if (inFolder) {
-        IconButton(onClick = { onOpen(FavoriteDialog.RENAME) }) {
+private fun FavoriteTopActions(
+    state: FavoriteUiState,
+    selection: SelectionControls,
+    onOpen: (FavoriteDialog) -> Unit,
+) {
+    when {
+        selection.selecting -> IconButton(onClick = { selection.onChange(false) }) {
             Icon(
-                imageVector = HsyIcons.edit,
-                contentDescription = "给收藏夹改名",
-                tint = Hsy.colors.onSurface,
+                imageVector = HsyIcons.close,
+                contentDescription = "退出管理",
+                tint = Hsy.colors.onSurfaceVariant,
             )
         }
-        IconButton(onClick = { onOpen(FavoriteDialog.DELETE) }) {
-            Icon(
-                imageVector = HsyIcons.delete,
-                contentDescription = "删除收藏夹",
-                tint = Hsy.colors.onSurface,
+
+        state.selected != null -> MoreMenu { dismiss ->
+            if (state.items.isNotEmpty()) {
+                DropdownMenuItem(
+                    text = { Text("管理") },
+                    onClick = {
+                        dismiss()
+                        selection.onChange(true)
+                    },
+                )
+            }
+            DropdownMenuItem(
+                text = { Text("重命名收藏夹") },
+                onClick = {
+                    dismiss()
+                    onOpen(FavoriteDialog.RENAME)
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("删除收藏夹") },
+                onClick = {
+                    dismiss()
+                    onOpen(FavoriteDialog.DELETE)
+                },
             )
         }
-        return
-    }
-    if (!loggedIn) return
-    IconButton(onClick = { onOpen(FavoriteDialog.CREATE) }) {
-        Icon(
-            imageVector = HsyIcons.add,
-            contentDescription = "新建收藏夹",
-            tint = Hsy.colors.onSurface,
-        )
+
+        state.loggedIn -> MoreMenu { dismiss ->
+            DropdownMenuItem(
+                text = { Text("新建收藏夹") },
+                onClick = {
+                    dismiss()
+                    onOpen(FavoriteDialog.CREATE)
+                },
+            )
+        }
     }
 }
 
@@ -130,9 +159,9 @@ internal fun FolderList(
 @Composable
 internal fun FolderContent(
     state: FavoriteUiState,
+    selection: ListSelection,
     onAction: (FavoriteAction) -> Unit,
     onOpenVideo: (String) -> Unit,
-    onMove: (FavoriteItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
@@ -140,9 +169,9 @@ internal fun FolderContent(
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             FolderItems(
                 state = state,
+                selection = selection,
                 onAction = onAction,
                 onOpenVideo = onOpenVideo,
-                onMove = onMove,
             )
         }
     }
@@ -181,9 +210,9 @@ private fun FolderToolbar(state: FavoriteUiState, onAction: (FavoriteAction) -> 
 @Composable
 private fun FolderItems(
     state: FavoriteUiState,
+    selection: ListSelection,
     onAction: (FavoriteAction) -> Unit,
     onOpenVideo: (String) -> Unit,
-    onMove: (FavoriteItem) -> Unit,
 ) {
     val listState = rememberLazyListState()
     val atBottom by remember {
@@ -225,9 +254,8 @@ private fun FolderItems(
                         item.upName.takeIf { it.isNotBlank() },
                         formatClock(item.durationSec.toLong()),
                     ).joinToString(" · "),
+                    selection = selection,
                     onOpen = { onOpenVideo(item.bvid) },
-                    onRemove = { onAction(FavoriteAction.RemoveItem(item)) },
-                    onMove = { onMove(item) },
                 )
             }
             item(key = "folder-footer") { FolderFooter(state, onAction) }
@@ -264,35 +292,16 @@ private fun FolderFooter(state: FavoriteUiState, onAction: (FavoriteAction) -> U
 }
 
 @Composable
-private fun FavoriteRow(
-    item: FavoriteItem,
-    supporting: String,
-    onOpen: () -> Unit,
-    onRemove: () -> Unit,
-    onMove: (() -> Unit)? = null,
-) {
+private fun FavoriteRow(item: FavoriteItem, supporting: String, selection: ListSelection, onOpen: () -> Unit) {
     HsySettingRow(
         title = item.title,
         leading = { HsyVideoThumb(coverUrl = item.coverUrl) },
         supporting = supporting,
-        onClick = onOpen,
-        trailing = {
-            if (onMove != null) {
-                IconButton(onClick = onMove) {
-                    Icon(
-                        imageVector = HsyIcons.list,
-                        contentDescription = "移到别的收藏夹",
-                        tint = Hsy.colors.onSurfaceVariant,
-                    )
-                }
-            }
-            IconButton(onClick = onRemove) {
-                Icon(
-                    imageVector = HsyIcons.close,
-                    contentDescription = "移除这条收藏",
-                    tint = Hsy.colors.onSurfaceVariant,
-                )
-            }
+        onClick = { selection.click(item.bvid, onOpen) },
+        trailing = if (selection.selecting) {
+            { Checkbox(checked = selection.checked(item.bvid), onCheckedChange = null) }
+        } else {
+            null
         },
     )
 }

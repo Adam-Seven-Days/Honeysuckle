@@ -36,7 +36,7 @@ data class WatchLaterUiState(
 
 sealed interface WatchLaterAction {
     data object Reload : WatchLaterAction
-    data class Remove(val item: WatchLaterItem) : WatchLaterAction
+    data class RemoveSelected(val bvids: Set<String>) : WatchLaterAction
     data object ClearAll : WatchLaterAction
     data object DismissMessage : WatchLaterAction
 }
@@ -66,7 +66,7 @@ class WatchLaterViewModel @Inject constructor(
         when (action) {
             WatchLaterAction.Reload -> load()
 
-            is WatchLaterAction.Remove -> remove(action.item)
+            is WatchLaterAction.RemoveSelected -> removeSelected(action.bvids)
 
             WatchLaterAction.ClearAll -> clearAll()
 
@@ -116,19 +116,19 @@ class WatchLaterViewModel @Inject constructor(
         }
     }
 
-    /** 移走一条:平台答应了才把它从屏上拿掉,风控回一句时那一行仍留在原位 */
-    private fun remove(item: WatchLaterItem) {
+    /** 批量移走:平台 del 口只认 avid 且逐条发,答应一条才从屏上拿掉一条,风控的那几条仍留在原位 */
+    private fun removeSelected(bvids: Set<String>) {
+        val targets = mutableState.value.items.filter { it.bvid in bvids }
+        if (targets.isEmpty()) return
         viewModelScope.launch {
-            when (val result = watchLaterRepository.remove(item.aid)) {
-                is HsyResult.Success -> {
-                    mutableState.update { state ->
-                        state.copy(items = state.items.filterNot { it.bvid == item.bvid })
-                    }
-                    showMessage("已从稍后再看移走")
-                }
-
-                is HsyResult.Failure -> showMessage(writeErrorText("移走", result.error))
+            val removed = mutableSetOf<String>()
+            targets.forEach { item ->
+                if (watchLaterRepository.remove(item.aid) is HsyResult.Success) removed.add(item.bvid)
             }
+            mutableState.update { state -> state.copy(items = state.items.filterNot { it.bvid in removed }) }
+            showMessage(
+                if (removed.size == targets.size) "已移走 ${removed.size} 条" else "移走 ${removed.size} 条,其余没成功",
+            )
         }
     }
 

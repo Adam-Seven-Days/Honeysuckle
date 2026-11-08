@@ -20,7 +20,6 @@ import com.videobrowsing.honeysuckle.core.designsystem.ui.OutlinedTextField
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Text
 import com.videobrowsing.honeysuckle.core.designsystem.ui.TextButton
 import com.videobrowsing.honeysuckle.core.model.FavoriteFolder
-import com.videobrowsing.honeysuckle.core.model.FavoriteItem
 
 internal enum class FavoriteDialog { CREATE, RENAME, DELETE }
 
@@ -79,23 +78,24 @@ internal fun FavoriteDialogs(
 }
 
 /**
- * 夹间移动的目标选择。
+ * 批量夹间移动的目标选择。
  *
  * 只列"不是当前夹"的夹:移到原夹是空操作,摆出来只会让人点一下发现什么也没发生。
- * 本地镜像不进这个列表 —— 它不是平台夹,平台写接口也不认识它。
+ * 选中的那几条由调用方拿着,这里只负责挑一个目标夹交回去。
  */
 @Composable
-internal fun MoveDialog(
-    item: FavoriteItem?,
+internal fun MoveTargetDialog(
+    open: Boolean,
     folders: List<FavoriteFolder>,
+    currentFolderId: Long?,
     onDismiss: () -> Unit,
-    onPick: (FavoriteItem, FavoriteFolder) -> Unit,
+    onPick: (FavoriteFolder) -> Unit,
 ) {
-    val moving = item ?: return
-    val targets = folders.filter { it.id != moving.folderId }
+    if (!open) return
+    val targets = folders.filter { it.id != currentFolderId }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("把「${moving.title}」移到") },
+        title = { Text("移到哪个收藏夹") },
         text = {
             Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 if (targets.isEmpty()) {
@@ -109,7 +109,7 @@ internal fun MoveDialog(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { onPick(moving, folder) }
+                                .clickable { onPick(folder) }
                                 .padding(horizontal = 8.dp, vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {

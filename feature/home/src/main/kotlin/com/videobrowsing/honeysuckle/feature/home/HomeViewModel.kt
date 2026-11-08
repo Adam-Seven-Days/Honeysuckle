@@ -52,6 +52,14 @@ data class HomeUiState(
     val moreAvailable: Boolean = false,
     /** 累计被剔出卡片的条目数(非视频路由、缺 bvid):少了几条要在屏上说出来,不能静默少给 */
     val skipped: Int = 0,
+    /**
+     * 刷新成功的次数,列表据此回到顶部。
+     *
+     * 刷新保留把新批次 prepend 到列表头部,而带 key 的格子会把视口锚在原来那条可见项上 ——
+     * 新内容被顶到视口上方,用户以为"没刷出来",要往上滑才看见。只在 [HomeBusy.REFRESH] 成功时 +1:
+     * 首屏/换档走 [HomeBusy.FIRST] 会清空列表、整块重建,视口天然在顶部,不需要这一拍。
+     */
+    val refreshTick: Int = 0,
     /** 关注档在游客态:不取流,屏上给扫码入口 */
     val loginRequired: Boolean = false,
     /** 消息角标:三类未读的合计;游客态拿不到就保持 0,不摆假红点 */
@@ -328,6 +336,7 @@ class HomeViewModel @Inject constructor(
                 moreAvailable = page.moreAvailable,
                 skipped = batches.sumOf { it.skipped },
                 errorMessage = null,
+                refreshTick = if (current.busy == HomeBusy.REFRESH) current.refreshTick + 1 else current.refreshTick,
             )
         }
 

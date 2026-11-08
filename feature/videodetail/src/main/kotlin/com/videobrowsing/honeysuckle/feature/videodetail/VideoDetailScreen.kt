@@ -1,8 +1,6 @@
 package com.videobrowsing.honeysuckle.feature.videodetail
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -12,10 +10,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
@@ -33,17 +28,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.videobrowsing.honeysuckle.core.common.formatClock
 import com.videobrowsing.honeysuckle.core.danmaku.frame.InsertOutcome
-import com.videobrowsing.honeysuckle.core.designsystem.component.HsyEmptyState
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsyErrorState
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsyTopBar
-import com.videobrowsing.honeysuckle.core.designsystem.component.HsyVideoCard
-import com.videobrowsing.honeysuckle.core.designsystem.icon.HsyIcons
 import com.videobrowsing.honeysuckle.core.designsystem.theme.Hsy
 import com.videobrowsing.honeysuckle.core.designsystem.ui.CircularProgressIndicator
-import com.videobrowsing.honeysuckle.core.designsystem.ui.Text
-import com.videobrowsing.honeysuckle.core.designsystem.ui.TextButton
+import com.videobrowsing.honeysuckle.core.model.VideoDetail
 import com.videobrowsing.honeysuckle.core.player.FullscreenOrientation
 import com.videobrowsing.honeysuckle.core.player.HsyPlayerHost
 import com.videobrowsing.honeysuckle.core.player.PlaybackEngine
@@ -87,16 +77,7 @@ fun VideoDetailScreen(
     onFullscreenChange: (Boolean) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    // 评论区整份状态只在 CommentPane 内部收集:顶层只留"总数",打字/翻页/点赞不再拖着播放器重组
-    val commentCount = remember(commentsViewModel) {
-        commentsViewModel.state.map { it.total }.distinctUntilChanged()
-    }.collectAsStateWithLifecycle(initialValue = 0)
-    // 评论与详情同属这一页:详情一到就把 aid / upMid 交给评论区,标签上的总数也随之就位
-    LaunchedEffect(state.detail) {
-        state.detail?.let { commentsViewModel.open(it.brief.aid, it.ownerMid) }
-    }
     val engine = rememberPlaybackEngine()
-    val extras by engine.extras.collectAsStateWithLifecycle()
     val host = engine.host
     // 进页那一刻引擎里是否已经在放这一支:决定注记说"接着后台"还是"从头/从历史点"
     val continuingOnEntry = remember(state.bvid) { engine.session.value?.bvid == state.bvid }
@@ -107,7 +88,8 @@ fun VideoDetailScreen(
     val intents = rememberDetailIntents(viewModel, callbacks, onOpenParts = { partsOpen = true }) {
         onFullscreenChange(true)
     }
-    val commentZone = remember(commentsViewModel) { CommentZone(commentsViewModel) { commentCount.value } }
+    // 评论区整份状态只在 CommentPane 内部收集:顶层只留"总数",打字/翻页/点赞不再拖着播放器重组
+    val commentZone = rememberCommentZone(commentsViewModel, state.detail)
 
     DetailBackHandler(
         partsOpen = partsOpen,
@@ -119,14 +101,8 @@ fun VideoDetailScreen(
     VideoPageEffects(engine, host, playerUi, state, fullscreen)
     PlayerEndedEffect(host) { viewModel.onAction(VideoDetailAction.PartEnded) }
 
-    val danmaku = danmakuScreen(state, inPip)
-    val stage = remember(host, playerUi, danmaku, extras, engine) {
-        DetailStage(host, playerUi, danmaku, extras, engine)
-    }
-    LaunchedEffect(state.pendingDanmaku) {
-        val entry = state.pendingDanmaku ?: return@LaunchedEffect
-        val inserted = stage.danmaku.hostState.insert(entry) != InsertOutcome.REJECTED
-        viewModel.onAction(VideoDetailAction.DanmakuInserted(inserted))
+    val stage = rememberDetailStage(engine, playerUi, state, inPip) {
+        viewModel.onAction(VideoDetailAction.DanmakuInserted(it))
     }
     Box(modifier.fillMaxSize().background(Hsy.colors.background)) {
         when {
@@ -168,28 +144,6 @@ fun VideoDetailScreen(
     }
 }
 
-/**
- * 返回键的三级优先级:分 P 清单在最上面,先收它;其次是全屏;最后才离开详情页。
- *
- * 与导航层的"楼中楼"是同一套读法:压在上面的那一页只退自己,不顺手把详情页也带走。
- */
-@Composable
-private fun DetailBackHandler(
-    partsOpen: Boolean,
-    fullscreen: Boolean,
-    onCloseParts: () -> Unit,
-    onExitFullscreen: () -> Unit,
-    onBack: () -> Unit,
-) {
-    BackHandler {
-        when {
-            partsOpen -> onCloseParts()
-            fullscreen -> onExitFullscreen()
-            else -> onBack()
-        }
-    }
-}
-
 /** 详情页递给播放舞台的上下文:同一只引擎的宿主机、读数、弹幕层与 AB/定时读数收成一束 */
 @Stable
 private class DetailStage(
@@ -208,6 +162,44 @@ private class DetailStage(
  */
 @Stable
 private class CommentZone(val viewModel: CommentViewModel, val commentCount: () -> Int)
+
+/**
+ * 评论区接线:总数走单独一条流(打字/翻页不重建这一束),详情一到就把 aid / upMid 交给评论区。
+ * 整份 [CommentUiState] 仍由 [CommentPane] 自己收集,这里只把同一只 ViewModel 递给页签与右栏。
+ */
+@Composable
+private fun rememberCommentZone(commentsViewModel: CommentViewModel, detail: VideoDetail?): CommentZone {
+    val commentCount = remember(commentsViewModel) {
+        commentsViewModel.state.map { it.total }.distinctUntilChanged()
+    }.collectAsStateWithLifecycle(initialValue = 0)
+    LaunchedEffect(detail) {
+        detail?.let { commentsViewModel.open(it.brief.aid, it.ownerMid) }
+    }
+    return remember(commentsViewModel) { CommentZone(commentsViewModel) { commentCount.value } }
+}
+
+/** 播放舞台接线:同一只引擎的宿主、读数、弹幕层收成一束,顺手把待插弹幕落进弹幕层并回执 */
+@Composable
+private fun rememberDetailStage(
+    engine: PlaybackEngine,
+    playerUi: PlayerUi,
+    state: VideoDetailUiState,
+    inPip: Boolean,
+    onDanmakuInserted: (Boolean) -> Unit,
+): DetailStage {
+    val host = engine.host
+    val extras by engine.extras.collectAsStateWithLifecycle()
+    val danmaku = danmakuScreen(state, inPip)
+    val stage = remember(host, playerUi, danmaku, extras, engine) {
+        DetailStage(host, playerUi, danmaku, extras, engine)
+    }
+    LaunchedEffect(state.pendingDanmaku) {
+        val entry = state.pendingDanmaku ?: return@LaunchedEffect
+        val inserted = stage.danmaku.hostState.insert(entry) != InsertOutcome.REJECTED
+        onDanmakuInserted(inserted)
+    }
+    return stage
+}
 
 /** 三处舞台共用同一套播放动作;全屏/画中画的进退各不相同,由调用方递入 */
 private fun playerIntentsOf(engine: PlaybackEngine, intents: DetailIntents, window: WindowIntents) = PlayerIntents(
@@ -485,53 +477,3 @@ private val TWO_PANE_BREAKPOINT = 800.dp
  */
 private const val TAB_SLOT_WEIGHT = 1.6f
 private const val DANMAKU_SLOT_WEIGHT = 1f
-
-/** 相关推荐单独成段:它失败只让这一段降级,不拖垮整页(仓库把两个读取口分开正是为此) */
-private fun LazyListScope.relatedItems(state: VideoDetailUiState, intents: DetailIntents) {
-    when {
-        state.relatedLoading && state.related.isEmpty() -> item(key = "related-loading") {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(24.dp),
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                CircularProgressIndicator()
-            }
-        }
-
-        state.relatedError != null && state.related.isEmpty() -> item(key = "related-error") {
-            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                Text(
-                    text = "相关推荐没拿到:${state.relatedError}",
-                    style = Hsy.typography.bodySmall,
-                    color = Hsy.colors.error,
-                )
-                TextButton(onClick = { intents.onAction(VideoDetailAction.RetryRelated) }) { Text("重试") }
-            }
-        }
-
-        state.related.isEmpty() -> item(key = "related-empty") {
-            HsyEmptyState(title = "没有相关推荐", hint = "这支视频的关联列表是空的")
-        }
-
-        else -> items(state.related, key = { "related-${it.brief.bvid}" }) { item ->
-            HsyVideoCard(
-                title = item.brief.title,
-                coverUrl = item.brief.coverUrl,
-                durationLabel = formatClock(item.brief.durationSec.toLong()),
-                upLine = item.brief.upName,
-                statLine = statLineOf(item),
-                onClick = { intents.onOpenVideo(item.brief.bvid) },
-            )
-        }
-    }
-}
-
-@Composable
-private fun RelatedTitle() {
-    Text(
-        text = "相关推荐",
-        style = Hsy.typography.titleMedium,
-        color = Hsy.colors.onSurface,
-        modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
-    )
-}

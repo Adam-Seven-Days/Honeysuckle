@@ -39,7 +39,7 @@ data class HistoryUiState(
 /**  的单向回传口:屏上只发这几个动作,不认识仓库 */
 sealed interface HistoryAction {
     data class QueryChanged(val query: String) : HistoryAction
-    data class Remove(val bvid: String) : HistoryAction
+    data class RemoveSelected(val bvids: Set<String>) : HistoryAction
     data class RemoveOlderThan(val days: Int) : HistoryAction
     data object ClearAll : HistoryAction
 }
@@ -84,7 +84,10 @@ class HistoryViewModel @Inject constructor(private val historyRepository: Histor
         when (action) {
             is HistoryAction.QueryChanged -> query.value = action.query
 
-            is HistoryAction.Remove -> viewModelScope.launch { historyRepository.remove(action.bvid) }
+            is HistoryAction.RemoveSelected -> viewModelScope.launch {
+                action.bvids.forEach { historyRepository.remove(it) }
+                showMessage("清掉了 ${action.bvids.size} 条历史")
+            }
 
             is HistoryAction.RemoveOlderThan -> removeOlderThan(action.days)
 

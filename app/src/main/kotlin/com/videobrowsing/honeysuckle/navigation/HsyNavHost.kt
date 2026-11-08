@@ -269,7 +269,6 @@ private fun NavGraphBuilder.tabDestinations(
         MineScreen(
             viewModel = mineViewModel,
             onNavigate = { target -> navController.navigate(HsyRoute.mine(target)) },
-            onOpenVideo = openVideo,
             onSignOut = mineViewModel::signOut,
         )
     }

@@ -17,35 +17,90 @@ import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.unit.dp
 import com.videobrowsing.honeysuckle.core.designsystem.theme.Hsy
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Text
+import com.videobrowsing.honeysuckle.core.player.HsyPlayerHost
 
 /**
- * 单击与长按加速:一次按下只认其中的一件事,所以两条判据必须待在同一个事件环里。
+ * 单击 / 双击 / 长按加速共用一条事件环:它们都从同一根手指的抬手取结论,拆成几个 `pointerInput`
+ * 谁先看到抬手没有定数(长按要在松手时还倍速,单击要在松手时翻控制条,双击要在第二次松手时停/走)。
  *
- * 拆成两个 `pointerInput` 会打架:长按那一条要在松手时把倍速还回去,单击那一条也在松手时翻控制条,
- * 两边读的是同一根手指,谁先看到抬手没有定数。合成一条之后判据只有一条线:
- * 按到长按超时还没抬 = 提速,在那之前抬手 = 单击,手指越过 slop = 整条撒手让给横滑 / 竖滑。
+ * 合成一条之后判据只有一条线:按到长按超时还没抬 = 提速;在那之前抬手 = 一次敲击,再等一个双击窗口
+ * —— 窗口内第二下干净抬手 = 双击播放/暂停,等不到第二下 = 单击显隐控制条;手指越过 slop = 整条撒手
+ * 让给横滑 / 竖滑。
  *
  * 手指静止时系统不再补发 MOVE,所以"按到点"只能靠 [AwaitPointerEventScope.withTimeoutOrNull] 叫醒,
  * 不能等下一个事件;它回 null 才说明手指还按着 —— 这时才把倍速借出去。
  */
-internal suspend fun PointerInputScope.detectTapOrHoldBoost(ui: PlayerUi, options: GestureOptions) {
+internal suspend fun PointerInputScope.detectTapOrHoldBoost(
+    ui: PlayerUi,
+    options: GestureOptions,
+    host: HsyPlayerHost,
+) {
     val slopPx = viewConfiguration.touchSlop
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
-        // 加速关着时不设时限:长按退化成一次普通的按住,松手仍然算单击
-        val press = if (options.boostEnabled) {
-            withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) { awaitPressEnd(down, slopPx) }
-        } else {
-            awaitPressEnd(down, slopPx)
-        }
-        when {
+        when (awaitPressOutcome(down, slopPx, options)) {
             // 长按成立:能提速就提速;已到上限则这一次什么都不改(但它仍然不是单击,控制条不跟着翻)
-            press == null -> holdToBoost(ui, down, options)
+            null -> holdToBoost(ui, down, options)
 
-            press == PressEnd.Released -> ui.controlsVisible = !ui.controlsVisible
+            PressEnd.Released -> awaitTapOrDoubleTap(ui, options, host, slopPx)
 
             else -> Unit
         }
+    }
+}
+
+/**
+ * 这一按的结局;null 专指"按到长按超时还没抬"——该把倍速借出去了。
+ * 加速关着时不设时限:长按退化成一次普通的按住,松手仍然算一次抬手。
+ */
+private suspend fun AwaitPointerEventScope.awaitPressOutcome(
+    down: PointerInputChange,
+    slopPx: Float,
+    options: GestureOptions,
+): PressEnd? = if (options.boostEnabled) {
+    withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) { awaitPressEnd(down, slopPx) }
+} else {
+    awaitPressEnd(down, slopPx)
+}
+
+/**
+ * 第一次抬手先不急着翻控制条:双击窗口内再按下一次才算双击。
+ *
+ * 等不到第二下 = 单击(显隐控制条);等到了再看第二按的结局 —— 干净抬手 = 双击播放/暂停,
+ * 按到超时 = 长按提速(第二下也认长按,"点一下再按住加速"照样成立),越过 slop = 撒手让给拖动。
+ * 代价是单击翻控制条要晚一个双击窗口(约 300ms),这与系统双击判定带单击时的口径一致。
+ */
+private suspend fun AwaitPointerEventScope.awaitTapOrDoubleTap(
+    ui: PlayerUi,
+    options: GestureOptions,
+    host: HsyPlayerHost,
+    slopPx: Float,
+) {
+    val secondDown = withTimeoutOrNull(viewConfiguration.doubleTapTimeoutMillis) {
+        awaitFirstDown(requireUnconsumed = false)
+    }
+    if (secondDown == null) {
+        ui.controlsVisible = !ui.controlsVisible
+        return
+    }
+    when (awaitPressOutcome(secondDown, slopPx, options)) {
+        null -> holdToBoost(ui, secondDown, options)
+        PressEnd.Released -> togglePlayback(host, ui)
+        else -> Unit
+    }
+}
+
+/**
+ * 双击 = 播放/暂停,判据与控制条中央那枚按钮完全一致(正在播就暂停,否则续播)。
+ * 控制条不跟着翻:双击就是为了"不动控制条也能停/走";屏上借手势 HUD 闪一句当前状态。
+ */
+private fun togglePlayback(host: HsyPlayerHost, ui: PlayerUi) {
+    if (host.isPlaying) {
+        host.pause()
+        ui.gestureLabel = "已暂停"
+    } else {
+        host.resume()
+        ui.gestureLabel = "播放中"
     }
 }
 

@@ -72,7 +72,7 @@ private const val MODE_TIME = 2
  * 评论排序:游标接口的 `mode`,热门=3、最新=2。
  *
  * [storageId] 与 [displayName] 是"设置 → 评论 → 默认排序"那一格用的:盘上落英文名、屏上摆中文,
- * 对照表只在这一处 —— 评论区那两颗粒子与设置页的选择器都引它,免得两处各写一份"最热 / 最新"。
+ * 对照表只在这一处 —— 评论区的排序菜单与设置页的选择器都引它,免得两处各写一份"最热 / 最新"。
  */
 enum class CommentSort(val mode: Int, val storageId: String, val displayName: String) {
     HOT(MODE_HOT, "hot", "最热"),

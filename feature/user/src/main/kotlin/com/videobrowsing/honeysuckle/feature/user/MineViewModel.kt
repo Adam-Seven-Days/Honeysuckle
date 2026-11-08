@@ -4,12 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.videobrowsing.honeysuckle.core.data.auth.AuthRepository
 import com.videobrowsing.honeysuckle.core.data.cache.CacheRepository
-import com.videobrowsing.honeysuckle.core.data.history.HistoryRepository
 import com.videobrowsing.honeysuckle.core.data.search.SearchRepository
 import com.videobrowsing.honeysuckle.core.datastore.danmaku.DanmakuPreferenceRepository
 import com.videobrowsing.honeysuckle.core.datastore.general.AppPreferenceRepository
 import com.videobrowsing.honeysuckle.core.designsystem.theme.HsyThemeMode
-import com.videobrowsing.honeysuckle.core.model.HistoryEntry
 import com.videobrowsing.honeysuckle.core.model.UserProfile
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -28,13 +26,10 @@ import kotlinx.coroutines.launch
 data class MineUiState(
     /** null = 偏好盘还没读回来。这里不用 `true` 顶上去:开关状态猜错,用户看到的是骗人的承诺 */
     val danmakuEnabled: Boolean? = null,
-    val historyCount: Int = 0,
     /** 本机记着的搜索词条数;0 也是真读数(还没搜过) */
     val searchCount: Int = 0,
     /** null = 还没量出来(或正重新量);屏上不拿 0 冒充"没有缓存" */
     val cacheBytes: Long? = null,
-    /** 最近观看的预览,条数由本屏定([MineViewModel.PREVIEW_LIMIT]),不是数据层的默认 */
-    val recent: List<HistoryEntry> = emptyList(),
     /** null = 游客态(或账号盘还没读回来);身份只在屏上报名字与 UID,不在这里分发凭据 */
     val profile: UserProfile? = null,
     /** 这台设备上留着凭证的账号(切换弹窗用);游客态为空 */
@@ -46,26 +41,19 @@ data class MineUiState(
 )
 
 /** 只在本类内部传递的一束组合结果:把 combine 的 5 路上限挡在状态类之外 */
-private class MineContent(
-    val historyCount: Int,
-    val recent: List<HistoryEntry>,
-    val danmakuEnabled: Boolean,
-    val searchCount: Int,
-    val themeMode: HsyThemeMode,
-)
+private class MineContent(val danmakuEnabled: Boolean, val searchCount: Int, val themeMode: HsyThemeMode)
 
 /**
  * "我的"页的读数装配。
  *
- * 这一屏没有远端请求:读数全部来自本地存储(历史表、搜索记录、缓存目录、两块偏好盘与账号盘),
+ * 这一屏没有远端请求:读数全部来自本地存储(搜索记录、缓存目录、两块偏好盘与账号盘),
  * 所以断网、游客态、接口风控都影响不到它 —— 屏上每一个数都能从盘上对账。
- * 收藏与稍后再看在这一屏**没有数**:它们是账号在平台上的清单,本机不留副本,屏上只给入口。
+ * 观看历史/收藏/稍后再看在这一屏只给入口不报数:清单本体在各自的页面里读。
  *
  * 时间戳与秒数**原样递出**,不在这里折成"5 分钟前"或"03:05":文案与刻度归 UI。
  */
 @HiltViewModel
 class MineViewModel @Inject constructor(
-    historyRepository: HistoryRepository,
     searchRepository: SearchRepository,
     private val cacheRepository: CacheRepository,
     private val appPreferences: AppPreferenceRepository,
@@ -90,15 +78,11 @@ class MineViewModel @Inject constructor(
     private val searchCount = searchRepository.history(SEARCH_TERM_LIMIT).map { it.size }
 
     private val content = combine(
-        historyRepository.observeCount(),
-        historyRepository.observeRecent(PREVIEW_LIMIT),
         danmakuPreferences.preferences,
         searchCount,
         themeMode,
-    ) { count, recent, prefs, terms, mode ->
+    ) { prefs, terms, mode ->
         MineContent(
-            historyCount = count,
-            recent = recent,
             danmakuEnabled = prefs.enabled,
             searchCount = terms,
             themeMode = mode,
@@ -113,10 +97,8 @@ class MineViewModel @Inject constructor(
     ) { content, (profile, accounts), note, bytes ->
         MineUiState(
             danmakuEnabled = content.danmakuEnabled,
-            historyCount = content.historyCount,
             searchCount = content.searchCount,
             cacheBytes = bytes,
-            recent = content.recent,
             profile = profile,
             accounts = accounts,
             accountNote = note,
@@ -136,7 +118,6 @@ class MineViewModel @Inject constructor(
     }
 
     companion object {
-        private const val PREVIEW_LIMIT = 3
         private const val STOP_TIMEOUT_MS = 5_000L
         private const val NOTE_LINGER_MS = 3_000L
 

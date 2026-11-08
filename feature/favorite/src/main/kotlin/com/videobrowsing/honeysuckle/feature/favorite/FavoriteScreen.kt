@@ -3,6 +3,7 @@ package com.videobrowsing.honeysuckle.feature.favorite
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -14,8 +15,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.videobrowsing.honeysuckle.core.designsystem.component.HsySelectionBar
+import com.videobrowsing.honeysuckle.core.designsystem.component.SelectionControls
 import com.videobrowsing.honeysuckle.core.designsystem.theme.Hsy
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Text
+import com.videobrowsing.honeysuckle.core.designsystem.ui.TextButton
 import com.videobrowsing.honeysuckle.core.model.FavoriteItem
 
 /**
@@ -36,60 +40,136 @@ fun FavoriteScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var dialog by remember { mutableStateOf<FavoriteDialog?>(null) }
-    var moving by remember { mutableStateOf<FavoriteItem?>(null) }
-    val goBack: () -> Unit = {
-        if (state.selected != null) viewModel.onAction(FavoriteAction.CloseFolder) else onBack()
+    var askMoveTarget by remember { mutableStateOf(false) }
+    var selecting by remember { mutableStateOf(false) }
+    var selected by remember { mutableStateOf(emptySet<String>()) }
+    val exitSelection = {
+        selecting = false
+        selected = emptySet()
+        askMoveTarget = false
     }
-
+    // 返回键三层优先:先退勾选,再退夹内回夹列表,最后才离开本页
+    val goBack: () -> Unit = {
+        when {
+            selecting -> exitSelection()
+            state.selected != null -> viewModel.onAction(FavoriteAction.CloseFolder)
+            else -> onBack()
+        }
+    }
     BackHandler(onBack = goBack)
-
     Column(modifier = modifier.fillMaxSize().background(Hsy.colors.surface)) {
         FavoriteTopBar(
             state = state,
+            selection = SelectionControls(selecting) { if (it) selecting = true else exitSelection() },
             onBack = goBack,
             onOpenDialog = { dialog = it },
         )
-
-        state.message?.let { message ->
-            Text(
-                text = message,
-                style = Hsy.typography.bodySmall,
-                color = Hsy.colors.accent,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-            )
-        }
-
-        if (state.selected == null) {
-            FolderList(
-                state = state,
-                onAction = viewModel::onAction,
-                onOpenLogin = onOpenLogin,
-                modifier = Modifier.weight(1f),
-            )
-        } else {
-            FolderContent(
-                state = state,
-                onAction = viewModel::onAction,
-                onOpenVideo = onOpenVideo,
-                onMove = { moving = it },
-                modifier = Modifier.weight(1f),
+        state.message?.let { MessageLine(it) }
+        FavoriteBody(
+            state = state,
+            selection = ListSelection(selecting, selected) { bvid ->
+                selected = if (bvid in selected) selected - bvid else selected + bvid
+            },
+            onAction = viewModel::onAction,
+            onOpenVideo = onOpenVideo,
+            onOpenLogin = onOpenLogin,
+        )
+        if (selecting && state.selected != null) {
+            FavoriteSelectionBar(
+                selected = selected,
+                items = state.items,
+                onSelectedChange = { selected = it },
+                onRemove = {
+                    viewModel.onAction(FavoriteAction.RemoveSelected(state.items.filter { it.bvid in selected }))
+                    exitSelection()
+                },
+                onMove = { askMoveTarget = true },
             )
         }
     }
-
-    FavoriteDialogs(
-        dialog = dialog,
+    FavoriteDialogs(dialog = dialog, state = state, onDismiss = { dialog = null }, onAction = viewModel::onAction)
+    FavoriteMoveDialog(
         state = state,
-        onDismiss = { dialog = null },
+        open = askMoveTarget,
+        items = state.items.filter { it.bvid in selected },
         onAction = viewModel::onAction,
+        onClose = exitSelection,
     )
-    MoveDialog(
-        item = moving,
+}
+
+/** 夹列表与夹内两种形态:返回的含义不同,但摆法都是"占满剩余高度的那一份列表" */
+@Composable
+private fun ColumnScope.FavoriteBody(
+    state: FavoriteUiState,
+    selection: ListSelection,
+    onAction: (FavoriteAction) -> Unit,
+    onOpenVideo: (String) -> Unit,
+    onOpenLogin: () -> Unit,
+) {
+    if (state.selected == null) {
+        FolderList(state = state, onAction = onAction, onOpenLogin = onOpenLogin, modifier = Modifier.weight(1f))
+    } else {
+        FolderContent(
+            state = state,
+            selection = selection,
+            onAction = onAction,
+            onOpenVideo = onOpenVideo,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+/** 勾选模式底栏:全选/取消全选 + 批量移除/移动;移走的目标夹由调用方接着弹 */
+@Composable
+private fun FavoriteSelectionBar(
+    selected: Set<String>,
+    items: List<FavoriteItem>,
+    onSelectedChange: (Set<String>) -> Unit,
+    onRemove: () -> Unit,
+    onMove: () -> Unit,
+) {
+    HsySelectionBar(
+        selectedCount = selected.size,
+        totalCount = items.size,
+        onToggleAll = {
+            onSelectedChange(
+                if (selected.size == items.size) emptySet() else items.mapTo(mutableSetOf()) { it.bvid },
+            )
+        },
+    ) {
+        TextButton(enabled = selected.isNotEmpty(), onClick = onRemove) { Text("移除 ${selected.size}") }
+        TextButton(enabled = selected.isNotEmpty(), onClick = onMove) { Text("移动 ${selected.size}") }
+    }
+}
+
+/** 写夹动作的一次来回执 */
+@Composable
+private fun MessageLine(message: String) {
+    Text(
+        text = message,
+        style = Hsy.typography.bodySmall,
+        color = Hsy.colors.accent,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+    )
+}
+
+/** 批量移动的目标夹选择:挑中即写回平台并收尾,取消也回到普通列表 */
+@Composable
+private fun FavoriteMoveDialog(
+    state: FavoriteUiState,
+    open: Boolean,
+    items: List<FavoriteItem>,
+    onAction: (FavoriteAction) -> Unit,
+    onClose: () -> Unit,
+) {
+    MoveTargetDialog(
+        open = open,
         folders = state.folders,
-        onDismiss = { moving = null },
-        onPick = { item, target ->
-            moving = null
-            viewModel.onAction(FavoriteAction.MoveItem(item, target))
+        currentFolderId = state.selected?.id,
+        onDismiss = onClose,
+        onPick = { target ->
+            onAction(FavoriteAction.MoveSelected(items, target))
+            onClose()
         },
     )
 }

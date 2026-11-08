@@ -30,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -39,11 +40,14 @@ import com.videobrowsing.honeysuckle.core.common.formatCount
 import com.videobrowsing.honeysuckle.core.common.formatRelativeTime
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsyEmptyState
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsyErrorState
+import com.videobrowsing.honeysuckle.core.designsystem.icon.HsyIcons
 import com.videobrowsing.honeysuckle.core.designsystem.theme.Hsy
 import com.videobrowsing.honeysuckle.core.designsystem.ui.CircularProgressIndicator
+import com.videobrowsing.honeysuckle.core.designsystem.ui.DropdownMenu
+import com.videobrowsing.honeysuckle.core.designsystem.ui.DropdownMenuItem
 import com.videobrowsing.honeysuckle.core.designsystem.ui.EmojiText
-import com.videobrowsing.honeysuckle.core.designsystem.ui.FilterChip
 import com.videobrowsing.honeysuckle.core.designsystem.ui.HorizontalDivider
+import com.videobrowsing.honeysuckle.core.designsystem.ui.Icon
 import com.videobrowsing.honeysuckle.core.designsystem.ui.OutlinedTextField
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Surface
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Text
@@ -98,7 +102,10 @@ internal fun CommentPane(
             )
         }
 
-        SortRow(selected = state.sort, onSelect = { intents.onAction(CommentAction.ChangeSort(it)) })
+        // 没有列表可滚时(加载中/出错/空)排序才留在顶部;一旦有评论,它进列表随内容一起滚走
+        if (state.comments.isEmpty()) {
+            SortPicker(selected = state.sort, onSelect = { intents.onAction(CommentAction.ChangeSort(it)) })
+        }
 
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             CommentBody(state = state, intents = intents)
@@ -114,22 +121,62 @@ internal fun CommentPane(
 }
 
 /**
- * 排序那两颗粒子直接摆 [CommentSort.displayName]:设置页的"默认排序"选的也是同一张表,
- * 两处各写一份中文迟早会长出"最热 / 热门"这种两个名字指同一档的样子。
+ * 排序收进页面顶部的一颗下拉入口:平时只露"按最热排序"这一行,点开才摆两个选项,当前项打勾。
+ *
+ * 文案由 [CommentSort.displayName] 拼成"按…排序",与设置页的"默认排序"共用同一张表,
+ * 不在这里另抄一份"最热 / 最新";选完即合上菜单并由 ViewModel 重排列表。
  */
 @Composable
-private fun SortRow(selected: CommentSort, onSelect: (CommentSort) -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        CommentSort.entries.forEach { option ->
-            FilterChip(
-                selected = selected == option,
-                onClick = { onSelect(option) },
-                label = { Text(option.displayName) },
+private fun SortPicker(selected: CommentSort, onSelect: (CommentSort) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp)) {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(Hsy.shapes.small))
+                .clickable(role = Role.Button, onClickLabel = "选择评论排序") { expanded = true }
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "按${selected.displayName}排序",
+                style = Hsy.typography.labelLarge,
+                color = Hsy.colors.onSurfaceVariant,
             )
+            Icon(
+                imageVector = HsyIcons.chevronDown,
+                contentDescription = null,
+                tint = Hsy.colors.onSurfaceVariant,
+                modifier = Modifier.padding(start = 2.dp).size(16.dp),
+            )
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            CommentSort.entries.forEach { option ->
+                val current = option == selected
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = "按${option.displayName}排序",
+                            color = if (current) Hsy.colors.accent else Hsy.colors.onSurface,
+                        )
+                    },
+                    onClick = {
+                        expanded = false
+                        onSelect(option)
+                    },
+                    trailingIcon = if (current) {
+                        {
+                            Icon(
+                                imageVector = HsyIcons.check,
+                                contentDescription = "当前排序",
+                                tint = Hsy.colors.accent,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                )
+            }
         }
     }
 }
@@ -160,6 +207,10 @@ private fun CommentList(state: CommentUiState, intents: CommentIntents) {
     AutoLoadMore(listState = listState, state = state, onAction = intents.onAction)
 
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+        // 排序是页顶内容而非固定工具栏:作为第一项跟着列表滚,划下去就让位给评论
+        item(key = "sort") {
+            SortPicker(selected = state.sort, onSelect = { intents.onAction(CommentAction.ChangeSort(it)) })
+        }
         itemsIndexed(state.comments, key = { _, comment -> comment.id }) { index, comment ->
             CommentRow(
                 comment = comment,

@@ -201,6 +201,17 @@ object HsyIcons {
         }
     }
 
+    /** 展开:下向折线,排序菜单这类"点开看选项"的入口缀在文案右边 */
+    val chevronDown: ImageVector by lazy {
+        icon("HsyIcons.ChevronDown") {
+            strokePath(lineWidth = 1.8f) {
+                moveTo(5f, 9f)
+                lineTo(12f, 16f)
+                lineTo(19f, 9f)
+            }
+        }
+    }
+
     /** 首页:屋顶 + 屋身 + 门 */
     val home: ImageVector by lazy {
         icon("HsyIcons.Home") {
@@ -346,6 +357,17 @@ object HsyIcons {
                 lineTo(18f, 18f)
                 moveTo(18f, 6f)
                 lineTo(6f, 18f)
+            }
+        }
+    }
+
+    /** 勾选:对勾,批量管理里选中态的那一枚 */
+    val check: ImageVector by lazy {
+        icon("HsyIcons.Check") {
+            strokePath(lineWidth = 2f) {
+                moveTo(5f, 12.5f)
+                lineTo(10f, 17.5f)
+                lineTo(19f, 6.5f)
             }
         }
     }

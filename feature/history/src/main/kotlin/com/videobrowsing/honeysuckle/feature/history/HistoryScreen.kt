@@ -1,7 +1,7 @@
 package com.videobrowsing.honeysuckle.feature.history
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,12 +20,15 @@ import com.videobrowsing.honeysuckle.core.common.HsyClock
 import com.videobrowsing.honeysuckle.core.common.formatClock
 import com.videobrowsing.honeysuckle.core.common.formatRelativeTime
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsyEmptyState
+import com.videobrowsing.honeysuckle.core.designsystem.component.HsySelectionBar
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsySettingRow
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsyTopBar
+import com.videobrowsing.honeysuckle.core.designsystem.component.HsyVideoThumb
+import com.videobrowsing.honeysuckle.core.designsystem.component.MoreMenu
+import com.videobrowsing.honeysuckle.core.designsystem.component.SelectionControls
 import com.videobrowsing.honeysuckle.core.designsystem.icon.HsyIcons
 import com.videobrowsing.honeysuckle.core.designsystem.theme.Hsy
-import com.videobrowsing.honeysuckle.core.designsystem.ui.AlertDialog
-import com.videobrowsing.honeysuckle.core.designsystem.ui.DropdownMenu
+import com.videobrowsing.honeysuckle.core.designsystem.ui.Checkbox
 import com.videobrowsing.honeysuckle.core.designsystem.ui.DropdownMenuItem
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Icon
 import com.videobrowsing.honeysuckle.core.designsystem.ui.IconButton
@@ -53,46 +56,54 @@ fun HistoryScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var askBeforeClear by remember { mutableStateOf(false) }
     var olderThanDays by remember { mutableStateOf<Int?>(null) }
-    var menuOpen by remember { mutableStateOf(false) }
+    var selecting by remember { mutableStateOf(false) }
+    var selected by remember { mutableStateOf(emptySet<String>()) }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(Hsy.colors.surface),
-    ) {
-        HsyTopBar(
-            title = "观看历史",
+    val onSelectingChange: (Boolean) -> Unit = {
+        selecting = it
+        if (!it) selected = emptySet()
+    }
+    val exitSelection = { onSelectingChange(false) }
+    // 勾选模式下返回键先退出管理,而不是直接离开这一页
+    BackHandler(enabled = selecting, onBack = exitSelection)
+
+    Column(modifier = modifier.fillMaxSize().background(Hsy.colors.surface)) {
+        HistoryTopBar(
+            state = state,
+            selection = SelectionControls(selecting, onSelectingChange),
             onBack = onBack,
-            actions = {
-                HistoryActions(
-                    visible = state.loaded && state.entries.isNotEmpty(),
-                    menuOpen = menuOpen,
-                    onMenuOpenChange = { menuOpen = it },
-                    onOlderThan = { olderThanDays = it },
-                    onClearAll = { askBeforeClear = true },
-                )
-            },
+            onOlderThan = { olderThanDays = it },
+            onClearAll = { askBeforeClear = true },
         )
 
-        SearchRow(query = state.query, onQueryChange = { viewModel.onAction(HistoryAction.QueryChanged(it)) })
-
-        state.message?.let { message ->
-            Text(
-                text = message,
-                style = Hsy.typography.bodySmall,
-                color = Hsy.colors.accent,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
-            )
+        if (!selecting) {
+            SearchRow(query = state.query, onQueryChange = { viewModel.onAction(HistoryAction.QueryChanged(it)) })
         }
+
+        state.message?.let { MessageLine(it) }
 
         if (state.entries.isEmpty()) {
             EmptyHistory(state)
         } else {
             HistoryList(
                 entries = state.entries,
+                selecting = selecting,
+                selected = selected,
                 onOpenVideo = onOpenVideo,
-                onRemove = { bvid -> viewModel.onAction(HistoryAction.Remove(bvid)) },
+                onToggle = { bvid -> selected = if (bvid in selected) selected - bvid else selected + bvid },
                 modifier = Modifier.weight(1f),
+            )
+        }
+
+        if (selecting) {
+            HistorySelectionBar(
+                selected = selected,
+                entries = state.entries,
+                onSelectedChange = { selected = it },
+                onRemove = {
+                    viewModel.onAction(HistoryAction.RemoveSelected(selected))
+                    exitSelection()
+                },
             )
         }
     }
@@ -109,77 +120,88 @@ fun HistoryScreen(
     )
 }
 
+/** 顶栏:勾选模式下是退出管理的叉,平时是那颗收纳了管理/清理的菜单 */
+@Composable
+private fun HistoryTopBar(
+    state: HistoryUiState,
+    selection: SelectionControls,
+    onBack: () -> Unit,
+    onOlderThan: (Int) -> Unit,
+    onClearAll: () -> Unit,
+) {
+    HsyTopBar(
+        title = "观看历史",
+        onBack = onBack,
+        actions = {
+            if (selection.selecting) {
+                IconButton(onClick = { selection.onChange(false) }) {
+                    Icon(
+                        imageVector = HsyIcons.close,
+                        contentDescription = "退出管理",
+                        tint = Hsy.colors.onSurfaceVariant,
+                    )
+                }
+            } else {
+                HistoryActions(
+                    visible = state.loaded && state.entries.isNotEmpty(),
+                    selection = selection,
+                    onOlderThan = onOlderThan,
+                    onClearAll = onClearAll,
+                )
+            }
+        },
+    )
+}
+
+/** 清理动作的一次来回执:清了多少条要说出来,不能只让列表悄悄变短 */
+@Composable
+private fun MessageLine(message: String) {
+    Text(
+        text = message,
+        style = Hsy.typography.bodySmall,
+        color = Hsy.colors.accent,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
+    )
+}
+
 /** 顶栏的清理菜单:按天数清与清空全部从这里出,确认框由调用方接着弹 */
 @Suppress("MagicNumber") // 30 / 90 天是屏上摆的分档,不是可调参数
 @Composable
 private fun HistoryActions(
     visible: Boolean,
-    menuOpen: Boolean,
-    onMenuOpenChange: (Boolean) -> Unit,
+    selection: SelectionControls,
     onOlderThan: (Int) -> Unit,
     onClearAll: () -> Unit,
 ) {
     // 表还没吐出第一帧时不摆:那时候选清单是空的,"清空"点了只会问一句"清 0 条吗"
     if (!visible) return
-    Box {
-        IconButton(onClick = { onMenuOpenChange(true) }) {
-            Icon(
-                imageVector = HsyIcons.more,
-                contentDescription = "更多清理方式",
-                tint = Hsy.colors.onSurfaceVariant,
-            )
-        }
-        DropdownMenu(expanded = menuOpen, onDismissRequest = { onMenuOpenChange(false) }) {
-            DropdownMenuItem(
-                text = { Text("清除 30 天前") },
-                onClick = {
-                    onMenuOpenChange(false)
-                    onOlderThan(30)
-                },
-            )
-            DropdownMenuItem(
-                text = { Text("清除 90 天前") },
-                onClick = {
-                    onMenuOpenChange(false)
-                    onOlderThan(90)
-                },
-            )
-            DropdownMenuItem(
-                text = { Text("清空全部") },
-                onClick = {
-                    onMenuOpenChange(false)
-                    onClearAll()
-                },
-            )
-        }
-    }
-}
-
-@Composable
-private fun HistoryDialogs(
-    askBeforeClear: Boolean,
-    olderThanDays: Int?,
-    state: HistoryUiState,
-    onDismiss: () -> Unit,
-    onAction: (HistoryAction) -> Unit,
-) {
-    if (askBeforeClear) {
-        ClearAllDialog(
-            state = state,
-            onDismiss = onDismiss,
-            onConfirm = {
-                onDismiss()
-                onAction(HistoryAction.ClearAll)
+    MoreMenu { dismiss ->
+        DropdownMenuItem(
+            text = { Text("管理") },
+            onClick = {
+                dismiss()
+                selection.onChange(true)
             },
         )
-    }
-    olderThanDays?.let { days ->
-        RemoveOlderDialog(
-            days = days,
-            onDismiss = onDismiss,
-            onConfirm = {
-                onDismiss()
-                onAction(HistoryAction.RemoveOlderThan(days))
+        DropdownMenuItem(
+            text = { Text("清除 30 天前") },
+            onClick = {
+                dismiss()
+                onOlderThan(30)
+            },
+        )
+        DropdownMenuItem(
+            text = { Text("清除 90 天前") },
+            onClick = {
+                dismiss()
+                onOlderThan(90)
+            },
+        )
+        DropdownMenuItem(
+            text = { Text("清空全部") },
+            onClick = {
+                dismiss()
+                onClearAll()
             },
         )
     }
@@ -208,41 +230,62 @@ private fun SearchRow(query: String, onQueryChange: (String) -> Unit) {
     )
 }
 
-/** 列表本体:每一行都能点开续播,右边那个叉只删这一行 */
+/** 列表本体:平时点开续播,勾选模式下点一下选中/取消,行尾那枚框只是选中态的镜子 */
 @Composable
 private fun HistoryList(
     entries: List<HistoryEntry>,
+    selecting: Boolean,
+    selected: Set<String>,
     onOpenVideo: (String) -> Unit,
-    onRemove: (String) -> Unit,
+    onToggle: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(modifier = modifier.fillMaxWidth()) {
         items(entries, key = { it.bvid }) { entry ->
             HistoryRow(
                 entry = entry,
-                onOpen = { onOpenVideo(entry.bvid) },
-                onRemove = { onRemove(entry.bvid) },
+                selecting = selecting,
+                checked = entry.bvid in selected,
+                onClick = { if (selecting) onToggle(entry.bvid) else onOpenVideo(entry.bvid) },
             )
         }
     }
 }
 
 @Composable
-private fun HistoryRow(entry: HistoryEntry, onOpen: () -> Unit, onRemove: () -> Unit) {
+private fun HistoryRow(entry: HistoryEntry, selecting: Boolean, checked: Boolean, onClick: () -> Unit) {
     HsySettingRow(
         title = entry.title,
+        leading = { HsyVideoThumb(coverUrl = entry.coverUrl) },
         supporting = watchedLine(entry),
-        onClick = onOpen,
-        trailing = {
-            IconButton(onClick = onRemove) {
-                Icon(
-                    imageVector = HsyIcons.close,
-                    contentDescription = "删除这条历史",
-                    tint = Hsy.colors.onSurfaceVariant,
-                )
-            }
+        onClick = onClick,
+        trailing = if (selecting) {
+            { Checkbox(checked = checked, onCheckedChange = null) }
+        } else {
+            null
         },
     )
+}
+
+/** 勾选模式底栏:全选/取消全选 + 批量删除;选完即由调用方退出勾选 */
+@Composable
+private fun HistorySelectionBar(
+    selected: Set<String>,
+    entries: List<HistoryEntry>,
+    onSelectedChange: (Set<String>) -> Unit,
+    onRemove: () -> Unit,
+) {
+    HsySelectionBar(
+        selectedCount = selected.size,
+        totalCount = entries.size,
+        onToggleAll = {
+            onSelectedChange(
+                if (selected.size == entries.size) emptySet() else entries.mapTo(mutableSetOf()) { it.bvid },
+            )
+        },
+    ) {
+        TextButton(enabled = selected.isNotEmpty(), onClick = onRemove) { Text("删除 ${selected.size}") }
+    }
 }
 
 /** 与「我的」页那三行同一份刻度:秒数与时间戳在屏上才折成人读的写法(数据层原样递出) */
@@ -268,39 +311,4 @@ private fun EmptyHistory(state: HistoryUiState) {
             hint = "播过的每一支都会在这里留下续播位置",
         )
     }
-}
-
-@Composable
-private fun ClearAllDialog(state: HistoryUiState, onDismiss: () -> Unit, onConfirm: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("清空观看历史?") },
-        text = {
-            Text(
-                // 筛着词的时候必须把"清的是整张表"讲明白:屏上只有 3 条,点下去抹掉的是全部
-                if (state.query.isBlank()) {
-                    "本地这 ${state.entries.size} 条进度会一起抹掉,续播起点也就没了。这一步没有撤销。"
-                } else {
-                    "注意:现在筛的是「${state.query}」,但清空抹掉的是整张历史表,不止屏上这些。这一步没有撤销。"
-                },
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = onConfirm) { Text("清空") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("再想想") }
-        },
-    )
-}
-
-@Composable
-private fun RemoveOlderDialog(days: Int, onDismiss: () -> Unit, onConfirm: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("清除 $days 天前的历史?") },
-        text = { Text("更早的续播起点会被抹掉,最近 $days 天原样保留。这一步没有撤销。") },
-        confirmButton = { TextButton(onClick = onConfirm) { Text("清除") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("再想想") } },
-    )
 }

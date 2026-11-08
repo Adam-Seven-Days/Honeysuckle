@@ -1,8 +1,10 @@
 package com.videobrowsing.honeysuckle.feature.favorite
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,13 +24,18 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.videobrowsing.honeysuckle.core.common.formatClock
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsyEmptyState
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsyErrorState
+import com.videobrowsing.honeysuckle.core.designsystem.component.HsySelectionBar
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsySettingRow
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsyTopBar
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsyVideoThumb
+import com.videobrowsing.honeysuckle.core.designsystem.component.MoreMenu
+import com.videobrowsing.honeysuckle.core.designsystem.component.SelectionControls
 import com.videobrowsing.honeysuckle.core.designsystem.icon.HsyIcons
 import com.videobrowsing.honeysuckle.core.designsystem.theme.Hsy
 import com.videobrowsing.honeysuckle.core.designsystem.ui.AlertDialog
+import com.videobrowsing.honeysuckle.core.designsystem.ui.Checkbox
 import com.videobrowsing.honeysuckle.core.designsystem.ui.CircularProgressIndicator
+import com.videobrowsing.honeysuckle.core.designsystem.ui.DropdownMenuItem
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Icon
 import com.videobrowsing.honeysuckle.core.designsystem.ui.IconButton
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Text
@@ -51,10 +58,21 @@ fun WatchLaterScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var confirmClear by remember { mutableStateOf(false) }
+    var selecting by remember { mutableStateOf(false) }
+    var selected by remember { mutableStateOf(emptySet<String>()) }
+
+    val onSelectingChange: (Boolean) -> Unit = {
+        selecting = it
+        if (!it) selected = emptySet()
+    }
+    val exitSelection = { onSelectingChange(false) }
+    // 勾选模式下返回键先退出管理,而不是直接离开这一页
+    BackHandler(enabled = selecting, onBack = exitSelection)
 
     Column(modifier = modifier.fillMaxSize().background(Hsy.colors.surface)) {
         WatchLaterTopBar(
             state = state,
+            selection = SelectionControls(selecting, onSelectingChange),
             onBack = onBack,
             onReload = { viewModel.onAction(WatchLaterAction.Reload) },
             onAskClear = { confirmClear = true },
@@ -62,13 +80,30 @@ fun WatchLaterScreen(
         state.message?.let { message ->
             MessageLine(message) { viewModel.onAction(WatchLaterAction.DismissMessage) }
         }
-        WatchLaterBody(
-            state = state,
-            onOpenVideo = onOpenVideo,
-            onRemove = { viewModel.onAction(WatchLaterAction.Remove(it)) },
-            onReload = { viewModel.onAction(WatchLaterAction.Reload) },
-            onOpenLogin = onOpenLogin,
-        )
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            WatchLaterBody(
+                state = state,
+                selection = ListSelection(
+                    selecting = selecting,
+                    selected = selected,
+                    onToggle = { bvid -> selected = if (bvid in selected) selected - bvid else selected + bvid },
+                ),
+                onOpenVideo = onOpenVideo,
+                onReload = { viewModel.onAction(WatchLaterAction.Reload) },
+                onOpenLogin = onOpenLogin,
+            )
+        }
+        if (selecting) {
+            WatchLaterSelectionBar(
+                selected = selected,
+                items = state.items,
+                onSelectedChange = { selected = it },
+                onRemove = {
+                    viewModel.onAction(WatchLaterAction.RemoveSelected(selected))
+                    exitSelection()
+                },
+            )
+        }
     }
 
     if (confirmClear) {
@@ -83,10 +118,11 @@ fun WatchLaterScreen(
     }
 }
 
-/** 顶栏:刷新与清空都只在登录态给 —— 游客按下去只会在平台上碰一鼻子 -101 */
+/** 顶栏:登录态把所有操作收进一颗菜单(管理/刷新/清空);勾选模式下换成退出管理的叉 */
 @Composable
 private fun WatchLaterTopBar(
     state: WatchLaterUiState,
+    selection: SelectionControls,
     onBack: () -> Unit,
     onReload: () -> Unit,
     onAskClear: () -> Unit,
@@ -95,20 +131,40 @@ private fun WatchLaterTopBar(
         title = "稍后再看",
         onBack = onBack,
         actions = {
-            if (state.loggedIn) {
-                IconButton(onClick = onReload) {
+            when {
+                selection.selecting -> IconButton(onClick = { selection.onChange(false) }) {
                     Icon(
-                        imageVector = HsyIcons.refresh,
-                        contentDescription = "与平台对一次账",
-                        tint = Hsy.colors.onSurface,
+                        imageVector = HsyIcons.close,
+                        contentDescription = "退出管理",
+                        tint = Hsy.colors.onSurfaceVariant,
                     )
                 }
-                if (state.items.isNotEmpty()) {
-                    IconButton(onClick = onAskClear) {
-                        Icon(
-                            imageVector = HsyIcons.delete,
-                            contentDescription = "清空稍后再看",
-                            tint = Hsy.colors.onSurface,
+
+                // 刷新与清空都只在登录态给 —— 游客按下去只会在平台上碰一鼻子 -101
+                state.loggedIn -> MoreMenu { dismiss ->
+                    if (state.items.isNotEmpty()) {
+                        DropdownMenuItem(
+                            text = { Text("管理") },
+                            onClick = {
+                                dismiss()
+                                selection.onChange(true)
+                            },
+                        )
+                    }
+                    DropdownMenuItem(
+                        text = { Text("刷新") },
+                        onClick = {
+                            dismiss()
+                            onReload()
+                        },
+                    )
+                    if (state.items.isNotEmpty()) {
+                        DropdownMenuItem(
+                            text = { Text("清空稍后再看") },
+                            onClick = {
+                                dismiss()
+                                onAskClear()
+                            },
                         )
                     }
                 }
@@ -117,12 +173,33 @@ private fun WatchLaterTopBar(
     )
 }
 
+/** 勾选模式底栏:全选/取消全选 + 批量移走;选完即由调用方退出勾选 */
+@Composable
+private fun WatchLaterSelectionBar(
+    selected: Set<String>,
+    items: List<WatchLaterItem>,
+    onSelectedChange: (Set<String>) -> Unit,
+    onRemove: () -> Unit,
+) {
+    HsySelectionBar(
+        selectedCount = selected.size,
+        totalCount = items.size,
+        onToggleAll = {
+            onSelectedChange(
+                if (selected.size == items.size) emptySet() else items.mapTo(mutableSetOf()) { it.bvid },
+            )
+        },
+    ) {
+        TextButton(enabled = selected.isNotEmpty(), onClick = onRemove) { Text("移走 ${selected.size}") }
+    }
+}
+
 /** 清单本体:游客只给引导,登录态才去平台读那一份 */
 @Composable
 private fun WatchLaterBody(
     state: WatchLaterUiState,
+    selection: ListSelection,
     onOpenVideo: (String) -> Unit,
-    onRemove: (WatchLaterItem) -> Unit,
     onReload: () -> Unit,
     onOpenLogin: () -> Unit,
 ) {
@@ -151,23 +228,19 @@ private fun WatchLaterBody(
         else -> {
             // 读失败但屏上还有上一次读到的结果:说一句就够,不把已有清单换成白屏
             state.error?.let { error -> SyncMissLine(error, onReload) }
-            WatchLaterList(items, onOpenVideo, onRemove)
+            WatchLaterList(items, selection, onOpenVideo)
         }
     }
 }
 
 @Composable
-private fun WatchLaterList(
-    items: List<WatchLaterItem>,
-    onOpenVideo: (String) -> Unit,
-    onRemove: (WatchLaterItem) -> Unit,
-) {
+private fun WatchLaterList(items: List<WatchLaterItem>, selection: ListSelection, onOpenVideo: (String) -> Unit) {
     LazyColumn(modifier = Modifier.fillMaxWidth()) {
         items(items, key = { it.bvid }) { item ->
             WatchLaterRow(
                 item = item,
+                selection = selection,
                 onOpen = { onOpenVideo(item.bvid) },
-                onRemove = { onRemove(item) },
             )
         }
         item(key = "watch-later-footer") {
@@ -231,7 +304,7 @@ private fun GuestLine(onOpenLogin: () -> Unit) {
 
 /** 一行的读数:UP 与时长打底,平台记的观看位置单独成句,进度线压在同一行的下沿 */
 @Composable
-private fun WatchLaterRow(item: WatchLaterItem, onOpen: () -> Unit, onRemove: () -> Unit) {
+private fun WatchLaterRow(item: WatchLaterItem, selection: ListSelection, onOpen: () -> Unit) {
     HsySettingRow(
         title = item.title,
         leading = { HsyVideoThumb(coverUrl = item.coverUrl) },
@@ -241,15 +314,11 @@ private fun WatchLaterRow(item: WatchLaterItem, onOpen: () -> Unit, onRemove: ()
             item.positionSec.takeIf { it > 0 }?.let { "看到 ${formatClock(it.toLong())}" },
         ).joinToString(" · ").ifBlank { null },
         progress = item.durationSec.takeIf { it > 0 }?.let { (item.positionSec.toFloat() / it).coerceIn(0f, 1f) },
-        onClick = onOpen,
-        trailing = {
-            IconButton(onClick = onRemove) {
-                Icon(
-                    imageVector = HsyIcons.close,
-                    contentDescription = "从稍后再看移走这条",
-                    tint = Hsy.colors.onSurfaceVariant,
-                )
-            }
+        onClick = { selection.click(item.bvid, onOpen) },
+        trailing = if (selection.selecting) {
+            { Checkbox(checked = selection.checked(item.bvid), onCheckedChange = null) }
+        } else {
+            null
         },
     )
 }

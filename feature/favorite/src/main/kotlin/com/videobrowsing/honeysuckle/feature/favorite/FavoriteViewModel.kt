@@ -60,8 +60,8 @@ sealed interface FavoriteAction {
     data class CreateFolder(val title: String) : FavoriteAction
     data class RenameFolder(val title: String) : FavoriteAction
     data object DeleteFolder : FavoriteAction
-    data class RemoveItem(val item: FavoriteItem) : FavoriteAction
-    data class MoveItem(val item: FavoriteItem, val target: FavoriteFolder) : FavoriteAction
+    data class RemoveSelected(val items: List<FavoriteItem>) : FavoriteAction
+    data class MoveSelected(val items: List<FavoriteItem>, val target: FavoriteFolder) : FavoriteAction
     data class QueryChanged(val query: String) : FavoriteAction
     data class SelectSort(val sort: FavoriteSort) : FavoriteAction
     data object DismissMessage : FavoriteAction
@@ -130,9 +130,9 @@ class FavoriteViewModel @Inject constructor(
             FavoriteAction.DeleteFolder,
             -> writeFolder(action)
 
-            is FavoriteAction.RemoveItem -> removeItem(action.item)
+            is FavoriteAction.RemoveSelected -> removeSelected(action.items)
 
-            is FavoriteAction.MoveItem -> moveItem(action.item, action.target)
+            is FavoriteAction.MoveSelected -> moveSelected(action.items, action.target)
 
             is FavoriteAction.QueryChanged -> {
                 mutableState.update { it.copy(query = action.query) }
@@ -301,49 +301,43 @@ class FavoriteViewModel @Inject constructor(
         }
     }
 
-    private fun removeItem(item: FavoriteItem) {
+    private fun removeSelected(items: List<FavoriteItem>) {
+        if (items.isEmpty()) return
         viewModelScope.launch {
-            when (val result = favoriteRepository.removeItem(item)) {
-                is HsyResult.Success -> {
-                    mutableState.update { state ->
-                        state.copy(items = state.items.filterNot { it.bvid == item.bvid })
-                    }
-                    showMessage("已从收藏夹移除")
-                }
-
-                is HsyResult.Failure -> showMessage(writeErrorText("移除收藏", result.error))
+            val removed = mutableSetOf<String>()
+            items.forEach { item ->
+                if (favoriteRepository.removeItem(item) is HsyResult.Success) removed.add(item.bvid)
             }
+            mutableState.update { state -> state.copy(items = state.items.filterNot { it.bvid in removed }) }
+            showMessage("已从收藏夹移除 ${removed.size} 条")
         }
     }
 
     /**
-     * 夹间移动:一个平台写请求同时完成"进目标夹 + 出当前夹"。
+     * 批量夹间移动:每条一个平台写请求,同时完成"进目标夹 + 出当前夹"。
      *
-     * 成功后把这一条从当前列表拿掉 —— 它已经不属于这一夹了;目标夹的条数由下一次读夹列表刷新。
+     * 成功的从当前列表拿掉 —— 它们已经不属于这一夹了;已在目标夹里的跳过(移过去是空操作)。
+     * 目标夹的条数由下一次读夹列表刷新,这里只把当前夹的计数按移走的条数减下去。
      */
-    private fun moveItem(item: FavoriteItem, target: FavoriteFolder) {
-        if (item.folderId == target.id) return
+    private fun moveSelected(items: List<FavoriteItem>, target: FavoriteFolder) {
+        val targets = items.filter { it.folderId != target.id }
+        if (targets.isEmpty()) return
         viewModelScope.launch {
             mutableState.update { it.copy(busy = true) }
-            when (val result = favoriteRepository.moveItem(item, target.id)) {
-                is HsyResult.Success -> {
-                    mutableState.update { state ->
-                        state.copy(
-                            busy = false,
-                            items = state.items.filterNot { it.bvid == item.bvid },
-                            selected = state.selected?.let { folder ->
-                                folder.copy(mediaCount = (folder.mediaCount - 1).coerceAtLeast(0))
-                            },
-                        )
-                    }
-                    showMessage("已移到「${target.title}」")
-                }
-
-                is HsyResult.Failure -> {
-                    mutableState.update { it.copy(busy = false) }
-                    showMessage(writeErrorText("移动收藏", result.error))
-                }
+            val moved = mutableSetOf<String>()
+            targets.forEach { item ->
+                if (favoriteRepository.moveItem(item, target.id) is HsyResult.Success) moved.add(item.bvid)
             }
+            mutableState.update { state ->
+                state.copy(
+                    busy = false,
+                    items = state.items.filterNot { it.bvid in moved },
+                    selected = state.selected?.let { folder ->
+                        folder.copy(mediaCount = (folder.mediaCount - moved.size).coerceAtLeast(0))
+                    },
+                )
+            }
+            showMessage("已移到「${target.title}」${moved.size} 条")
         }
     }
 

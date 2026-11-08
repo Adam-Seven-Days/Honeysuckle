@@ -136,6 +136,11 @@ private fun VideoList(
     modifier: Modifier = Modifier,
 ) {
     val gridState = rememberLazyGridState()
+    // 刷新保留把新批 prepend 到头部,带 key 的格子却在视口里锚住旧的首条 —— 新内容被顶到视口上方。
+    // 刷新成功就回到顶部:用户第一眼看到的就该是这批新内容,而不是"往上滑才发现刷出来了"。
+    LaunchedEffect(state.refreshTick) {
+        if (state.refreshTick > 0) gridState.scrollToItem(0)
+    }
     // 只在"最后一行真的露出来了"时才要下一页:长短列表里同一个百分比不是同一件事,
     // 而这一屏底部还挂着那行读脚,把读脚滚进视野正好等价于"用户真的看到尾了"
     val atBottom by remember {
