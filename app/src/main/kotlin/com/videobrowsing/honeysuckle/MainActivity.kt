@@ -146,6 +146,7 @@ class MainActivity : ComponentActivity() {
                             inPip = pipMode,
                             tabVisibility = ui.tabVisibility,
                             pipEnabled = ui.autoPipEnabled,
+                            backgroundPlayEnabled = ui.backgroundPlayEnabled,
                             onVideoRouteChanged = { videoRouteActive = it },
                             onEnterPip = ::enterPipIfPossible,
                         )

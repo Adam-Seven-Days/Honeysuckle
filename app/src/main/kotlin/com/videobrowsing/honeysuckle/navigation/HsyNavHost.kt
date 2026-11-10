@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
@@ -91,6 +92,8 @@ fun HsyNavHost(
     tabVisibility: TabVisibility = TabVisibility(),
     /** 设置里的画中画总开关:关掉时应用内小窗与详情页的手动入口一起收掉 */
     pipEnabled: Boolean = true,
+    /** 设置里的后台播放:与小窗一起关掉时,退出详情页就把声音暂停在退页那一刻 */
+    backgroundPlayEnabled: Boolean = false,
     onVideoRouteChanged: (Boolean) -> Unit = {},
     onEnterPip: () -> Unit = {},
 ) {
@@ -99,6 +102,19 @@ fun HsyNavHost(
     val onVideoRoute = currentRoute?.startsWith(VIDEO_ROUTE_PREFIX) == true
     // 楼中楼页是这一支视频评论区的上一层:小窗压在它脚下会把输入框整个盖住,而这里回播放就是按返回
     val miniBarHidden = onVideoRoute || currentRoute?.startsWith(THREAD_ROUTE_PREFIX) == true
+
+    // 「退出视频」以返回栈为准而不是当前目的地:楼中楼、UP 空间是压在详情页上,栈里还有详情页就不算退出;
+    // 最后一张详情页被拿走(按返回、宽屏切 tab)才是。画中画与后台播放都关着时,退页后没有任何一处
+    // 接得住画面与声音 —— 小窗不出现,声音不该在看不见的地方继续;与 MainActivity.onStop 同一口径只暂停不释放,
+    // 通知栏/锁屏按播放、重进详情页续播,接的都还是同一只播放器、同一个进度。
+    val backStack by navController.currentBackStack.collectAsStateWithLifecycle()
+    val videoInBackStack = backStack.any { it.destination.route?.startsWith(VIDEO_ROUTE_PREFIX) == true }
+    LaunchedEffect(videoInBackStack, inPip, pipEnabled, backgroundPlayEnabled) {
+        if (!videoInBackStack && !inPip && !pipEnabled && !backgroundPlayEnabled) {
+            // 不做 isPlaying 过滤:缓冲中的播放器读数不在播,playWhenReady 却已抬起,照样要拦
+            engine.activeHost?.pause()
+        }
+    }
     // 设置里三个开关管的就是中间这三条;首页与我的永远在场
     val tabs = visibleTabs(tabVisibility)
     val showTabs = !inPip && tabs.any { it.first == currentRoute }
