@@ -28,7 +28,7 @@ private const val CODE_COMMENT_REJECTED = 12015
  * 文案仍留在 `:core:common`,数据层只出分类。
  */
 fun writeErrorText(action: String, error: AppError): String {
-    if (error.isLoginRequired()) return "${action}需要登录 · 去登录"
+    if (error.isLoginRequired()) return "${action}需要登录"
     // 码表另起一段:写接口那张脸主要是平台的业务码,一条条摊在同一个 when 里会把复杂度堆到读不动
     if (error is AppError.Server) return serverWriteText(action, error)
     return "${action}失败:${error.userMessage()}"
@@ -36,14 +36,14 @@ fun writeErrorText(action: String, error: AppError): String {
 
 private fun serverWriteText(action: String, error: AppError.Server): String = when (error.code) {
     CODE_CSRF_INVALID -> "${action}失败:登录凭证过期,请重新登录"
-    CODE_RISK_CONTROL -> "${action}被平台风控挡下 · 歇一会儿再试,连点只会更久"
-    HTTP_RISK_CONTROL -> "${action}被平台挡回来(412)· 歇一会儿再试"
-    CODE_REQUEST_TOO_FREQUENT -> "${action}太频繁了 · 歇半分钟再来"
+    CODE_RISK_CONTROL -> "${action}触发平台风控,请稍后再试"
+    HTTP_RISK_CONTROL -> "${action}被平台限制(412),请稍后再试"
+    CODE_REQUEST_TOO_FREQUENT -> "${action}过于频繁,请稍后再试"
     CODE_COMMENT_CLOSED -> "这个视频关闭了评论"
-    CODE_COMMENT_TOO_FAST -> "评论发得太快 · 歇一会儿再发"
-    CODE_COMMENT_REJECTED -> "内容没过审 · 换个说法再试"
-    CODE_COIN_INSUFFICIENT -> "硬币不够了 · 这次没投出去"
-    CODE_COIN_DAILY_LIMIT -> "今天投币到上限了 · 明天再来"
+    CODE_COMMENT_TOO_FAST -> "评论发送太快,请稍后再发"
+    CODE_COMMENT_REJECTED -> "内容未通过审核,请修改后再试"
+    CODE_COIN_INSUFFICIENT -> "硬币不足"
+    CODE_COIN_DAILY_LIMIT -> "今日投币已达上限"
     else -> "${action}失败:${humanPlatformMessage(error) ?: error.userMessage()}"
 }
 

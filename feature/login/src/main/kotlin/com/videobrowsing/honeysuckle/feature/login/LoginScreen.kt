@@ -90,7 +90,7 @@ fun LoginScreen(viewModel: LoginViewModel, onBack: () -> Unit, onDone: () -> Uni
         AlertDialog(
             onDismissRequest = { askSignOut = false },
             title = { Text("退出登录?") },
-            text = { Text("这台设备上的凭证会被清掉,下一次请求回到游客身份") },
+            text = { Text("将清除本机保存的登录凭证,恢复为游客身份") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -100,7 +100,7 @@ fun LoginScreen(viewModel: LoginViewModel, onBack: () -> Unit, onDone: () -> Uni
                 ) { Text("退出") }
             },
             dismissButton = {
-                TextButton(onClick = { askSignOut = false }) { Text("留着") }
+                TextButton(onClick = { askSignOut = false }) { Text("取消") }
             },
         )
     }
@@ -131,7 +131,7 @@ private fun LoginBody(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator()
                 Text(
-                    text = "正在向平台要一张二维码",
+                    text = "正在获取二维码…",
                     style = Hsy.typography.bodyMedium,
                     color = Hsy.colors.onSurfaceVariant,
                     modifier = Modifier.padding(top = 12.dp),
@@ -140,9 +140,9 @@ private fun LoginBody(
         }
 
         state.phase == LoginPhase.FAILED -> HsyErrorState(
-            message = state.message ?: "这一趟没走通",
+            message = state.message ?: "登录失败",
             onRetry = { onAction(LoginAction.Reload) },
-            hint = "重新生成一张二维码,不会影响已登录的设备",
+            hint = "重新生成二维码,不影响已登录的设备",
         )
 
         state.phase == LoginPhase.EXPIRED -> Expired(
@@ -238,8 +238,8 @@ private fun PasswordSection(state: LoginUiState, onAction: (LoginAction) -> Unit
             )
         }
         Text(
-            text = "密码在本机用平台公钥加密后直接提交给 B 站,不保存在这个设备上。" +
-                "如果平台要求安全验证,请改用扫码登录。",
+            text = "密码经平台公钥加密后直接提交,不保存在本机。" +
+                "若平台要求安全验证,请改用扫码登录。",
             style = Hsy.typography.bodySmall,
             color = Hsy.colors.onSurfaceVariant,
         )
@@ -260,26 +260,26 @@ private fun QrSection(phase: LoginPhase, scanUrl: String?, onReload: () -> Unit)
         )
         Surface(shape = QrShape, color = Color.White) {
             if (scanUrl == null) {
-                QrPlaceholder(text = "二维码还没画出来")
+                QrPlaceholder(text = "二维码生成中…")
             } else {
                 QrImage(text = scanUrl, modifier = Modifier.padding(12.dp))
             }
         }
         Text(
             text = when (phase) {
-                LoginPhase.SCANNED -> "已扫码,请在手机上点确认"
+                LoginPhase.SCANNED -> "已扫码,请在手机上确认"
                 else -> "等待扫码"
             },
             style = Hsy.typography.bodyLarge,
             color = Hsy.colors.onSurface,
         )
         Text(
-            text = "登录只换取 Cookie · 不接触密码与验证码",
+            text = "仅获取登录凭证,不接触密码与验证码",
             style = Hsy.typography.bodySmall,
             color = Hsy.colors.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
-        TextButton(onClick = onReload) { Text("换一张二维码") }
+        TextButton(onClick = onReload) { Text("刷新二维码") }
     }
 }
 
@@ -290,7 +290,7 @@ private fun QrImage(text: String, modifier: Modifier = Modifier) {
     }
     val image = bitmap
     if (image == null) {
-        QrPlaceholder(text = "二维码没画出来 · 点下面换一张")
+        QrPlaceholder(text = "二维码生成失败,请点击刷新")
     } else {
         Image(
             bitmap = image.asImageBitmap(),
@@ -325,12 +325,12 @@ private fun Expired(message: String?, onReload: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
-            text = "二维码过期了",
+            text = "二维码已过期",
             style = Hsy.typography.titleMedium,
             color = Hsy.colors.onSurface,
         )
         Text(
-            text = message ?: "这张码等得太久,平台已经不认它了",
+            text = message ?: "二维码已过期,请重新生成",
             style = Hsy.typography.bodyMedium,
             color = Hsy.colors.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -345,11 +345,11 @@ private fun LoggedIn(profile: UserProfile?, onDone: () -> Unit, onAskSignOut: ()
         HsySectionCard(title = "账号") {
             HsySettingRow(
                 title = profile?.name?.takeIf { it.isNotBlank() } ?: "已登录",
-                supporting = profile?.let { "mid ${it.mid}" } ?: "正在读账号资料",
+                supporting = profile?.let { "mid ${it.mid}" } ?: "正在读取账号资料…",
             )
         }
         Text(
-            text = "登录成功 · 弹幕、点赞、收藏与关注时间线现在都能用了",
+            text = "登录成功",
             style = Hsy.typography.bodyMedium,
             color = Hsy.colors.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),

@@ -127,7 +127,7 @@ class WatchLaterViewModel @Inject constructor(
             }
             mutableState.update { state -> state.copy(items = state.items.filterNot { it.bvid in removed }) }
             showMessage(
-                if (removed.size == targets.size) "已移走 ${removed.size} 条" else "移走 ${removed.size} 条,其余没成功",
+                if (removed.size == targets.size) "已移除 ${removed.size} 条" else "已移除 ${removed.size} 条,其余失败",
             )
         }
     }
@@ -137,7 +137,7 @@ class WatchLaterViewModel @Inject constructor(
             when (val result = watchLaterRepository.clearAll()) {
                 is HsyResult.Success -> {
                     mutableState.update { it.copy(items = emptyList()) }
-                    showMessage("稍后再看清空了")
+                    showMessage("稍后再看已清空")
                 }
 
                 is HsyResult.Failure -> showMessage(writeErrorText("清空稍后再看", result.error))

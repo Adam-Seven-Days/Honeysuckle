@@ -136,19 +136,19 @@ internal fun FolderList(
                 HsyErrorState(
                     message = checkNotNull(state.foldersError),
                     onRetry = { onAction(FavoriteAction.Reload) },
-                    hint = "收藏夹只存在账号里 · 这一页读不到就是没有可看的",
+                    hint = "收藏夹加载失败,请重试",
                 )
             }
 
             state.folders.isEmpty() -> item(key = "folders-empty") {
-                HsyEmptyState(title = "账号下还没有收藏夹", hint = "点右上角的加号建一个")
+                HsyEmptyState(title = "账号下还没有收藏夹", hint = "点右上角加号新建")
             }
 
             else -> items(state.folders, key = { "folder-${it.id}" }) { folder ->
                 HsySettingRow(
                     title = folder.title,
                     icon = HsyIcons.list,
-                    supporting = "${folder.mediaCount} 条 · 点开管理",
+                    supporting = "${folder.mediaCount} 条",
                     onClick = { onAction(FavoriteAction.OpenFolder(folder)) },
                 )
             }
@@ -188,7 +188,7 @@ private fun FolderToolbar(state: FavoriteUiState, onAction: (FavoriteAction) -> 
             value = state.query,
             onValueChange = { onAction(FavoriteAction.QueryChanged(it)) },
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("在这一夹里搜标题") },
+            placeholder = { Text("搜索本夹标题") },
             singleLine = true,
             leadingIcon = { Icon(imageVector = HsyIcons.search, contentDescription = null) },
         )
@@ -233,17 +233,17 @@ private fun FolderItems(
         state.itemsError != null && state.items.isEmpty() -> HsyErrorState(
             message = checkNotNull(state.itemsError),
             onRetry = { onAction(FavoriteAction.LoadMore) },
-            hint = "重试只影响这一夹的内容",
+            hint = "加载失败,请重试",
         )
 
         state.items.isEmpty() && state.query.isNotBlank() -> HsyEmptyState(
             title = "没有找到「${state.query.trim()}」",
-            hint = "只搜标题里的一小段,或者清空搜索词",
+            hint = "换个关键词,或清空搜索词",
         )
 
         state.items.isEmpty() -> HsyEmptyState(
             title = "这个收藏夹是空的",
-            hint = "在详情页点收藏可以选夹;这一夹里的条目也能移到别的夹",
+            hint = "在视频详情页点「收藏」添加",
         )
 
         else -> LazyColumn(state = listState, modifier = Modifier.fillMaxWidth()) {
@@ -279,11 +279,11 @@ private fun FolderFooter(state: FavoriteUiState, onAction: (FavoriteAction) -> U
                     style = Hsy.typography.bodySmall,
                     color = Hsy.colors.error,
                 )
-                TextButton(onClick = { onAction(FavoriteAction.LoadMore) }) { Text("再要一页") }
+                TextButton(onClick = { onAction(FavoriteAction.LoadMore) }) { Text("重试") }
             }
 
             !state.moreAvailable -> Text(
-                text = "这一夹到这里就完了:${state.items.size} 条",
+                text = "已加载全部 ${state.items.size} 条",
                 style = Hsy.typography.bodySmall,
                 color = Hsy.colors.onSurfaceVariant,
             )
@@ -323,7 +323,7 @@ private fun GuestGuide(onOpenLogin: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = "登录后才能读平台收藏夹、建夹与改名。",
+            text = "登录后可查看并管理收藏夹",
             style = Hsy.typography.bodyMedium,
             color = Hsy.colors.onSurfaceVariant,
             modifier = Modifier.weight(1f),

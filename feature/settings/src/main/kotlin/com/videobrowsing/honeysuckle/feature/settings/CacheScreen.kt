@@ -62,7 +62,7 @@ fun CacheScreen(viewModel: CacheViewModel, onBack: () -> Unit, modifier: Modifie
         HsySectionCard(title = "离线视频") {
             HsySettingRow(
                 title = "已下载的分 P",
-                supporting = "在视频详情页下载;清理缓存不会删掉它们",
+                supporting = "清理缓存不会删除已下载的视频",
                 trailing = {
                     Text(
                         text = if (state.offlineBytes > 0L) formatBytes(state.offlineBytes) else "暂无",
@@ -76,7 +76,7 @@ fun CacheScreen(viewModel: CacheViewModel, onBack: () -> Unit, modifier: Modifie
             HsySettingRow(
                 title = if (state.busy) "正在清理…" else "清理缓存",
                 icon = HsyIcons.delete,
-                supporting = "把上面的文件删掉;下次打开会重新下载",
+                supporting = "删除缓存文件,需要时会重新下载",
                 onClick = if (state.busy) {
                     null
                 } else {
@@ -106,7 +106,7 @@ private fun UsageRows(usage: CacheUsage) {
     HsySettingRow(title = "其他缓存", supporting = "播放与浏览留下的临时文件", trailing = {
         Text(formatBytes(usage.otherBytes), style = Hsy.typography.bodyMedium)
     })
-    HsySettingRow(title = "合计", supporting = "只清缓存,不碰历史与离线视频", trailing = {
+    HsySettingRow(title = "合计", supporting = "清理不影响历史记录与离线视频", trailing = {
         Text(formatBytes(usage.totalBytes), style = Hsy.typography.titleMedium)
     })
 }
@@ -118,11 +118,11 @@ private fun ClearCacheDialog(totalBytes: Long, onDismiss: () -> Unit, onConfirm:
         title = { Text("清理缓存?") },
         text = {
             Text(
-                "会删掉 ${formatBytes(totalBytes)} 的图片与临时文件。" +
-                    "历史、收藏、登录态与离线视频不在缓存目录里,不受影响。",
+                "将删除 ${formatBytes(totalBytes)} 缓存文件," +
+                    "历史记录、收藏、登录状态与离线视频不受影响。",
             )
         },
         confirmButton = { TextButton(onClick = onConfirm) { Text("清理") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("再想想") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )
 }

@@ -35,7 +35,7 @@ fun AppUpdateDialog(release: AppRelease, onAcknowledged: () -> Unit) {
         text = {
             Column(modifier = Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
                 Text(
-                    text = release.notes.ifBlank { "作者没写更新说明 · 到页面上看看这一版改了什么" },
+                    text = release.notes.ifBlank { "暂无更新说明,可到发布页查看" },
                     style = Hsy.typography.bodyMedium,
                 )
             }

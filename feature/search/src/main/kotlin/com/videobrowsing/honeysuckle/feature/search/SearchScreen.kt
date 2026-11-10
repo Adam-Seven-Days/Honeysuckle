@@ -117,7 +117,7 @@ fun SearchScreen(
         AlertDialog(
             onDismissRequest = { askBeforeClear = false },
             title = { Text("清空搜索记录?") },
-            text = { Text("只是本机保存的 ${state.history.size} 个搜索词,不影响你的搜索能力") },
+            text = { Text("将删除本机保存的 ${state.history.size} 个搜索词") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -127,7 +127,7 @@ fun SearchScreen(
                 ) { Text("清空") }
             },
             dismissButton = {
-                TextButton(onClick = { askBeforeClear = false }) { Text("保留") }
+                TextButton(onClick = { askBeforeClear = false }) { Text("取消") }
             },
         )
     }
@@ -181,12 +181,12 @@ private fun Results(state: SearchUiState, onOpenVideo: (String) -> Unit, onActio
         state.errorMessage != null && state.results.isEmpty() -> HsyErrorState(
             message = state.errorMessage,
             onRetry = { onAction(SearchAction.Retry) },
-            hint = "重试不会丢掉输入框里的词",
+            hint = "搜索失败,请重试",
         )
 
         state.results.isEmpty() -> HsyEmptyState(
             title = "没有找到「${state.submittedKeyword}」",
-            hint = "换个说法,或者只搜标题里的一小段",
+            hint = "换个关键词试试",
         )
 
         else -> ResultList(state = state, onOpenVideo = onOpenVideo, onAction = onAction)
@@ -243,18 +243,18 @@ private fun ResultFooter(state: SearchUiState, onAction: (SearchAction) -> Unit)
         when {
             state.loadingMore -> CircularProgressIndicator()
 
-            // 列表已有内容时失败的是"再要一页",不把整屏替换成错误页
+            // 列表已有内容时失败的是"重试",不把整屏替换成错误页
             state.errorMessage != null -> {
                 Text(
                     text = state.errorMessage,
                     style = Hsy.typography.bodySmall,
                     color = Hsy.colors.error,
                 )
-                TextButton(onClick = { onAction(SearchAction.Retry) }) { Text("再要一页") }
+                TextButton(onClick = { onAction(SearchAction.Retry) }) { Text("重试") }
             }
 
             !state.moreAvailable -> Text(
-                text = "这一批到这里就完了:${state.results.size} 条",
+                text = "已加载全部 ${state.results.size} 条",
                 style = Hsy.typography.bodySmall,
                 color = Hsy.colors.onSurfaceVariant,
             )
@@ -282,8 +282,8 @@ private fun History(state: SearchUiState, onAction: (SearchAction) -> Unit, onAs
         }
         if (state.history.isEmpty()) {
             HsyEmptyState(
-                title = "还没有搜过什么",
-                hint = "在上面打几个字,按回车或点「搜索」",
+                title = "暂无搜索记录",
+                hint = "输入关键词开始搜索",
             )
         } else {
             FlowRow(

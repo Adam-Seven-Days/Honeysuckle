@@ -58,8 +58,8 @@ internal fun PlaybackNotes(state: VideoDetailUiState, continuing: Boolean) {
     val resume = state.resumePositionSec
     // 引擎里坐着的就是这一条流时,画面/声音从后台沿过来,没有"从历史点重开"这回事
     val resumeNote = when {
-        continuing -> "接着后台播放,进度连续"
-        resume > 0 -> "上次看到 ${formatClock(resume.toLong())},已从那里继续"
+        continuing -> "已继续后台播放"
+        resume > 0 -> "上次看到 ${formatClock(resume.toLong())},已自动续播"
         else -> null
     }
     if (resumeNote == null) return

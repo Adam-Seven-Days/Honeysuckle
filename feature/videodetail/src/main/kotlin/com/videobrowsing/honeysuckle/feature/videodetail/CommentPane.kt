@@ -189,12 +189,12 @@ private fun CommentBody(state: CommentUiState, intents: CommentIntents) {
         state.errorMessage != null && state.comments.isEmpty() -> HsyErrorState(
             message = checkNotNull(state.errorMessage),
             onRetry = { intents.onAction(CommentAction.Retry) },
-            hint = "评论没取回来,重试不会丢掉别的读数",
+            hint = "评论加载失败,请重试",
         )
 
         state.comments.isEmpty() -> HsyEmptyState(
             title = "还没有评论",
-            hint = "发第一条,或者换个排序看看",
+            hint = "来发第一条吧",
         )
 
         else -> CommentList(state = state, intents = intents)
@@ -350,12 +350,12 @@ internal fun ListFooter(state: CommentUiState, intents: CommentIntents) {
                     style = Hsy.typography.bodySmall,
                     color = Hsy.colors.error,
                 )
-                TextButton(onClick = { intents.onAction(CommentAction.LoadMore) }) { Text("再要一页") }
+                TextButton(onClick = { intents.onAction(CommentAction.LoadMore) }) { Text("重试") }
             }
 
             state.moreAvailable -> {
                 Text(
-                    text = "已显示 ${state.comments.size} / ${state.total} 条",
+                    text = "已加载 ${state.comments.size} / ${state.total} 条",
                     style = Hsy.typography.bodySmall,
                     color = Hsy.colors.onSurfaceVariant,
                 )
@@ -365,8 +365,8 @@ internal fun ListFooter(state: CommentUiState, intents: CommentIntents) {
             // 平台对未登录用户只给预览:这时回包也说"到底了",但不是真的没有更多 —— 把原因说清
             state.guestLimited -> {
                 Text(
-                    text = "平台对未登录用户只展示部分评论 · 登录后查看全部 " +
-                        "${formatCount(state.total.toLong())}条",
+                    text = "未登录仅展示部分评论,登录后查看全部 " +
+                        "${formatCount(state.total.toLong())} 条",
                     style = Hsy.typography.bodySmall,
                     color = Hsy.colors.onSurfaceVariant,
                 )
@@ -374,7 +374,7 @@ internal fun ListFooter(state: CommentUiState, intents: CommentIntents) {
             }
 
             else -> Text(
-                text = "已显示全部 ${state.comments.size} 条",
+                text = "已加载全部 ${state.comments.size} 条",
                 style = Hsy.typography.bodySmall,
                 color = Hsy.colors.onSurfaceVariant,
             )
@@ -438,7 +438,7 @@ internal fun Composer(state: CommentUiState, draft: String, onDraftChange: (Stri
  * 滚到底就接着要下一页 —— 评论区与楼中楼页共用这一句。
  *
  * 内容增长后仍停在底部就再要一次,这样"划到底"真的能把几百条拉完,而不是停在第一页的几条上;
- * 失败之后不再自动重试,把"再要一页"留给用户按。它不摆任何东西,所以名字不按界面组件那样起。
+ * 失败之后不再自动重试,把"重试"留给用户按。它不摆任何东西,所以名字不按界面组件那样起。
  */
 @Composable
 internal fun AutoLoadMore(listState: LazyListState, state: CommentUiState, onAction: (CommentAction) -> Unit) {

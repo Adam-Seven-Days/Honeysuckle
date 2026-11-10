@@ -83,11 +83,11 @@ private fun AboutSections(state: AboutUiState, onAction: (AboutAction) -> Unit) 
         HsySettingRow(
             title = "非官方客户端",
             icon = HsyIcons.info,
-            supporting = "与 bilibili 无隶属关系。游客可浏览;登录后评论、弹幕与收藏才写得出去",
+            supporting = "与 bilibili 无隶属关系,登录后可使用评论、弹幕与收藏",
         )
         HsySettingRow(
             title = "只做浏览与本地过滤",
-            supporting = "弹幕屏蔽、密度档、限帧都只改本机这一屏,不改源数据、不上传任何偏好",
+            supporting = "弹幕与显示设置仅保存在本机,不会上传",
         )
         HsySettingRow(
             title = "仅供学习与自用",
@@ -101,7 +101,7 @@ private fun AboutSections(state: AboutUiState, onAction: (AboutAction) -> Unit) 
         HsySettingRow(
             title = "隐私与免责说明",
             icon = HsyIcons.info,
-            supporting = "数据不出本机;清理入口与免责口径都在这一页",
+            supporting = "查看隐私政策与数据管理入口",
             onClick = { onAction(AboutAction.Open(AboutDialog.PRIVACY)) },
         )
         HsySettingRow(
@@ -113,7 +113,7 @@ private fun AboutSections(state: AboutUiState, onAction: (AboutAction) -> Unit) 
         HsySettingRow(
             title = "上次崩溃记录",
             icon = HsyIcons.warning,
-            supporting = if (state.crashLog == null) "本机没有记录" else "点开可查看、复制或清除",
+            supporting = if (state.crashLog == null) "本机没有记录" else "查看、复制或清除",
             onClick = if (state.crashLog == null) {
                 null
             } else {
@@ -129,7 +129,7 @@ private fun AboutSections(state: AboutUiState, onAction: (AboutAction) -> Unit) 
         )
         HsySettingRow(
             title = "第三方依赖与许可",
-            supporting = "Media3 / OkHttp / Room / DataStore / Coil 等,点开看完整清单",
+            supporting = "Media3 / OkHttp / Room / DataStore / Coil 等,查看完整清单",
             onClick = { onAction(AboutAction.Open(AboutDialog.LICENSES)) },
         )
     }
@@ -145,7 +145,7 @@ private fun UpdateCard(state: AboutUiState, onAction: (AboutAction) -> Unit) {
         HsySettingRow(
             title = if (state.updateChecking) "正在检查更新" else "检查更新",
             icon = HsyIcons.refresh,
-            supporting = "对一下仓库上最新发布的版本;下载在浏览器里完成,应用不经手安装包",
+            supporting = "检查最新版本,下载将在浏览器中打开",
             onClick = if (state.updateChecking) {
                 null
             } else {
@@ -216,7 +216,7 @@ private fun CrashDialog(log: String?, onCopy: () -> Unit, onClear: () -> Unit, o
         text = {
             Column(modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
                 Text(
-                    text = log ?: "记录已经被清掉了",
+                    text = log ?: "记录已清除",
                     style = Hsy.typography.bodySmall,
                 )
             }

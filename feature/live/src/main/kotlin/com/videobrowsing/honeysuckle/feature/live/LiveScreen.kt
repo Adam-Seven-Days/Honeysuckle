@@ -65,7 +65,7 @@ fun LiveScreen(viewModel: LiveViewModel, onOpenRoom: (Long) -> Unit, modifier: M
                 HsyErrorState(
                     message = checkNotNull(state.error),
                     onRetry = { viewModel.onAction(LiveAction.Refresh) },
-                    hint = "直播首页没取回来,重试不会丢东西",
+                    hint = "直播列表加载失败,请重试",
                 )
             }
 
@@ -73,7 +73,7 @@ fun LiveScreen(viewModel: LiveViewModel, onOpenRoom: (Long) -> Unit, modifier: M
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
             ) {
-                HsyEmptyState(title = "这一批没有可看的直播", hint = "换个分区,或者点右上角再要一次")
+                HsyEmptyState(title = "该分区暂无直播", hint = "换个分区或刷新试试")
             }
 
             else -> LiveGrid(state = state, onOpenRoom = onOpenRoom) { viewModel.onAction(it) }

@@ -75,7 +75,7 @@ class LiveRoomViewModel @Inject constructor(
             }
             mutableState.update { it.copy(info = info) }
             if (info != null && !info.isLive) {
-                mutableState.update { it.copy(loading = false, playError = "这个直播间现在没开播") }
+                mutableState.update { it.copy(loading = false, playError = "主播当前未开播") }
                 return@launch
             }
             when (val result = repository.play(roomId)) {

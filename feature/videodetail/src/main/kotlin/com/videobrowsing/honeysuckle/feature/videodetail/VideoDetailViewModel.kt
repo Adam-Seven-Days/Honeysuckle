@@ -293,7 +293,7 @@ class VideoDetailViewModel @Inject constructor(
         when (action) {
             is VideoDetailAction.DanmakuInserted -> {
                 mutableState.update { it.copy(pendingDanmaku = null) }
-                if (!action.shown) showMessage("平台收下了,但这一刻没上屏(播放器层不在)")
+                if (!action.shown) showMessage("弹幕已发送,回到播放页可见")
             }
 
             VideoDetailAction.DismissMessage -> clearMessage()
@@ -330,7 +330,7 @@ class VideoDetailViewModel @Inject constructor(
         when (action) {
             VideoDetailAction.StartDownload -> startDownload(forced = false)
 
-            // 确认框里点了"仍要下载":这一次不再问网络,直接入队
+            // 确认框里点了"继续缓存":这一次不再问网络,直接入队
             VideoDetailAction.ConfirmDownload -> {
                 mutableState.update { it.copy(downloadNeedsConfirm = false) }
                 startDownload(forced = true)
@@ -369,7 +369,7 @@ class VideoDetailViewModel @Inject constructor(
      * 提前解析等于让它在排队阶段就过期。
      *
      * 两道设置在入队前各问一次:
-     *  - **只在 Wi-Fi 下缓存**:此刻是计费网络就先问一句,[forced] 只来自确认框里那一下"仍要下载";
+     *  - **只在 Wi-Fi 下缓存**:此刻是计费网络就先问一句,[forced] 只来自确认框里那一下"继续缓存";
      *  - **缓存清晰度**:按设置换算成平台档号交给仓库,这片子没有那一档时仓库自己退自动。
      */
     private fun startDownload(forced: Boolean) {
@@ -379,7 +379,7 @@ class VideoDetailViewModel @Inject constructor(
         when {
             detail == null || part == null -> Unit
 
-            part.cid <= 0L -> showMessage("这一 P 还没取到流,先别急着下")
+            part.cid <= 0L -> showMessage("当前分 P 未加载完成,请稍后再试")
 
             else -> viewModelScope.launch {
                 val prefs = appPreferences.preferences.first()
@@ -481,7 +481,7 @@ class VideoDetailViewModel @Inject constructor(
 
     private fun load() {
         if (bvid.isBlank()) {
-            mutableState.update { it.copy(detailLoading = false, detailError = "这一页缺了视频编号 · 返回重进一次") }
+            mutableState.update { it.copy(detailLoading = false, detailError = "缺少视频编号,请返回重新进入") }
             return
         }
         detailJob?.cancel()
@@ -515,7 +515,7 @@ class VideoDetailViewModel @Inject constructor(
                         mutableState.update { it.copy(detailLoading = false, detailError = result.error.userMessage()) }
                     } else {
                         mutableState.update { it.copy(detail = offline, detailLoading = false, detailError = null) }
-                        showMessage("没网 · 正在放本机缓存")
+                        showMessage("当前无网络,正在播放离线缓存")
                         loadPart(0)
                     }
                 }
@@ -544,7 +544,7 @@ class VideoDetailViewModel @Inject constructor(
                 is HsyResult.Success -> mutableState.update { it.copy(interaction = result.value) }
 
                 // 互动状态是"尽力而为":读不到就保持默认态并说一句,不阻塞整页
-                is HsyResult.Failure -> showMessage("互动状态没拿到:${result.error.userMessage()}")
+                is HsyResult.Failure -> showMessage("互动状态加载失败:${result.error.userMessage()}")
             }
         }
     }
@@ -596,7 +596,7 @@ class VideoDetailViewModel @Inject constructor(
         val detail = mutableState.value.detail ?: return
         val part = detail.parts.getOrNull(index)
         if (part == null) {
-            mutableState.update { it.copy(playbackLoading = false, playbackError = "这一支没有可分段的画面 · 点重试再要一次") }
+            mutableState.update { it.copy(playbackLoading = false, playbackError = "没有可用的视频流,请重试") }
             return
         }
         playbackJob?.cancel()
@@ -733,7 +733,7 @@ class VideoDetailViewModel @Inject constructor(
     private fun openFavoritePicker() {
         val current = mutableState.value
         if (!current.loggedIn) {
-            showMessage("收藏需要登录 · 去登录")
+            showMessage("收藏需要登录")
             return
         }
         mutableState.update {
@@ -864,7 +864,7 @@ class VideoDetailViewModel @Inject constructor(
             when (result) {
                 is HsyResult.Success -> {
                     mutableState.update { it.copy(watchLater = target, interactionBusy = false) }
-                    showMessage(if (target) "已加入稍后再看" else "已从稍后再看移走")
+                    showMessage(if (target) "已加入稍后再看" else "已移出稍后再看")
                 }
 
                 is HsyResult.Failure -> {
@@ -880,8 +880,8 @@ class VideoDetailViewModel @Inject constructor(
         val detail = current.detail
         when {
             detail == null || current.followBusy -> Unit
-            !current.loggedIn -> showMessage("关注需要登录 · 去登录")
-            detail.ownerMid <= 0L -> showMessage("详情没给 UP 主 id,这一下关注不了")
+            !current.loggedIn -> showMessage("关注需要登录")
+            detail.ownerMid <= 0L -> showMessage("缺少 UP 主信息,无法关注")
             else -> sendFollow(detail.ownerMid, target = current.following != true)
         }
     }
@@ -915,8 +915,8 @@ class VideoDetailViewModel @Inject constructor(
         val cid = current.playbackCid
         when {
             detail == null || current.danmakuSending || text.isBlank() -> Unit
-            !current.loggedIn -> showMessage("发弹幕需要登录 · 去登录")
-            cid <= 0L -> showMessage("这一 P 还没取到流,先别急着发")
+            !current.loggedIn -> showMessage("发弹幕需要登录")
+            cid <= 0L -> showMessage("当前分 P 未加载完成,请稍后再发")
             else -> postDanmaku(text.trim(), progressMs, detail.brief.aid, cid)
         }
     }
@@ -940,7 +940,7 @@ class VideoDetailViewModel @Inject constructor(
                             danmakuAcceptedAt = it.danmakuAcceptedAt + 1,
                         )
                     }
-                    showMessage("弹幕已发出")
+                    showMessage("弹幕已发送")
                 }
 
                 is HsyResult.Failure -> {
@@ -1011,9 +1011,9 @@ private fun favoriteChangedMessage(folders: List<FavoriteFolder>, add: Set<Long>
     val added = folders.filter { it.id in add }.joinToString("、") { "「${it.title}」" }
     val removed = folders.filter { it.id in del }.joinToString("、") { "「${it.title}」" }
     return when {
-        added.isNotEmpty() && removed.isNotEmpty() -> "已收进$added · 已从${removed}移走"
-        added.isNotEmpty() -> "已收进$added"
-        else -> "已从${removed}移走"
+        added.isNotEmpty() && removed.isNotEmpty() -> "已收藏到$added,已从${removed}移除"
+        added.isNotEmpty() -> "已收藏到$added"
+        else -> "已从${removed}移除"
     }
 }
 

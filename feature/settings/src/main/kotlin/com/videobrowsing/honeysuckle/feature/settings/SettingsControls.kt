@@ -214,7 +214,7 @@ internal fun AccentPicker(selected: HsyAccent, onSelect: (HsyAccent) -> Unit) {
             color = colors.onSurface,
         )
         Text(
-            text = "只改变选中态、进度与点赞等强调色;墨黑主按钮与播放器不受影响",
+            text = "用于选中状态、进度条等强调元素",
             style = Hsy.typography.bodyMedium,
             color = colors.onSurfaceVariant,
         )
@@ -267,7 +267,7 @@ internal fun BlockedWordsEditor(words: Set<String>, onAction: (SettingsAction) -
             color = Hsy.colors.onSurface,
         )
         Text(
-            text = if (full) "已满,再加会挤掉最早的那批" else "命中这些词的那条弹幕不进屏幕",
+            text = if (full) "已达上限,新增将替换最早的词" else "包含这些词的弹幕将被隐藏",
             style = Hsy.typography.bodyMedium,
             color = Hsy.colors.onSurfaceVariant,
         )

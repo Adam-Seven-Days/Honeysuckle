@@ -80,7 +80,7 @@ internal fun AccountSection(
                 )
                 Text(
                     text = if (profile == null) {
-                        "点一下登录;不登录也能看推荐、搜视频"
+                        "点击登录;游客可浏览推荐与搜索"
                     } else {
                         profileLine(profile, accounts.size)
                     },
@@ -173,7 +173,7 @@ private fun AccountsDialog(
                     )
                 }
                 Text(
-                    text = "移除只清本机保存的凭证;下一次要用仍需登录一次。",
+                    text = "仅清除本机保存的登录凭证,再次使用需重新登录。",
                     style = Hsy.typography.bodySmall,
                     color = Hsy.colors.onSurfaceVariant,
                     modifier = Modifier.padding(top = 8.dp),

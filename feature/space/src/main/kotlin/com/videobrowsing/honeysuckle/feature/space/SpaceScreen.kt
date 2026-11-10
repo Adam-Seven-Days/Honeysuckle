@@ -72,9 +72,9 @@ fun SpaceScreen(
 
             state.space == null -> Centered {
                 HsyErrorState(
-                    message = state.error ?: "空间没取回来",
+                    message = state.error ?: "空间加载失败",
                     onRetry = { viewModel.onAction(SpaceAction.Reload) },
-                    hint = "重试会同时再要名片与投稿",
+                    hint = "加载失败,请重试",
                 )
             }
 
@@ -136,12 +136,12 @@ private fun SpaceBody(
                 HsyErrorState(
                     message = checkNotNull(state.videosError),
                     onRetry = { onAction(SpaceAction.Reload) },
-                    hint = "头部不受影响,仍可关注",
+                    hint = "投稿加载失败,请重试",
                 )
             }
 
             state.videos.isEmpty() -> item(key = "videos-empty") {
-                HsyEmptyState(title = "还没有投稿", hint = "这个空间暂时没有公开稿件")
+                HsyEmptyState(title = "还没有投稿", hint = "暂无公开投稿")
             }
 
             else -> {
@@ -184,11 +184,11 @@ private fun VideosFooter(state: SpaceUiState, onAction: (SpaceAction) -> Unit) {
                     style = Hsy.typography.bodySmall,
                     color = Hsy.colors.error,
                 )
-                TextButton(onClick = { onAction(SpaceAction.LoadMore) }) { Text("再要一页") }
+                TextButton(onClick = { onAction(SpaceAction.LoadMore) }) { Text("重试") }
             }
 
             !state.moreAvailable -> Text(
-                text = "投稿到这里就完了:${state.videos.size} 条",
+                text = "已加载全部 ${state.videos.size} 条投稿",
                 style = Hsy.typography.bodySmall,
                 color = Hsy.colors.onSurfaceVariant,
             )

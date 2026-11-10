@@ -38,7 +38,7 @@ internal fun CoinDialog(state: VideoDetailUiState, intents: DetailIntents) {
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(
-                    text = "硬币从你的账号里扣,投出去不退;同一支视频最多两枚。",
+                    text = "投币后不可退回,同一视频最多投 2 枚。",
                     style = Hsy.typography.bodySmall,
                     color = Hsy.colors.onSurfaceVariant,
                 )

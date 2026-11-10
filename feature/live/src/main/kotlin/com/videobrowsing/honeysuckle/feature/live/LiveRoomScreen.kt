@@ -125,7 +125,7 @@ private fun LivePlaybackEffects(
                     host.player.playWhenReady = true
                 } else {
                     // 错误码名对观众没有下一步价值;能做的只有重试或换一个房间
-                    onError("直播流断了 · 点重试再看一次")
+                    onError("直播流中断,请重试")
                 }
             }
         }
@@ -213,7 +213,7 @@ private fun LivePlayError(errorText: String?, onRetry: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = errorText ?: "这条直播流没有取回来",
+            text = errorText ?: "直播流加载失败",
             style = Hsy.typography.bodyMedium,
             color = Color.White,
         )
@@ -244,7 +244,7 @@ private fun LiveRoomMeta(state: LiveRoomUiState) {
             )
         }
         val status = when {
-            info == null -> "房间状态没拿到"
+            info == null -> "房间状态加载失败"
             info.isLive -> "直播中" + state.play?.qualityLabel?.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()
             else -> "未开播"
         }
@@ -255,7 +255,7 @@ private fun LiveRoomMeta(state: LiveRoomUiState) {
             modifier = Modifier.padding(top = 6.dp),
         )
         Text(
-            text = "直播流由平台实时下发,不支持回看与拖动",
+            text = "直播为实时流,不支持回看与拖动进度",
             style = Hsy.typography.bodySmall,
             color = Hsy.colors.onSurfaceVariant,
             modifier = Modifier.padding(top = 8.dp),

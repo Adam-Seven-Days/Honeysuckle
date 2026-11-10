@@ -107,14 +107,14 @@ fun HomeScreen(
                     HsyErrorState(
                         message = error,
                         onRetry = { viewModel.onAction(HomeAction.Refresh) },
-                        hint = "列表还是空的,重试不会丢东西",
+                        hint = "加载失败,请重试",
                     )
                 }
 
                 state.items.isEmpty() -> CenteredInViewport {
                     HsyEmptyState(
-                        title = "这一批是空的",
-                        hint = "下拉再要一次,或者换另一个档位看看",
+                        title = "暂无内容",
+                        hint = "下拉刷新或切换其他频道",
                     )
                 }
 
@@ -211,7 +211,7 @@ private fun ListFooter(state: HomeUiState) {
             state.busy == HomeBusy.MORE -> CircularProgressIndicator()
 
             !state.moreAvailable -> Text(
-                text = "这一批到这里就完了:${state.items.size} 条",
+                text = "已加载全部 ${state.items.size} 条",
                 style = Hsy.typography.bodySmall,
                 color = Hsy.colors.onSurfaceVariant,
             )
@@ -240,8 +240,8 @@ private fun LoginGuide(onOpenLogin: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         HsyEmptyState(
-            title = "关注时间线要登录",
-            hint = "登录后,这里按时间摆你关注的人新发的视频",
+            title = "登录后查看关注动态",
+            hint = "登录后显示关注的人发布的视频",
         )
         // 直接摆可点的字而不是按钮:横屏时内容区只有约 680px,套一层按钮会把整块顶出视口,
         // 最后一个子项被挤成一条线(实测);这里要的也只是"一眼看见下一步去哪"

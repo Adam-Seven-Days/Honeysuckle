@@ -86,14 +86,14 @@ class HistoryViewModel @Inject constructor(private val historyRepository: Histor
 
             is HistoryAction.RemoveSelected -> viewModelScope.launch {
                 action.bvids.forEach { historyRepository.remove(it) }
-                showMessage("清掉了 ${action.bvids.size} 条历史")
+                showMessage("已删除 ${action.bvids.size} 条历史")
             }
 
             is HistoryAction.RemoveOlderThan -> removeOlderThan(action.days)
 
             HistoryAction.ClearAll -> viewModelScope.launch {
                 historyRepository.clear()
-                showMessage("整张历史表清空了")
+                showMessage("观看历史已清空")
             }
         }
     }
@@ -102,7 +102,7 @@ class HistoryViewModel @Inject constructor(private val historyRepository: Histor
         viewModelScope.launch {
             val threshold = HsyClock.nowEpochSec() - days.toLong() * SECONDS_PER_DAY
             val removed = historyRepository.removeOlderThan(threshold)
-            showMessage(if (removed > 0) "清掉了 $removed 条 $days 天前的历史" else "没有 $days 天前的历史可清")
+            showMessage(if (removed > 0) "已删除 $removed 条 $days 天前的历史" else "没有 $days 天前的历史")
         }
     }
 

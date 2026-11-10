@@ -44,12 +44,12 @@ internal fun UserResults(state: SearchUiState, onOpenSpace: (Long) -> Unit, onAc
         state.userErrorMessage != null && state.users.isEmpty() -> HsyErrorState(
             message = state.userErrorMessage,
             onRetry = { onAction(SearchAction.Retry) },
-            hint = "重试不会丢掉输入框里的词",
+            hint = "搜索失败,请重试",
         )
 
         state.users.isEmpty() -> HsyEmptyState(
             title = "没有找到「${state.submittedKeyword}」",
-            hint = "换个昵称,或者只搜名字里的一小段",
+            hint = "换个昵称试试",
         )
 
         else -> UserList(state = state, onOpenSpace = onOpenSpace, onAction = onAction)
@@ -145,11 +145,11 @@ private fun UserFooter(state: SearchUiState, onAction: (SearchAction) -> Unit) {
                     style = Hsy.typography.bodySmall,
                     color = Hsy.colors.error,
                 )
-                TextButton(onClick = { onAction(SearchAction.Retry) }) { Text("再要一页") }
+                TextButton(onClick = { onAction(SearchAction.Retry) }) { Text("重试") }
             }
 
             !state.usersMoreAvailable -> Text(
-                text = "这一批到这里就完了:${state.users.size} 位",
+                text = "已加载全部 ${state.users.size} 位用户",
                 style = Hsy.typography.bodySmall,
                 color = Hsy.colors.onSurfaceVariant,
             )

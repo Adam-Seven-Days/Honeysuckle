@@ -80,7 +80,7 @@ fun SettingsSectionScreen(
     ) {
         HsyTopBar(title = section.title, onBack = onBack)
         if (!state.loaded) {
-            HsySettingRow(title = "正在读取设置", supporting = "稍等一下,马上就能改")
+            HsySettingRow(title = "正在读取设置…")
             return@Column
         }
 
@@ -108,9 +108,9 @@ fun SettingsSectionScreen(
                 title = "恢复本组默认",
                 icon = HsyIcons.refresh,
                 supporting = if (section == SettingsSection.DANMAKU) {
-                    "只退这一组,别处不动;你自己加的屏蔽词也会一起清掉"
+                    "仅恢复当前组,屏蔽词将一并清空"
                 } else {
-                    "只退这一组,别处不动"
+                    "仅恢复当前组的设置"
                 },
                 onClick = { viewModel.onAction(SettingsAction.ResetSection(section)) },
             )
@@ -139,7 +139,7 @@ private fun AppearanceSection(app: AppPreferences, onAction: (SettingsAction) ->
             options = HomeFeedSource.entries.toList(),
             selected = HomeFeedSource.fromStorageId(app.homeFeedSourceId),
             name = { sourceLabel(it) },
-            supporting = "打开应用时落在哪一档;首页顶上仍可随时换",
+            supporting = "启动时默认显示的内容,首页顶部可切换",
             onSelect = { onAction(SettingsAction.HomeFeedSource(it.storageId)) },
         )
         TierRow(
@@ -147,12 +147,12 @@ private fun AppearanceSection(app: AppPreferences, onAction: (SettingsAction) ->
             options = HomeLayout.entries.toList(),
             selected = HomeLayout.fromStorageId(app.homeLayoutId),
             name = { it.displayName },
-            supporting = "双列一屏多几条、首条通栏;单列一行一条,封面与字都更大",
+            supporting = "双列更紧凑,单列封面更大",
             onSelect = { onAction(SettingsAction.HomeLayout(it.storageId)) },
         )
         HsySettingRow(
             title = "刷新保留内容",
-            supporting = "下拉刷新时新内容排在前面,已加载的留在后面;关掉则整批换新",
+            supporting = "刷新后保留已加载的内容,关闭则全部替换",
             trailing = {
                 Switch(
                     checked = app.homeRefreshKeepEnabled,
@@ -166,9 +166,9 @@ private fun AppearanceSection(app: AppPreferences, onAction: (SettingsAction) ->
             selected = HomeRefreshRetention.fromStorageId(app.homeRefreshRetentionId),
             name = { it.displayName },
             supporting = if (app.homeRefreshKeepEnabled) {
-                "历史内容最多留几次,再刷新时最旧的一次被挤掉"
+                "最多保留的历史次数,超出后移除最旧内容"
             } else {
-                "先打开上面的开关,这一档才会生效"
+                "开启「刷新保留内容」后生效"
             },
             onSelect = { onAction(SettingsAction.HomeRefreshRetention(it.storageId)) },
         )
@@ -185,7 +185,7 @@ private fun NavigationSection(app: AppPreferences, onAction: (SettingsAction) ->
     HsySectionCard(title = "底栏与侧栏") {
         HsySettingRow(
             title = "动态",
-            supporting = "关注的人与话题更新;关掉后这一格从底栏与侧栏消失",
+            supporting = "关注的人与话题更新",
             trailing = {
                 Switch(
                     checked = app.dynamicTabVisible,
@@ -195,7 +195,7 @@ private fun NavigationSection(app: AppPreferences, onAction: (SettingsAction) ->
         )
         HsySettingRow(
             title = "直播",
-            supporting = "正在播的房间;关掉后这一格从底栏与侧栏消失",
+            supporting = "正在直播的房间",
             trailing = {
                 Switch(
                     checked = app.liveTabVisible,
@@ -205,7 +205,7 @@ private fun NavigationSection(app: AppPreferences, onAction: (SettingsAction) ->
         )
         HsySettingRow(
             title = "番剧",
-            supporting = "排行与追番表;关掉后这一格从底栏与侧栏消失",
+            supporting = "排行与追番表",
             trailing = {
                 Switch(
                     checked = app.animeTabVisible,
@@ -215,7 +215,7 @@ private fun NavigationSection(app: AppPreferences, onAction: (SettingsAction) ->
         )
     }
     Text(
-        text = "首页与「我的」始终保留;三格都关掉时只剩这两格。",
+        text = "首页与「我的」始终显示",
         style = Hsy.typography.bodySmall,
         color = Hsy.colors.onSurfaceVariant,
         modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
@@ -241,7 +241,7 @@ private fun DanmakuShowCard(danmaku: DanmakuPreferences, onAction: (SettingsActi
     HsySectionCard(title = "显示") {
         HsySettingRow(
             title = "显示弹幕",
-            supporting = if (danmaku.enabled) "播放页按下面的档位画" else "播放页一条都不画,透明度等多余设置不生效",
+            supporting = if (danmaku.enabled) "按下方设置显示弹幕" else "关闭后以下设置不生效",
             trailing = {
                 Switch(checked = danmaku.enabled, onCheckedChange = { onAction(SettingsAction.DanmakuEnabled(it)) })
             },
@@ -257,7 +257,7 @@ private fun DanmakuShowCard(danmaku: DanmakuPreferences, onAction: (SettingsActi
             label = "字体大小",
             value = danmaku.fontSize,
             valueRange = DanmakuPreferences.FONT_SIZE_MIN..DanmakuPreferences.FONT_SIZE_MAX,
-            supporting = "直接输入数字,${DanmakuPreferences.FONT_SIZE_MIN}–${DanmakuPreferences.FONT_SIZE_MAX} 之间",
+            supporting = "范围 ${DanmakuPreferences.FONT_SIZE_MIN}–${DanmakuPreferences.FONT_SIZE_MAX}",
             onCommit = { onAction(SettingsAction.FontSize(it)) },
         )
         PrefSlider(
@@ -279,7 +279,7 @@ private fun DanmakuTypeCard(danmaku: DanmakuPreferences, onAction: (SettingsActi
     HsySectionCard(title = "类型") {
         HsySettingRow(
             title = "滚动弹幕",
-            supporting = "从右往左穿过画面的一条",
+            supporting = "从右向左滚动的弹幕",
             trailing = {
                 Switch(
                     checked = danmaku.scrollVisible,
@@ -289,7 +289,7 @@ private fun DanmakuTypeCard(danmaku: DanmakuPreferences, onAction: (SettingsActi
         )
         HsySettingRow(
             title = "顶部弹幕",
-            supporting = "贴在画面上方、定住几秒的一条",
+            supporting = "固定在画面顶部",
             trailing = {
                 Switch(
                     checked = danmaku.topVisible,
@@ -299,7 +299,7 @@ private fun DanmakuTypeCard(danmaku: DanmakuPreferences, onAction: (SettingsActi
         )
         HsySettingRow(
             title = "底部弹幕",
-            supporting = "贴在画面下方、定住几秒的一条",
+            supporting = "固定在画面底部",
             trailing = {
                 Switch(
                     checked = danmaku.bottomVisible,
@@ -319,7 +319,7 @@ private fun DanmakuTierCard(danmaku: DanmakuPreferences, onAction: (SettingsActi
             options = DanmakuSpeed.entries.toList(),
             selected = DanmakuSpeed.fromStorageId(danmaku.speedId),
             name = { it.displayName },
-            supporting = "一条滚动弹幕横穿画面的快慢;只改滚动,顶部与底部那两条仍是定住几秒再走。",
+            supporting = "滚动弹幕的移动速度",
             onSelect = { onAction(SettingsAction.DanmakuSpeed(it.storageId)) },
         )
         TierRow(
@@ -327,7 +327,7 @@ private fun DanmakuTierCard(danmaku: DanmakuPreferences, onAction: (SettingsActi
             options = DanmakuDensity.entries.toList(),
             selected = DanmakuDensity.fromStorageId(danmaku.densityId),
             name = { densityLabel(it) },
-            supporting = "每秒最多放行几条;调低更清爽,调高更热闹。",
+            supporting = "同屏显示的弹幕数量上限",
             onSelect = { onAction(SettingsAction.Density(it.storageId)) },
         )
         TierRow(
@@ -335,7 +335,7 @@ private fun DanmakuTierCard(danmaku: DanmakuPreferences, onAction: (SettingsActi
             options = DanmakuFramePace.entries.toList(),
             selected = DanmakuFramePace.fromStorageId(danmaku.framePaceId),
             name = { framePaceLabel(it) },
-            supporting = "弹幕每秒最多重画几次;调低更省电,调高滚动更顺。",
+            supporting = "弹幕刷新帧率,越高越流畅、越耗电",
             onSelect = { onAction(SettingsAction.FramePace(it.storageId)) },
         )
         BlockedWordsEditor(danmaku.blockedWords, onAction)
@@ -350,7 +350,7 @@ private fun CommentsSection(app: AppPreferences, onAction: (SettingsAction) -> U
             options = CommentSort.entries.toList(),
             selected = CommentSort.fromStorageId(app.commentSortId),
             name = { it.displayName },
-            supporting = "进详情页的评论区先按这一档取;评论区顶上仍可当场换",
+            supporting = "评论区的默认排序,可在评论区切换",
             onSelect = { onAction(SettingsAction.CommentSort(it.storageId)) },
         )
     }
@@ -358,9 +358,9 @@ private fun CommentsSection(app: AppPreferences, onAction: (SettingsAction) -> U
         HsySettingRow(
             title = "点赞只读",
             supporting = if (app.commentLikeReadOnly) {
-                "评论行照摆点赞按钮与数量;点它只弹一句提醒,不会真的点赞"
+                "显示点赞按钮,但点击不会真的点赞"
             } else {
-                "评论可以点赞;打开后按钮留着但不再真的点出去"
+                "允许点赞评论"
             },
             trailing = {
                 Switch(
@@ -374,9 +374,9 @@ private fun CommentsSection(app: AppPreferences, onAction: (SettingsAction) -> U
         HsySettingRow(
             title = "回复显示点赞",
             supporting = if (app.replyLikesVisible) {
-                "展开回复后,每条回复右边摆点赞按钮与数量,可以点"
+                "在回复中显示点赞按钮"
             } else {
-                "回复行只留\"回复\"入口,不摆点赞"
+                "回复中不显示点赞按钮"
             },
             trailing = {
                 Switch(

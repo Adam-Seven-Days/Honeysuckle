@@ -50,7 +50,7 @@ fun ArticleScreen(viewModel: ArticleViewModel, onBack: () -> Unit, modifier: Mod
             ) { CircularProgressIndicator() }
 
             state.article == null -> HsyErrorState(
-                message = state.error ?: "这篇专栏没取回来",
+                message = state.error ?: "专栏加载失败",
                 onRetry = viewModel::reload,
                 modifier = Modifier.fillMaxWidth().padding(24.dp),
                 hint = "可能是风控或原文已删除",

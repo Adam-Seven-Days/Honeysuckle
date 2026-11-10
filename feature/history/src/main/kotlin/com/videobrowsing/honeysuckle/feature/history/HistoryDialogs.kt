@@ -45,9 +45,9 @@ private fun ClearAllDialog(state: HistoryUiState, onDismiss: () -> Unit, onConfi
             Text(
                 // 筛着词的时候必须把"清的是整张表"讲明白:屏上只有 3 条,点下去抹掉的是全部
                 if (state.query.isBlank()) {
-                    "本地这 ${state.entries.size} 条进度会一起抹掉,续播起点也就没了。这一步没有撤销。"
+                    "将删除本地 ${state.entries.size} 条观看进度与续播位置,不可撤销。"
                 } else {
-                    "注意:现在筛的是「${state.query}」,但清空抹掉的是整张历史表,不止屏上这些。这一步没有撤销。"
+                    "当前筛选为「${state.query}」,清空将删除全部历史记录,不止当前显示的内容。不可撤销。"
                 },
             )
         },
@@ -55,7 +55,7 @@ private fun ClearAllDialog(state: HistoryUiState, onDismiss: () -> Unit, onConfi
             TextButton(onClick = onConfirm) { Text("清空") }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("再想想") }
+            TextButton(onClick = onDismiss) { Text("取消") }
         },
     )
 }
@@ -65,8 +65,8 @@ private fun RemoveOlderDialog(days: Int, onDismiss: () -> Unit, onConfirm: () ->
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("清除 $days 天前的历史?") },
-        text = { Text("更早的续播起点会被抹掉,最近 $days 天原样保留。这一步没有撤销。") },
+        text = { Text("将删除 $days 天前的历史记录,最近 $days 天保留。不可撤销。") },
         confirmButton = { TextButton(onClick = onConfirm) { Text("清除") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("再想想") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )
 }

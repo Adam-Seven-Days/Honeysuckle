@@ -149,13 +149,13 @@ class LoginViewModel @Inject constructor(private val authRepository: AuthReposit
     /** 登录业务码翻成人话:密码错误与"要安全验证"是两件不同的事,不能压成一句 */
     private fun loginErrorText(error: AppError): String = when {
         error is AppError.Server && error.code == PasswordLoginApi.CODE_BAD_CREDENTIALS ->
-            "账号或密码不对 · 检查后重试"
+            "账号或密码错误,请检查后重试"
 
         error is AppError.Server && error.code == PasswordLoginApi.CODE_NEED_VERIFY ->
-            "平台要求先完成安全验证 · 换扫码登录更稳"
+            "平台要求安全验证,请使用扫码登录"
 
         error is AppError.Server && error.code == PasswordLoginApi.CODE_TOO_MANY ->
-            "试错次数太多 · 过一会儿再试,或换扫码登录"
+            "尝试次数过多,请稍后再试或使用扫码登录"
 
         else -> error.userMessage()
     }

@@ -88,12 +88,12 @@ fun DynamicScreen(
                 HsyErrorState(
                     message = checkNotNull(state.error),
                     onRetry = { viewModel.onAction(DynamicAction.Reload) },
-                    hint = "动态没取回来,重试不会丢东西",
+                    hint = "动态加载失败,请重试",
                 )
             }
 
             state.items.isEmpty() -> Centered {
-                HsyEmptyState(title = "关注的人还没发动态", hint = "关注几位 UP,这里就会按时间排起来")
+                HsyEmptyState(title = "关注的人还没发动态", hint = "关注 UP 主后,他们的动态会显示在这里")
             }
 
             else -> DynamicList(
@@ -134,7 +134,7 @@ private fun DynamicList(state: DynamicUiState, actions: OpenActions, onAction: (
                     state.loadingMore -> CircularProgressIndicator()
 
                     !state.more -> Text(
-                        text = "这批动态到底了",
+                        text = "已加载全部动态",
                         style = Hsy.typography.bodySmall,
                         color = Hsy.colors.onSurfaceVariant,
                     )
@@ -171,7 +171,7 @@ private fun LoginGuide(onOpenLogin: () -> Unit) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        HsyEmptyState(title = "动态要登录", hint = "登录后,这里按时间排你关注的人发的图文与视频")
+        HsyEmptyState(title = "登录后查看动态", hint = "登录后显示关注的人发布的动态")
         Text(
             text = "去登录",
             style = Hsy.typography.titleMedium,

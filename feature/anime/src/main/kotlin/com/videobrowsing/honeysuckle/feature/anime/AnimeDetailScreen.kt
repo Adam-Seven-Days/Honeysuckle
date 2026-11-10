@@ -82,7 +82,7 @@ fun AnimeDetailScreen(
                 HsyErrorState(
                     message = checkNotNull(state.error),
                     onRetry = viewModel::reload,
-                    hint = "番剧详情没取回来,重试不会丢东西",
+                    hint = "番剧详情加载失败,请重试",
                 )
             }
 
@@ -143,7 +143,7 @@ private fun SeasonBody(state: AnimeDetailUiState, season: AnimeSeason, callbacks
         }
         item(key = "note") {
             Text(
-                text = "付费 / 大会员集的放行由平台在取流时决定;客户端不绕过权限",
+                text = "付费与大会员集数的播放权限由平台判定",
                 style = Hsy.typography.bodySmall,
                 color = Hsy.colors.onSurfaceVariant,
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -302,7 +302,7 @@ private fun EpisodeRow(season: AnimeSeason, episode: AnimeEpisode, onOpenVideo: 
         coverUrl = season.coverUrl,
         durationLabel = formatClock(episode.durationMs / MILLIS_PER_SECOND),
         upLine = season.title,
-        statLine = "点开进入播放页",
+        statLine = "点击播放",
         onClick = { onOpenVideo(episode.bvid) },
     )
 }

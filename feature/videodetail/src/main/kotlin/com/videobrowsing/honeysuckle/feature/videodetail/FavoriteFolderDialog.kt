@@ -75,7 +75,7 @@ private fun FolderOptions(state: VideoDetailUiState, intents: DetailIntents, idl
         }
 
         state.favoriteFolders.isEmpty() -> Text(
-            text = "账号下还没有收藏夹 · 先去收藏页建一个",
+            text = "还没有收藏夹,可先到收藏页创建",
             style = Hsy.typography.bodySmall,
             color = Hsy.colors.onSurfaceVariant,
         )
@@ -112,11 +112,11 @@ private fun DraftHint(state: VideoDetailUiState) {
     val delCount = (state.favoriteFolderIds - state.favoriteDraftIds).size
     if (addCount == 0 && delCount == 0) return
     val parts = listOfNotNull(
-        "收进 $addCount 个".takeIf { addCount > 0 },
-        "移走 $delCount 个".takeIf { delCount > 0 },
+        "新增 $addCount 个".takeIf { addCount > 0 },
+        "移除 $delCount 个".takeIf { delCount > 0 },
     )
     Text(
-        text = "待写入:${parts.joinToString(" · ")} · 按「完成」生效",
+        text = "待保存:${parts.joinToString(" · ")}",
         style = Hsy.typography.labelSmall,
         color = Hsy.colors.onSurfaceVariant,
     )

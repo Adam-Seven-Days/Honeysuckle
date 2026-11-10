@@ -27,7 +27,7 @@ internal fun PlaybackSection(app: AppPreferences, onAction: (SettingsAction) -> 
             options = AppPreferences.PLAYBACK_SPEED_OPTIONS,
             selected = app.playbackSpeed,
             name = { speedLabel(it) },
-            supporting = "打开播放页时的起始倍速,播放中仍可在画面上改",
+            supporting = "打开播放页时的起始倍速,播放中可调整",
             onSelect = { onAction(SettingsAction.PlaybackSpeed(it)) },
         )
     }
@@ -52,7 +52,7 @@ private fun StartOptionsCard(app: AppPreferences, onAction: (SettingsAction) -> 
             options = AutoPlayPolicy.entries.toList(),
             selected = AutoPlayPolicy.fromStorageId(app.autoPlayPolicyId),
             name = { it.displayName },
-            supporting = "进详情页与换分 P 时照这一档办;选「仅 Wi-Fi 自动播」时,移动网络下停在第一帧等你按播放",
+            supporting = "打开视频或切换分 P 时的自动播放方式",
             onSelect = { onAction(SettingsAction.AutoPlayPolicy(it.storageId)) },
         )
         TierRow(
@@ -60,7 +60,7 @@ private fun StartOptionsCard(app: AppPreferences, onAction: (SettingsAction) -> 
             options = QualityTier.entries.toList(),
             selected = QualityTier.fromStorageId(app.defaultQualityId),
             name = { it.displayName },
-            supporting = "这片子没有这一档就退到不高于它的可用档;播放中仍可在画面上改",
+            supporting = "没有该档时自动降低,播放中仍可切换",
             onSelect = { onAction(SettingsAction.DefaultQuality(it.storageId)) },
         )
     }
@@ -74,9 +74,9 @@ private fun WatchingOptionsCard(app: AppPreferences, onAction: (SettingsAction) 
         HsySettingRow(
             title = "播放时保持屏幕常亮",
             supporting = if (app.keepScreenOnEnabled) {
-                "看着片子屏幕不会自己睡过去;退出播放页就交回系统的息屏时间"
+                "播放时屏幕常亮,退出播放页后恢复系统设置"
             } else {
-                "按系统自己的息屏时间走;片子继续放,只是屏幕会暗下去"
+                "跟随系统息屏时间"
             },
             trailing = {
                 Switch(
@@ -88,9 +88,9 @@ private fun WatchingOptionsCard(app: AppPreferences, onAction: (SettingsAction) 
         HsySettingRow(
             title = "允许后台播放",
             supporting = if (app.backgroundPlayEnabled) {
-                "切到别的应用或退回桌面,声音继续放;通知栏与锁屏照常可控"
+                "切到后台时继续播放声音"
             } else {
-                "退回桌面就暂停;想要切走还在放,打开它或直接用画中画小窗"
+                "切到后台时暂停播放"
             },
             trailing = {
                 Switch(
@@ -104,15 +104,15 @@ private fun WatchingOptionsCard(app: AppPreferences, onAction: (SettingsAction) 
             options = FullscreenOrientation.entries.toList(),
             selected = FullscreenOrientation.fromStorageId(app.fullscreenOrientationId),
             name = { it.displayName },
-            supporting = "锁定横屏时,横过来才转;竖着举手机也能停在竖屏全屏",
+            supporting = "全屏时的屏幕方向",
             onSelect = { onAction(SettingsAction.FullscreenOrientation(it.storageId)) },
         )
         HsySettingRow(
             title = "记住播放亮度",
             supporting = if (app.rememberBrightnessEnabled) {
-                "把这一次在画面上拖到的亮度留下,下次进播放页直接回到那一格;只改本应用的亮度"
+                "记住播放页调好的亮度,下次打开时沿用"
             } else {
-                "亮度只在这一次观看里有效,退出播放页就回到系统亮度"
+                "退出播放页后恢复系统亮度"
             },
             trailing = {
                 Switch(
@@ -131,9 +131,9 @@ private fun DownloadOptionsCard(app: AppPreferences, onAction: (SettingsAction) 
         HsySettingRow(
             title = "只在 Wi-Fi 下缓存",
             supporting = if (app.wifiOnlyDownload) {
-                "在移动网络上按下载会先问一句,点头才跑流量"
+                "使用移动网络下载前先确认"
             } else {
-                "不问网络,按下载就开始缓存;流量由自己承担"
+                "任何网络下都直接下载"
             },
             trailing = {
                 Switch(
@@ -147,7 +147,7 @@ private fun DownloadOptionsCard(app: AppPreferences, onAction: (SettingsAction) 
             options = DownloadQuality.entries.toList(),
             selected = DownloadQuality.fromStorageId(app.downloadQualityId),
             name = { it.displayName },
-            supporting = "跟随当前播放档就是「画面此刻是哪档,存下来就是哪档」;这片子没那一档时退自动,不空手而归",
+            supporting = "下载时使用的清晰度",
             onSelect = { onAction(SettingsAction.DownloadQuality(it.storageId)) },
         )
     }
@@ -159,7 +159,7 @@ private fun PlaybackBehaviorCard(app: AppPreferences, onAction: (SettingsAction)
     HsySectionCard(title = "播放行为") {
         HsySettingRow(
             title = "自动连播下一 P",
-            supporting = "多分 P 视频播完这一 P 就接下一 P;最后一 P 不会绕回开头",
+            supporting = "播完当前分 P 后自动播放下一分 P",
             trailing = {
                 Switch(
                     checked = app.autoPlayNextPart,
@@ -170,9 +170,9 @@ private fun PlaybackBehaviorCard(app: AppPreferences, onAction: (SettingsAction)
         HsySettingRow(
             title = "AB 循环",
             supporting = if (app.abLoopEnabled) {
-                "控制条显示 AB 按钮:第一次标 A、第二次标 B、第三次清除,播到 B 点自动跳回 A"
+                "控制条显示 AB 按钮,循环播放标记的区间"
             } else {
-                "控制条不显示 AB 按钮,已标的 A/B 点也会清掉;需要反复看一段时再打开"
+                "隐藏 AB 按钮并清除已标记区间"
             },
             trailing = {
                 Switch(
@@ -191,9 +191,9 @@ private fun PipOptionsCard(app: AppPreferences, onAction: (SettingsAction) -> Un
         HsySettingRow(
             title = "启用画中画",
             supporting = if (app.autoPipEnabled) {
-                "切走时自动缩成小窗继续放;详情页里也能手动进入,应用内会保留一条小窗"
+                "切到后台时自动进入小窗,退出播放页后保留迷你播放条"
             } else {
-                "切走时不缩成小窗,应用内也不保留小窗;声音仍在后台继续,通知栏可控制"
+                "不进入小窗,也不显示迷你播放条"
             },
             trailing = {
                 Switch(
@@ -206,7 +206,7 @@ private fun PipOptionsCard(app: AppPreferences, onAction: (SettingsAction) -> Un
         if (app.autoPipEnabled) {
             HsySettingRow(
                 title = "仅在播放时",
-                supporting = "暂停时切走不弹小窗;想留着小窗就让它继续播",
+                supporting = "仅在播放中切到后台时进入小窗",
                 trailing = {
                     Switch(
                         checked = app.pipOnlyWhilePlaying,
@@ -220,15 +220,15 @@ private fun PipOptionsCard(app: AppPreferences, onAction: (SettingsAction) -> Un
             options = PipAspect.entries.toList(),
             selected = PipAspect.fromStorageId(app.pipAspectId),
             name = { it.displayName },
-            supporting = "跟随视频时,竖屏片源不会被裁掉两侧",
+            supporting = "「跟随视频」按画面比例显示,避免裁剪",
             onSelect = { onAction(SettingsAction.PipAspect(it.storageId)) },
         )
         HsySettingRow(
             title = "小窗显示弹幕",
             supporting = if (app.pipDanmakuVisible) {
-                "小窗里照常画弹幕;关掉后只剩画面,主播放页不受影响"
+                "在小窗中显示弹幕"
             } else {
-                "小窗里不画弹幕;回到主播放页仍按弹幕总开关显示"
+                "小窗不显示弹幕,播放页不受影响"
             },
             trailing = {
                 Switch(
@@ -246,7 +246,7 @@ private fun GestureOptionsCard(app: AppPreferences, onAction: (SettingsAction) -
     HsySectionCard(title = "手势") {
         HsySettingRow(
             title = "亮度与音量手势",
-            supporting = "画面左半屏上下滑调亮度、右半屏调音量;关掉后只剩单击与横滑",
+            supporting = "左半屏滑动调亮度,右半屏调音量",
             trailing = {
                 Switch(
                     checked = app.playerGesturesEnabled,
@@ -258,7 +258,7 @@ private fun GestureOptionsCard(app: AppPreferences, onAction: (SettingsAction) -
         if (app.playerGesturesEnabled) {
             HsySettingRow(
                 title = "左右对调",
-                supporting = "左半屏改成音量、右半屏改成亮度;习惯用左手的人更顺",
+                supporting = "交换亮度与音量的滑动区域",
                 trailing = {
                     Switch(
                         checked = app.gestureSideSwapped,
@@ -269,7 +269,7 @@ private fun GestureOptionsCard(app: AppPreferences, onAction: (SettingsAction) -
         }
         HsySettingRow(
             title = "横向拖动调节进度",
-            supporting = "左右拖动先预览、松手才跳转;关掉后只能点进度条",
+            supporting = "在画面上左右拖动调整进度,松手后跳转",
             trailing = {
                 Switch(
                     checked = app.seekGestureEnabled,
@@ -280,7 +280,7 @@ private fun GestureOptionsCard(app: AppPreferences, onAction: (SettingsAction) -
         // 长按加速这一档是"开不开 + 开到哪档"两维:关掉开关后那一档没人读,就不摆出来
         HsySettingRow(
             title = "长按画面加速",
-            supporting = if (app.longPressBoostEnabled) "按住画面就按下面那一档快进,松手回到原档;默认倍速不被改掉" else "按住画面不提速;单击与横滑照常",
+            supporting = if (app.longPressBoostEnabled) "按住画面时临时加速,松手恢复" else "按住画面不加速",
             trailing = {
                 Switch(
                     checked = app.longPressBoostEnabled,
@@ -294,7 +294,7 @@ private fun GestureOptionsCard(app: AppPreferences, onAction: (SettingsAction) -
                 options = AppPreferences.LONG_PRESS_BOOST_SPEED_OPTIONS,
                 selected = app.longPressBoostSpeed,
                 name = { speedLabel(it) },
-                supporting = "已经在播这一档或更快时长按不改速度 —— 长按是要跳过一段,不是要慢下来",
+                supporting = "当前倍速不低于该值时,长按不再加速",
                 onSelect = { onAction(SettingsAction.LongPressBoostSpeed(it)) },
             )
         }
@@ -308,9 +308,9 @@ private fun HistoryOptionsCard(app: AppPreferences, onAction: (SettingsAction) -
         HsySettingRow(
             title = "记录观看历史",
             supporting = if (app.recordHistory) {
-                "边看边记进度,首页小窗与「我的 → 观看历史」都能接着看"
+                "记录播放进度,可从历史继续观看"
             } else {
-                "不再新增记录;已经留在历史里的条目照常可看,也可以手动清掉"
+                "不再记录新的进度,已有历史保留"
             },
             trailing = {
                 Switch(
@@ -321,7 +321,7 @@ private fun HistoryOptionsCard(app: AppPreferences, onAction: (SettingsAction) -
         )
         HsySettingRow(
             title = "看完即清",
-            supporting = "播到片尾就不留这行历史,续播起点也随之消失",
+            supporting = "播完后自动删除该视频的历史记录",
             trailing = {
                 Switch(
                     checked = app.clearHistoryWhenFinished,

@@ -29,7 +29,7 @@ const val THREAD_UP_MID_ARG = "upMid"
 
 private const val FIRST_PAGE = 1
 private const val MESSAGE_LINGER_MS = 4_000L
-private const val LIKE_READ_ONLY_HINT = "评论点赞已关闭 · 在「设置 → 评论」里可以打开"
+private const val LIKE_READ_ONLY_HINT = "评论点赞已关闭,可在「设置 → 评论」开启"
 
 /**
  * 评论区与楼中楼页的全部读数。
@@ -72,7 +72,7 @@ data class CommentUiState(
     /**
      * 平台对未登录用户只给预览:回包说 `is_end=true`,但总数远多于手里的几条。
      *
-     * 这不是"没有更多",不能念成"已显示全部";登录后同一条接口会照常翻页,
+     * 这不是"没有更多",不能念成"已加载全部";登录后同一条接口会照常翻页,
      * 所以列表底部要把原因说出来并给登录入口。
      */
     val guestLimited: Boolean
@@ -240,7 +240,7 @@ class CommentViewModel @Inject constructor(
     private fun load(append: Boolean) {
         val current = mutableState.value
         if (current.aid <= 0L) {
-            mutableState.update { it.copy(errorMessage = "这个视频暂时打不开评论 · 稍后再试") }
+            mutableState.update { it.copy(errorMessage = "评论暂时无法加载,请稍后再试") }
             return
         }
         if (current.loading || current.loadingMore) return
@@ -311,7 +311,7 @@ class CommentViewModel @Inject constructor(
         val current = mutableState.value
         when {
             text.isEmpty() || current.sending -> Unit
-            !current.loggedIn -> showMessage("发评论需要登录 · 去登录")
+            !current.loggedIn -> showMessage("发评论需要登录")
             else -> postComment(text, current)
         }
     }
@@ -351,7 +351,7 @@ class CommentViewModel @Inject constructor(
         val current = mutableState.value
         val blocked = when {
             current.likeReadOnly -> LIKE_READ_ONLY_HINT
-            !current.loggedIn -> "点赞需要登录 · 去登录"
+            !current.loggedIn -> "点赞需要登录"
             else -> null
         }
         if (blocked != null) {

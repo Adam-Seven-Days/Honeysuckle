@@ -118,22 +118,22 @@ private fun actionLabelOf(task: DownloadTask?): String? = when (task?.state) {
 }
 
 private fun offlineNoteOf(task: DownloadTask?): String = when (task?.state) {
-    null -> "缓存到本机 · 没网也能看"
+    null -> "缓存到本机,离线可看"
 
     DownloadState.QUEUED -> "准备下载…"
 
     DownloadState.DOWNLOADING -> downloadingNote(task)
 
-    DownloadState.PAUSED -> "${qualityPrefixOf(task)}已暂停 · 文件已留,可继续"
+    DownloadState.PAUSED -> "${qualityPrefixOf(task)}已暂停,可继续下载"
 
     // 原始异常只留在任务表里排障,屏上给的是下一步
-    DownloadState.FAILED -> "下载中断了 · 点重试再要一次"
+    DownloadState.FAILED -> "下载中断,请重试"
 
-    DownloadState.COMPLETED -> "${qualityPrefixOf(task)}已缓存 · 没网也能看"
+    DownloadState.COMPLETED -> "${qualityPrefixOf(task)}已缓存,离线可看"
 }
 
 private fun downloadingNote(task: DownloadTask): String {
-    if (task.totalBytes <= 0L) return "${qualityPrefixOf(task)}正在取流…"
+    if (task.totalBytes <= 0L) return "${qualityPrefixOf(task)}正在下载…"
     val percent = (task.progress * PERCENT_SCALE).toInt().coerceIn(0, PERCENT_SCALE)
     return "${qualityPrefixOf(task)}正在缓存 $percent% · " +
         "${formatBytes(task.downloadedBytes)}/${formatBytes(task.totalBytes)}"
@@ -155,11 +155,11 @@ internal fun DownloadNetworkDialog(onConfirm: () -> Unit, onDismiss: () -> Unit)
         title = { Text("用移动网络缓存?") },
         text = {
             Text(
-                "现在走的是移动网络,这一段会按流量下下来。" +
-                    "想只在 Wi-Fi 下缓存,可以在「设置 → 播放 → 下载」里留着那一格。",
+                "当前为移动网络,继续缓存将消耗流量。" +
+                    "可在「设置 → 播放」中开启「只在 Wi-Fi 下缓存」。",
             )
         },
-        confirmButton = { TextButton(onClick = onConfirm) { Text("仍要缓存") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("先不下") } },
+        confirmButton = { TextButton(onClick = onConfirm) { Text("继续缓存") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )
 }

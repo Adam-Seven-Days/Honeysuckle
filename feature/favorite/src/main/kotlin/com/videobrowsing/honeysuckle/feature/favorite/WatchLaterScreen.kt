@@ -190,7 +190,7 @@ private fun WatchLaterSelectionBar(
             )
         },
     ) {
-        TextButton(enabled = selected.isNotEmpty(), onClick = onRemove) { Text("移走 ${selected.size}") }
+        TextButton(enabled = selected.isNotEmpty(), onClick = onRemove) { Text("移除 ${selected.size}") }
     }
 }
 
@@ -217,12 +217,12 @@ private fun WatchLaterBody(
         state.error != null && items.isEmpty() -> HsyErrorState(
             message = checkNotNull(state.error),
             onRetry = onReload,
-            hint = "这一页只读账号里的那份清单 · 本机没有副本可看",
+            hint = "稍后再看加载失败,请重试",
         )
 
         items.isEmpty() -> HsyEmptyState(
             title = "稍后再看是空的",
-            hint = "在播放页点「稍后再看」,账号里留着待看的就出现在这一页",
+            hint = "在播放页点「稍后再看」添加",
         )
 
         else -> {
@@ -245,7 +245,7 @@ private fun WatchLaterList(items: List<WatchLaterItem>, selection: ListSelection
         }
         item(key = "watch-later-footer") {
             Text(
-                text = "${items.size} 条留着待看",
+                text = "共 ${items.size} 条",
                 style = Hsy.typography.bodySmall,
                 color = Hsy.colors.onSurfaceVariant,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
@@ -263,7 +263,7 @@ private fun SyncMissLine(error: String, onReload: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
-            text = "$error · 下面还是上一次读到的结果",
+            text = "$error · 以下为上次加载的内容",
             style = Hsy.typography.bodySmall,
             color = Hsy.colors.error,
             modifier = Modifier.weight(1f),
@@ -293,7 +293,7 @@ private fun GuestLine(onOpenLogin: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = "稍后再看是登录态的功能 · 登录后这里会列出你账号留着的那几支",
+            text = "登录后同步账号的稍后再看列表",
             style = Hsy.typography.bodyMedium,
             color = Hsy.colors.onSurfaceVariant,
             modifier = Modifier.weight(1f),
@@ -331,10 +331,10 @@ private fun ClearDialog(count: Int, onDismiss: () -> Unit, onConfirm: () -> Unit
         title = { Text("清空稍后再看?") },
         text = {
             Text(
-                "账号里的 $count 条会一起移走。这一步没有撤销,视频本身不会从平台上消失。",
+                "将移出账号中的 $count 条视频,不可撤销;视频本身不会从平台删除。",
             )
         },
         confirmButton = { TextButton(onClick = onConfirm) { Text("清空") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("再想想") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )
 }

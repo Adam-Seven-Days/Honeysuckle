@@ -74,12 +74,12 @@ private fun RankingPage(state: AnimeUiState, onOpenSeason: (Long) -> Unit, onAct
             HsyErrorState(
                 message = checkNotNull(state.rankingError),
                 onRetry = { onAction(AnimeAction.Reload) },
-                hint = "排行没取回来,重试不会丢东西",
+                hint = "排行加载失败,请重试",
             )
         }
 
         state.ranking.isEmpty() -> Centered {
-            HsyEmptyState(title = "排行这一批是空的", hint = "点重试再要一次")
+            HsyEmptyState(title = "暂无排行内容", hint = "点击重试")
         }
 
         else -> RankingGrid(state, onOpenSeason, onAction)
@@ -112,7 +112,7 @@ private fun RankingGrid(state: AnimeUiState, onOpenSeason: (Long) -> Unit, onAct
                     CircularProgressIndicator()
                 } else if (!state.rankingMore) {
                     Text(
-                        text = "这批排行到底了",
+                        text = "已加载全部排行",
                         style = Hsy.typography.bodySmall,
                         color = Hsy.colors.onSurfaceVariant,
                     )
@@ -146,12 +146,12 @@ private fun TimelinePage(state: AnimeUiState, onOpenSeason: (Long) -> Unit, onAc
             HsyErrorState(
                 message = checkNotNull(state.timelineError),
                 onRetry = { onAction(AnimeAction.Reload) },
-                hint = "周表没取回来,重试不会丢东西",
+                hint = "周表加载失败,请重试",
             )
         }
 
         state.timeline.isEmpty() -> Centered {
-            HsyEmptyState(title = "这一周没有排期", hint = "点重试再要一次")
+            HsyEmptyState(title = "本周暂无排期", hint = "点击重试")
         }
 
         else -> LazyColumn(modifier = Modifier.fillMaxSize()) {

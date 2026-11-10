@@ -33,7 +33,7 @@ internal fun LazyListScope.relatedItems(state: VideoDetailUiState, intents: Deta
         state.relatedError != null && state.related.isEmpty() -> item(key = "related-error") {
             Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                 Text(
-                    text = "相关推荐没拿到:${state.relatedError}",
+                    text = "相关推荐加载失败:${state.relatedError}",
                     style = Hsy.typography.bodySmall,
                     color = Hsy.colors.error,
                 )
@@ -42,7 +42,7 @@ internal fun LazyListScope.relatedItems(state: VideoDetailUiState, intents: Deta
         }
 
         state.related.isEmpty() -> item(key = "related-empty") {
-            HsyEmptyState(title = "没有相关推荐", hint = "这支视频的关联列表是空的")
+            HsyEmptyState(title = "没有相关推荐", hint = "暂无关联视频")
         }
 
         else -> items(state.related, key = { "related-${it.brief.bvid}" }) { item ->

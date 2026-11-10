@@ -299,7 +299,7 @@ private fun DetailColumn(
                     HsyErrorState(
                         message = checkNotNull(state.detailError),
                         onRetry = { intents.onAction(VideoDetailAction.Reload) },
-                        hint = "详情都没取回来,这一页暂时没有可播的内容",
+                        hint = "详情加载失败,请重试",
                     )
                 }
 

@@ -55,7 +55,7 @@ private fun SuggestingIndicator() {
     ) {
         CircularProgressIndicator(modifier = Modifier.size(16.dp))
         Text(
-            text = "联想中",
+            text = "加载中…",
             style = Hsy.typography.bodySmall,
             color = Hsy.colors.onSurfaceVariant,
         )
@@ -65,7 +65,7 @@ private fun SuggestingIndicator() {
 @Composable
 private fun SuggestionError(text: String) {
     Text(
-        text = "联想词没取到:$text",
+        text = "搜索建议加载失败:$text",
         style = Hsy.typography.bodySmall,
         color = Hsy.colors.error,
         modifier = Modifier.padding(vertical = 8.dp),

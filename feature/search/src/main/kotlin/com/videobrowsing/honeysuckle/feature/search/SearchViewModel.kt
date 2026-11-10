@@ -228,7 +228,7 @@ class SearchViewModel @Inject constructor(private val repository: SearchReposito
         if (current.submittedKeyword.isEmpty()) return
         when (current.tab) {
             SearchTab.VIDEO -> if (current.results.isNotEmpty()) {
-                // 列表非空时失败的是"再要一页",重试就该接着要;空表时重试第一页
+                // 列表非空时失败的是"重试",重试就该接着要;空表时重试第一页
                 loadMore()
             } else {
                 mutableState.update { it.copy(loading = true, errorMessage = null) }

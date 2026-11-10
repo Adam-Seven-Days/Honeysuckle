@@ -283,7 +283,7 @@ private fun BoxScope.PlayerPlaceholders(state: VideoDetailUiState, ui: PlayerUi,
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator(color = Color.White)
                 Text(
-                    text = "取流中…",
+                    text = "加载中…",
                     style = Hsy.typography.bodySmall,
                     color = Color.White,
                     modifier = Modifier.padding(top = 8.dp),

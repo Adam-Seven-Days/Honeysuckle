@@ -58,7 +58,7 @@ fun SettingsScreen(
     ) {
         HsyTopBar(title = "设置", onBack = onBack)
         if (!state.loaded) {
-            HsySettingRow(title = "正在读取设置", supporting = "稍等一下,马上就能改")
+            HsySettingRow(title = "正在读取设置…")
             return@Column
         }
 
@@ -101,7 +101,7 @@ fun SettingsScreen(
             SettingsEntry(
                 title = "存储与缓存",
                 icon = HsyIcons.delete,
-                supporting = "看本机缓存占了多少、一键清掉;不碰历史与离线视频",
+                supporting = "查看缓存占用,清理临时文件",
                 onClick = onOpenCache,
             )
         }
@@ -150,7 +150,7 @@ private fun playbackLine(app: AppPreferences): String {
     val quality = QualityTier.fromStorageId(app.defaultQualityId).displayName
     val pip = if (app.autoPipEnabled) "小窗开" else "小窗关"
     val history = if (app.recordHistory) "记历史" else "不记历史"
-    return "$policy · 画质$quality · 打开时 ${speedLabel(app.playbackSpeed)} · $pip · $history"
+    return "$policy · 画质$quality · ${speedLabel(app.playbackSpeed)} · $pip · $history"
 }
 
 private fun navigationLine(app: AppPreferences): String {
@@ -159,17 +159,17 @@ private fun navigationLine(app: AppPreferences): String {
         "直播".takeIf { app.liveTabVisible },
         "番剧".takeIf { app.animeTabVisible },
     )
-    return if (shown.isEmpty()) "三段已收起 · 只剩首页与我的" else "显示 ${shown.joinToString(" / ")}"
+    return if (shown.isEmpty()) "仅显示首页与我的" else "显示 ${shown.joinToString(" / ")}"
 }
 
 /** 弹幕副题要把"关掉的那几类"念出来:三种都开着是常态,只有关掉才需要用户在入口就看见 */
 private fun danmakuLine(danmaku: DanmakuPreferences): String = if (!danmaku.enabled) {
-    "已关闭 · 播放页一条都不画"
+    "已关闭"
 } else {
     val density = densityLabel(DanmakuDensity.fromStorageId(danmaku.densityId))
     val speed = DanmakuSpeed.fromStorageId(danmaku.speedId).displayName
     val hidden = hiddenDanmakuModes(danmaku)
-    "已开启 · $density · 速度$speed · " + if (hidden.isEmpty()) "三种全开" else "已收 $hidden"
+    "已开启 · $density · 速度$speed · " + if (hidden.isEmpty()) "全部类型" else "已隐藏 $hidden"
 }
 
 /** 被关掉的那几类弹幕;三种都开着时给空串,由上一行落成"三种全开" */
@@ -181,8 +181,8 @@ private fun hiddenDanmakuModes(danmaku: DanmakuPreferences): String = listOfNotN
 
 private fun commentLine(app: AppPreferences): String {
     val sort = CommentSort.fromStorageId(app.commentSortId).displayName
-    val like = if (app.commentLikeReadOnly) "点赞只读" else "点赞可点"
-    val replies = if (app.replyLikesVisible) "回复可赞" else "回复不摆点赞"
+    val like = if (app.commentLikeReadOnly) "点赞只读" else "可点赞"
+    val replies = if (app.replyLikesVisible) "回复可赞" else "回复无点赞"
     return "排序$sort · $like · $replies"
 }
 
@@ -201,9 +201,9 @@ private fun NetworkCard(app: AppPreferences, onAction: (SettingsAction) -> Unit)
         HsySettingRow(
             title = "使用 HTTP/2",
             supporting = if (app.http2Enabled) {
-                "接口、图床与下载优先走 HTTP/2,服务端不支持时自动回落 HTTP/1.1;视频播放由播放器内核自行协商"
+                "接口与下载优先使用 HTTP/2,不支持时自动回退 HTTP/1.1(不含视频播放)"
             } else {
-                "接口、图床与下载只用 HTTP/1.1;视频播放由播放器内核自行协商"
+                "接口与下载仅使用 HTTP/1.1(不含视频播放)"
             },
             trailing = {
                 Switch(
@@ -215,9 +215,9 @@ private fun NetworkCard(app: AppPreferences, onAction: (SettingsAction) -> Unit)
         HsySettingRow(
             title = "启动时检查更新",
             supporting = if (app.updateCheckEnabled) {
-                "每次冷启动问一次仓库上有没有新版本,只在确实有新版时弹窗提醒;不自动下载,也不安装"
+                "启动时检查新版本,有更新时弹窗提醒,不自动下载安装"
             } else {
-                "不再自动去问;想确认版本,自己在「关于」页点一下检查"
+                "不自动检查,可在「关于」页手动检查"
             },
             trailing = {
                 Switch(

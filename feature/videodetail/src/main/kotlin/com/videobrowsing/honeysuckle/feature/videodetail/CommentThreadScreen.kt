@@ -88,7 +88,7 @@ fun CommentThreadScreen(
 /** 标题报的是这一楼共有几条回复;还没读回来时不念 0,只说这一页在做什么 */
 private fun threadTitle(state: CommentUiState): String = when {
     state.total > 0 -> "${state.total} 条回复"
-    state.loading -> "正在读这一楼"
+    state.loading -> "加载中…"
     else -> "楼中楼"
 }
 
@@ -106,7 +106,7 @@ private fun ThreadBody(state: CommentUiState, intents: CommentIntents) {
         state.errorMessage != null && nothingYet -> HsyErrorState(
             message = checkNotNull(state.errorMessage),
             onRetry = { intents.onAction(CommentAction.Reload) },
-            hint = "整楼的回复都在平台上 · 这一页读不到就没有可看的",
+            hint = "回复加载失败,请重试",
         )
 
         else -> LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {

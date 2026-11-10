@@ -85,7 +85,7 @@ class CacheViewModel @Inject constructor(
             // 清理只动 cacheDir:离线文件与它的占用读数都原样保留
             val offlineBytes = offlineRepository.usageBytes()
             mutableState.update { it.copy(busy = false, usage = usage, offlineBytes = offlineBytes) }
-            showMessage("缓存清完了,当前占用 ${formatBytes(usage.totalBytes)}")
+            showMessage("已清理,当前缓存 ${formatBytes(usage.totalBytes)}")
         }
     }
 

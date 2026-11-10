@@ -58,8 +58,8 @@ internal fun FavoriteDialogs(
             title = { Text("删除收藏夹?") },
             text = {
                 Text(
-                    "「${state.selected?.title.orEmpty()}」会从账号里删掉,夹里的视频不会从平台上消失," +
-                        "但这一份归类没了。这一步没有撤销。",
+                    "「${state.selected?.title.orEmpty()}」将从账号中删除," +
+                        "夹内视频不会从平台删除。此操作不可撤销。",
                 )
             },
             confirmButton = {
@@ -70,7 +70,7 @@ internal fun FavoriteDialogs(
                     },
                 ) { Text("删除") }
             },
-            dismissButton = { TextButton(onClick = onDismiss) { Text("再想想") } },
+            dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
         )
 
         null -> Unit
@@ -100,7 +100,7 @@ internal fun MoveTargetDialog(
             Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 if (targets.isEmpty()) {
                     Text(
-                        text = "没有别的收藏夹可移 · 先新建一个",
+                        text = "没有其他收藏夹,请先新建",
                         style = Hsy.typography.bodySmall,
                         color = Hsy.colors.onSurfaceVariant,
                     )

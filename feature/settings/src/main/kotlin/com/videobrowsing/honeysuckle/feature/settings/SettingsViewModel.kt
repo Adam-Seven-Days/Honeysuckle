@@ -209,7 +209,7 @@ class SettingsViewModel @Inject constructor(
             SettingsSection.COMMENTS -> appPreferences.resetComments()
             SettingsSection.DANMAKU -> danmakuPreferences.reset()
         }
-        showMessage("已把「${section.title}」退回默认")
+        showMessage("「${section.title}」已恢复默认")
     }
 
     /** 屏上那句话留几秒就收走:它是"刚刚那一下"的回执,不是常驻说明 */

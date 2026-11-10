@@ -164,7 +164,7 @@ class MineViewModel @Inject constructor(
                 if (switched) {
                     "已切换到${name.ifBlank { "另一个账号" }}"
                 } else {
-                    "这台设备没有这个账号的凭证,先登录一次"
+                    "该账号未在本机登录,请先登录"
                 },
             )
         }
@@ -176,7 +176,7 @@ class MineViewModel @Inject constructor(
             val name = state.value.accounts.firstOrNull { it.mid == mid }?.name.orEmpty()
             val removed = authRepository.forgetAccount(mid)
             showAccountNote(
-                if (removed) "已移除${name.ifBlank { "该账号" }}" else "这个账号本来就不在这台设备上",
+                if (removed) "已移除${name.ifBlank { "该账号" }}" else "该账号未在本机保存",
             )
         }
     }

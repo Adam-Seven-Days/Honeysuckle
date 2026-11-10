@@ -47,16 +47,16 @@ internal fun PlayerErrorEffect(host: HsyPlayerHost, ui: PlayerUi) {
  */
 internal fun playbackErrorText(codeName: String): String = when {
     codeName.contains("NETWORK") || codeName.contains("TIMEOUT") ||
-        codeName.contains("IO_") -> "网络断了,这一段没取到 · 点重试再要一次"
+        codeName.contains("IO_") -> "网络异常,视频加载失败,请重试"
 
     codeName.contains("DECODING") || codeName.contains("DECODER") ->
-        "这一段解不开 · 换个清晰度或重试"
+        "视频解码失败,请更换清晰度或重试"
 
     codeName.contains("PARSING") || codeName.contains("MALFORMED") ||
         codeName.contains("UNSUPPORTED") || codeName.contains("CONTAINER") ->
-        "这一段视频读不了 · 点重试或换一支"
+        "视频无法读取,请重试或更换视频"
 
-    else -> "播放出了点问题 · 点重试再放一次"
+    else -> "播放出现问题,请重试"
 }
 
 /**
@@ -133,7 +133,7 @@ internal fun PlaybackSeatEffect(engine: PlaybackEngine, host: HsyPlayerHost, sta
         }
         val selection = PlaybackTrackSelector.select(playback, state.selectedQualityId)
         if (selection == null) {
-            ui.error = "这一档清晰度暂时播不了 · 换一档或重试"
+            ui.error = "当前清晰度不可用,请更换清晰度或重试"
             return@LaunchedEffect
         }
         ui.error = null

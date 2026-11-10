@@ -91,14 +91,14 @@ fun MessageScreen(
                 HsyErrorState(
                     message = checkNotNull(state.error),
                     onRetry = { viewModel.onAction(MessageAction.Reload) },
-                    hint = "消息没取回来,重试不会丢东西",
+                    hint = "消息加载失败,请重试",
                 )
             }
 
             state.items.isEmpty() -> Centered {
                 HsyEmptyState(
                     title = emptyTitleOf(state.kind),
-                    hint = "有人回你 / 赞你 / @你 时,这里会按时间排起来",
+                    hint = "回复、点赞和 @ 你的消息会显示在这里",
                 )
             }
 
@@ -261,7 +261,7 @@ private fun MessageFooter(state: MessageUiState, onAction: (MessageAction) -> Un
             state.moreAvailable -> TextButton(onClick = { onAction(MessageAction.LoadMore) }) { Text("加载更多") }
 
             else -> Text(
-                text = "这批消息到底了",
+                text = "已加载全部消息",
                 style = Hsy.typography.bodySmall,
                 color = Hsy.colors.onSurfaceVariant,
             )
@@ -276,7 +276,7 @@ private fun LoginGuide(onOpenLogin: () -> Unit) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        HsyEmptyState(title = "消息要登录", hint = "登录后,这里按时间排别人给你的回复、点赞与 @")
+        HsyEmptyState(title = "登录后查看消息", hint = "登录后显示回复、点赞与 @ 你的消息")
         Text(
             text = "去登录",
             style = Hsy.typography.titleMedium,

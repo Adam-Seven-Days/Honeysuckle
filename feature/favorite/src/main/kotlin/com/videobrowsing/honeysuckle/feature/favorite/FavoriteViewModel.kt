@@ -289,7 +289,7 @@ class FavoriteViewModel @Inject constructor(
                     mutableState.update {
                         it.copy(busy = false, selected = null, items = emptyList(), moreAvailable = false)
                     }
-                    showMessage("收藏夹「${folder.title}」删掉了")
+                    showMessage("收藏夹「${folder.title}」已删除")
                     loadFolders()
                 }
 
@@ -337,7 +337,7 @@ class FavoriteViewModel @Inject constructor(
                     },
                 )
             }
-            showMessage("已移到「${target.title}」${moved.size} 条")
+            showMessage("已移动 ${moved.size} 条到「${target.title}」")
         }
     }
 

@@ -19,18 +19,18 @@ fun AppError.userMessage(): String = when (this) {
     is AppError.Network -> networkMessage(cause)
 
     is AppError.Server -> when (code) {
-        HTTP_RISK_CONTROL -> "被平台挡回来了 · 歇一会儿再试,连点只会更久"
-        CODE_RISK_REJECT -> "平台的身份核查没通过 · 稍后再试,挂着页面里的重试会带齐指纹重来"
-        else -> "平台暂时没响应 · 稍后再试"
+        HTTP_RISK_CONTROL -> "平台风控限制,请稍后再试"
+        CODE_RISK_REJECT -> "平台身份校验未通过,请稍后重试"
+        else -> "平台暂时无响应,请稍后再试"
     }
 
-    is AppError.Decode -> "这条路的数据没读出来 · 稍后再试"
+    is AppError.Decode -> "数据解析失败,请稍后再试"
 
-    is AppError.Auth -> "没有权限 · 登录后再试"
+    is AppError.Auth -> "没有权限,请登录后再试"
 
-    is AppError.Unknown -> "出了点小问题 · 稍后再试"
+    is AppError.Unknown -> "出了点问题,请稍后再试"
 
-    AppError.RateLimited -> "请求太密了 · 歇半分钟再来"
+    AppError.RateLimited -> "请求过于频繁,请稍后再试"
 }
 
 /**
@@ -42,16 +42,16 @@ private fun networkMessage(cause: String): String {
     val raw = cause.lowercase()
     return when {
         "timeout" in raw || "timed out" in raw ->
-            "网络有点慢,这一下没等到 · 稍后再试"
+            "网络超时,请稍后再试"
 
         "unknownhost" in raw || "unable to resolve" in raw ||
             "no address associated" in raw || "nodename nor servname" in raw ->
-            "连不上网 · 检查一下网络再试"
+            "无法连接网络,请检查网络后重试"
 
         "refused" in raw || "reset" in raw || "closed" in raw || "eof" in raw ||
             "unreachable" in raw || "broken pipe" in raw ->
-            "连接断了 · 检查一下网络再试"
+            "连接中断,请检查网络后重试"
 
-        else -> "网络不太稳 · 检查一下网络再试"
+        else -> "网络不稳定,请检查网络后重试"
     }
 }

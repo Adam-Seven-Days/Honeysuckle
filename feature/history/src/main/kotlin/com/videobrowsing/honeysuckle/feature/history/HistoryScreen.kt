@@ -299,16 +299,16 @@ private fun watchedLine(entry: HistoryEntry): String {
 @Composable
 private fun EmptyHistory(state: HistoryUiState) {
     when {
-        !state.loaded -> HsyEmptyState(title = "正在读本地历史")
+        !state.loaded -> HsyEmptyState(title = "正在加载历史…")
 
         state.query.isNotBlank() -> HsyEmptyState(
             title = "没有匹配的历史",
-            hint = "换个词试试,或者点右边的清除把整张表翻出来",
+            hint = "换个关键词,或清除筛选查看全部",
         )
 
         else -> HsyEmptyState(
-            title = "还没有看过视频",
-            hint = "播过的每一支都会在这里留下续播位置",
+            title = "暂无观看历史",
+            hint = "看过的视频会在这里记录播放进度",
         )
     }
 }

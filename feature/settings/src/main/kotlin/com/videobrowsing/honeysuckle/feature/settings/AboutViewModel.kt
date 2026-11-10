@@ -145,22 +145,22 @@ class AboutViewModel @Inject constructor(
  * 在 GitHub 这条链上会说错对象 —— 这里挡的是仓库服务器与它的匿名额度,不是站内风控。
  */
 private fun AppError.updateMessage(): String = when (this) {
-    is AppError.Network -> "连不上仓库的服务器 · 检查一下网络再试"
+    is AppError.Network -> "无法连接更新服务器,请检查网络后重试"
 
     is AppError.Server -> when (code) {
-        HTTP_NOT_FOUND -> "没找到仓库的发布记录 · 确认仓库还在,或稍后再试"
-        HTTP_FORBIDDEN -> "这一小时问得太多次,被挡了一下 · 过一会儿再点"
-        else -> "仓库那边暂时没响应 · 稍后再试"
+        HTTP_NOT_FOUND -> "未找到发布记录,请稍后再试"
+        HTTP_FORBIDDEN -> "检查次数过多,请稍后再试"
+        else -> "更新服务器暂时无响应,请稍后再试"
     }
 
-    is AppError.Decode -> "发布记录没读出来 · 稍后再试"
+    is AppError.Decode -> "发布记录解析失败,请稍后再试"
 
     // 匿名读公开 Release 不需要登录态;走到这一档只可能是仓库被改成了私有
-    is AppError.Auth -> "读不到发布记录 · 仓库可能已设为私有"
+    is AppError.Auth -> "无法读取发布记录,仓库可能已设为私有"
 
-    AppError.RateLimited -> "问得太密了 · 歇半分钟再来"
+    AppError.RateLimited -> "请求过于频繁,请稍后再试"
 
-    is AppError.Unknown -> "这一台的版本号没读出来 · 重启一次再试"
+    is AppError.Unknown -> "无法读取当前版本号,请重启应用后重试"
 }
 
 private const val HTTP_NOT_FOUND = 404
