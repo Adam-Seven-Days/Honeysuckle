@@ -13,7 +13,9 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
@@ -29,6 +31,8 @@ import com.videobrowsing.honeysuckle.core.network.headers.HsyHeaderFactory
 /** 建连/读超时与 `:core:network` 的 WEB 通道同口径:一段分片拉不完就该报错,不该吊着播放页 */
 private const val CONNECT_TIMEOUT_MS = 10_000
 private const val READ_TIMEOUT_MS = 15_000
+private const val PREVIEW_BUFFER_MS = 1_000
+private const val PREVIEW_BUFFER_BYTES = 2 * 1024 * 1024
 
 /** 平台 CDN 只认浏览器指纹,UA 这一条头要从 [HsyHeaderFactory] 的产物里取出来单独交一份 */
 private const val HEADER_USER_AGENT = "User-Agent"
@@ -192,6 +196,30 @@ class HsyPlayerHost(context: Context, referer: String = HsyChannel.WEB.refererBa
     /** 跳到某个视频时刻:宿主那边的"清屏重捞"由位置变化自己触发,这里不通知弹幕 */
     fun seekTo(positionMs: Long) {
         player.seekTo(positionMs.coerceAtLeast(0L))
+    }
+
+    // 预览只解码视频轨,复用播放通道的请求头和占位地址,不移动主播放器或申请音频焦点。
+    fun createSeekPreviewPlayer(context: Context, positionMs: Long): ExoPlayer? {
+        if (selection == null) return null
+        val item = player.currentMediaItem ?: return null
+        return ExoPlayer.Builder(context.applicationContext)
+            .setLoadControl(
+                DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(PREVIEW_BUFFER_MS, PREVIEW_BUFFER_MS, 0, 0)
+                    .setTargetBufferBytes(PREVIEW_BUFFER_BYTES)
+                    .build(),
+            )
+            .build()
+            .apply {
+                volume = 0f
+                playWhenReady = false
+                trackSelectionParameters = trackSelectionParameters.buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                    .build()
+                setSeekParameters(SeekParameters.CLOSEST_SYNC)
+                setMediaSource(ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(item), positionMs)
+                prepare()
+            }
     }
 
     /** 离开页面必须释放:ExoPlayer 不 release 就占着解码器与网络线程(常驻化后归 Service 管) */

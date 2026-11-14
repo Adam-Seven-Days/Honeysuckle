@@ -3,6 +3,7 @@ package com.videobrowsing.honeysuckle.core.data.remote
 import com.videobrowsing.honeysuckle.core.common.AppError
 import com.videobrowsing.honeysuckle.core.common.HsyResult
 import com.videobrowsing.honeysuckle.core.common.flatMap
+import com.videobrowsing.honeysuckle.core.data.remote.dto.accessFlagsOf
 import com.videobrowsing.honeysuckle.core.data.remote.dto.arrOr
 import com.videobrowsing.honeysuckle.core.data.remote.dto.httpsCover
 import com.videobrowsing.honeysuckle.core.data.remote.dto.intOr
@@ -128,6 +129,7 @@ class UserSpaceApi(
             durationSec = durationOf(node.stringOr("length")),
             playCount = node.longOr("play"),
             publishedEpochSec = node.longOr("created"),
+            accessType = node.accessFlagsOf().accessType,
         )
     }
 

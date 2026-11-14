@@ -3,6 +3,7 @@ package com.videobrowsing.honeysuckle.core.player
 import android.content.Context
 import android.content.Intent
 import android.os.SystemClock
+import com.videobrowsing.honeysuckle.core.datastore.account.AccountPreferenceRepository
 import com.videobrowsing.honeysuckle.core.datastore.general.AppPreferenceStore
 import com.videobrowsing.honeysuckle.core.model.MediaTrackSelection
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -29,6 +30,7 @@ data class PlaybackSession(
     val title: String,
     val upName: String,
     val coverUrl: String,
+    val accountMid: Long? = null,
 )
 
 /**
@@ -76,6 +78,7 @@ data class PlaybackExtras(
 class PlaybackEngine @Inject constructor(
     @ApplicationContext private val context: Context,
     appPreferences: AppPreferenceStore,
+    accountPreferences: AccountPreferenceRepository,
 ) {
 
     private var hostOrNull: HsyPlayerHost? = null
@@ -131,6 +134,15 @@ class PlaybackEngine @Inject constructor(
     )
 
     init {
+        engineScope.launch {
+            accountPreferences.preferences
+                .map { if (it.isLoggedIn) it.mid else 0L }
+                .distinctUntilChanged()
+                .collect { mid ->
+                    val owner = mutableSession.value?.accountMid
+                    if (owner != null && owner != mid) stop()
+                }
+        }
         // AB 是设置里的总开关:跟随盘上的值,页面退到后台也照这个口径执行
         engineScope.launch {
             appPreferences.preferences

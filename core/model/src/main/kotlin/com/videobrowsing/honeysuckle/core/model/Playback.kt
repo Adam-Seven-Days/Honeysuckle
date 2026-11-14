@@ -34,4 +34,5 @@ data class Playback(
     val audioTracks: List<MediaTrack> = emptyList(),
     /** 平台为本片推荐的视频 `codecid`(`data.video_codecid`),游客态实测恒为 7=AVC */
     val videoCodecid: Int = 0,
+    val isPreview: Boolean = false,
 )

@@ -9,10 +9,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -24,15 +28,18 @@ private const val EMOJI_SIZE_RATIO = 1.35f
 /** 调用方没在 [style] 里写字号时的兜底字号;与 [Hsy.typography] 的正文档同量级 */
 private val FALLBACK_FONT_SIZE = 14.sp
 
-/** 正文被切成两类:一段字,或一个表情占位符 */
+private const val LIGHT_MENTION_ARGB = 0xFF0075B0
+private const val DARK_MENTION_ARGB = 0xFF64B5F6
+
 private sealed interface Segment
 private data class TextSegment(val text: String) : Segment
 private data class EmoteSegment(val placeholder: String) : Segment
+private data class MentionSegment(val name: String, val mid: Long) : Segment
 
 /**
- * 图文混排的一行正文:把 [emotes] 里那些占位符(`"[doge]"` 这类)画成图片,其余文字照 [Text] 走。
+ * 图文混排的一行正文:[emotes] 占位符画成图片,[mentions] 中的 @ 用户画成蓝色链接。
  *
- * 本组件不认识"这是 B 站的表情":给它一张 `{占位符 = 图片地址}` 它就画,给一张空表就退化成 [Text]。
+ * 本组件不认识"这是 B 站的表情":给它一张 `{占位符 = 图片地址}` 它就画,其余文字照 [Text] 走。
  * 表里没有的占位符原样留在正文里 —— 用户看得见"这里本来有个表情",而不是被猜一张图,
  * 也不是被吞掉之后读出一句缺字的话。
  *
@@ -47,9 +54,14 @@ fun EmojiText(
     color: Color = Color.Unspecified,
     maxLines: Int = Int.MAX_VALUE,
     style: TextStyle = Hsy.typography.bodyMedium,
+    mentions: Map<String, Long> = emptyMap(),
+    onMentionClick: (Long) -> Unit = {},
 ) {
-    val segments = remember(text, emotes) { splitByEmotes(text, emotes) }
-    val annotated = remember(segments) { buildAnnotatedString { segments.forEach { append(it) } } }
+    val segments = remember(text, emotes, mentions) { splitContent(text, emotes, mentions) }
+    val mentionColor = Color(if (Hsy.colors.isLight) LIGHT_MENTION_ARGB else DARK_MENTION_ARGB)
+    val annotated = remember(segments, mentionColor, onMentionClick) {
+        buildAnnotatedString { segments.forEach { append(it, mentionColor, onMentionClick) } }
+    }
     val side = emojiSide(style)
     val sideSize = with(LocalDensity.current) { side.toDp() }
     // 每次重组重建这张表:children 是 composable lambda,不能塞进 remember 的计算块里。
@@ -82,20 +94,31 @@ fun EmojiText(
     )
 }
 
-private fun AnnotatedString.Builder.append(segment: Segment) {
+private fun AnnotatedString.Builder.append(segment: Segment, mentionColor: Color, onMentionClick: (Long) -> Unit) {
     when (segment) {
         is TextSegment -> append(segment.text)
+
         is EmoteSegment -> appendInlineContent(segment.placeholder, segment.placeholder.emoteName())
+
+        is MentionSegment -> withLink(
+            LinkAnnotation.Clickable(
+                tag = "mention:${segment.mid}",
+                styles = TextLinkStyles(style = SpanStyle(color = mentionColor)),
+                linkInteractionListener = { onMentionClick(segment.mid) },
+            ),
+        ) { append("@${segment.name}") }
     }
 }
 
-/**
- * 按占位符切正文;同一位置多个键都能匹配时先长后短 —— `[tv]` 不能抢走 `[tv1]` 的前缀。
- *
- * 只认表里真有的键,所以一份空表进来就是"整段是一个 [TextSegment]",后面的渲染自然退化成纯文本。
- */
-private fun splitByEmotes(text: String, emotes: Map<String, String>): List<Segment> {
-    val keys = emotes.keys.filter { it.isNotEmpty() }.sortedByDescending { it.length }
+// 最长匹配优先,避免较短的用户名截断同前缀的另一个 @ 用户。
+private fun splitContent(text: String, emotes: Map<String, String>, mentions: Map<String, Long>): List<Segment> {
+    val replacements = buildMap<String, Segment> {
+        emotes.keys.filter { it.isNotEmpty() }.forEach { put(it, EmoteSegment(it)) }
+        mentions.forEach { (name, mid) ->
+            if (name.isNotBlank() && mid > 0L) put("@$name", MentionSegment(name, mid))
+        }
+    }
+    val keys = replacements.keys.sortedByDescending { it.length }
     if (keys.isEmpty()) return listOf(TextSegment(text))
     val segments = mutableListOf<Segment>()
     val plain = StringBuilder()
@@ -111,7 +134,7 @@ private fun splitByEmotes(text: String, emotes: Map<String, String>): List<Segme
             segments.add(TextSegment(plain.toString()))
             plain.setLength(0)
         }
-        segments.add(EmoteSegment(hit))
+        segments.add(replacements.getValue(hit))
         index += hit.length
     }
     if (plain.isNotEmpty()) segments.add(TextSegment(plain.toString()))

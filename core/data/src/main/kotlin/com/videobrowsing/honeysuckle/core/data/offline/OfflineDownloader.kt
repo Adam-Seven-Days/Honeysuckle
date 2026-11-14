@@ -5,6 +5,7 @@ import com.videobrowsing.honeysuckle.core.common.userMessage
 import com.videobrowsing.honeysuckle.core.data.playback.PlaybackRepository
 import com.videobrowsing.honeysuckle.core.model.DownloadTask
 import com.videobrowsing.honeysuckle.core.model.MediaTrack
+import com.videobrowsing.honeysuckle.core.model.Playback
 import com.videobrowsing.honeysuckle.core.model.PlaybackTrackSelector
 import com.videobrowsing.honeysuckle.core.network.client.HsyClientSource
 import com.videobrowsing.honeysuckle.core.network.headers.HsyChannel
@@ -44,10 +45,8 @@ internal class OfflineDownloader(
         onTracks: (qualityId: Int, qualityLabel: String, durationMs: Long) -> Unit,
         onProgress: (videoBytes: Long, audioBytes: Long, totalBytes: Long) -> Unit,
     ): DownloadTask {
-        val playback = when (val result = playbackRepository.playback(task.bvid, task.cid)) {
-            is HsyResult.Success -> result.value
-            is HsyResult.Failure -> throw IOException(result.error.userMessage())
-        }
+        val playback = playbackOf(task)
+        if (playback.isPreview) throw IOException("当前账号仅可试看,无法缓存完整视频")
         val selection = PlaybackTrackSelector.select(playback, task.qualityId)
             ?: PlaybackTrackSelector.select(playback)
             ?: throw IOException("取流不完整:音频或视频轨缺失")
@@ -67,6 +66,13 @@ internal class OfflineDownloader(
             totalBytes = videoTotal + audioTotal,
         )
     }
+
+    /** 取流失败折成一句可重试的 IO 异常;成功时把整支播放结果交回下载流程 */
+    private suspend fun playbackOf(task: DownloadTask): Playback =
+        when (val result = playbackRepository.playback(task.bvid, task.cid)) {
+            is HsyResult.Success -> result.value
+            is HsyResult.Failure -> throw IOException(result.error.userMessage())
+        }
 
     /** 主地址失败就换备用地址;已写入的字节留着,下一趟从 Range 接着要 */
     private suspend fun fetchTrack(

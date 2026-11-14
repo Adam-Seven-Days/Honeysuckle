@@ -24,7 +24,6 @@ import com.videobrowsing.honeysuckle.core.designsystem.component.HsyErrorState
 import com.videobrowsing.honeysuckle.core.designsystem.component.HsyTopBar
 import com.videobrowsing.honeysuckle.core.designsystem.theme.Hsy
 import com.videobrowsing.honeysuckle.core.designsystem.ui.CircularProgressIndicator
-import com.videobrowsing.honeysuckle.core.designsystem.ui.EmojiText
 import com.videobrowsing.honeysuckle.core.designsystem.ui.HorizontalDivider
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Text
 import com.videobrowsing.honeysuckle.core.designsystem.ui.TextButton
@@ -139,11 +138,9 @@ private fun ThreadRootRow(comment: Comment, state: CommentUiState, intents: Comm
             .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
         CommentHeader(comment = comment, onOpenSpace = intents.onOpenSpace)
-        EmojiText(
-            text = comment.content,
-            emotes = comment.emotes,
-            color = Hsy.colors.onSurface,
-            style = Hsy.typography.bodyMedium,
+        CommentContent(
+            comment = comment,
+            onOpenSpace = intents.onOpenSpace,
             modifier = Modifier.padding(top = 6.dp),
         )
         Row(

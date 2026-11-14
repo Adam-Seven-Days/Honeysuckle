@@ -43,6 +43,7 @@ data class UserVideo(
     val durationSec: Int = 0,
     val playCount: Long = 0,
     val publishedEpochSec: Long = 0,
+    val accessType: VideoAccessType = VideoAccessType.FREE,
 )
 
 /** 投稿一页:条目 + 页码 + 还能不能再要 + 平台报的总数 */

@@ -164,6 +164,7 @@ private fun UserVideoCard(video: UserVideo, onOpen: () -> Unit) {
         statLine = video.publishedEpochSec.takeIf { it > 0 }
             ?.let { formatRelativeTime(it, HsyClock.nowEpochSec()) }
             .orEmpty(),
+        badgeLabel = video.accessType.label,
         onClick = onOpen,
     )
 }

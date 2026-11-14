@@ -11,4 +11,5 @@ data class VideoBrief(
     val durationSec: Int = 0,
     val coverUrl: String = "",
     val upName: String = "",
+    val accessType: VideoAccessType = VideoAccessType.FREE,
 )

@@ -21,6 +21,8 @@ data class VideoDetail(
     val stat: VideoStat = VideoStat(),
     /** 分 P(单 P 视频为一项) */
     val parts: List<VideoPart> = emptyList(),
+    val canWatch: Boolean? = null,
+    val canDownload: Boolean? = null,
 )
 
 /** 互动/播放计数:UI 侧的"xx 播放"由此格式化,文案归 UI 层 */

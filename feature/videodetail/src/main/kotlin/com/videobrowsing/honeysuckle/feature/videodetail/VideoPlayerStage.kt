@@ -69,6 +69,7 @@ import kotlinx.coroutines.withContext
 @Stable
 internal class PlayerUi {
     var playing by mutableStateOf(false)
+    var ended by mutableStateOf(false)
     var positionMs by mutableStateOf(0L)
     var durationMs by mutableStateOf(0L)
     var controlsVisible by mutableStateOf(true)
@@ -196,6 +197,7 @@ internal class PlayerStageInputs(
 @Suppress("LongParameterList") // 与 DetailIntents 同一条口径:它是一束回调,拆开只是把同一串中转复制到每个子组件
 internal class PlayerIntents(
     val onRetry: () -> Unit,
+    val onOpenLogin: () -> Unit,
     val onSelectQuality: (Int) -> Unit,
     val onSelectSpeed: (Float) -> Unit,
     val onToggleDanmaku: () -> Unit,
@@ -252,14 +254,18 @@ internal fun PlayerStage(inputs: PlayerStageInputs, intents: PlayerIntents, modi
 
         GestureHud(inputs.ui.gestureLabel)
 
-        PlayerPlaceholders(inputs.state, inputs.ui, intents.onRetry)
+        PlayerPlaceholders(inputs.state, inputs.ui, intents)
 
-        if (inputs.ui.controlsVisible) PlayerControls(inputs, intents)
+        val previewEnded = inputs.state.playback?.isPreview == true && inputs.ui.ended
+        if (hasVideo && inputs.ui.controlsVisible && !previewEnded) PlayerControls(inputs, intents)
+
+        PlayerPreviewNotice(inputs.state, inputs.ui, intents)
+        if (hasVideo) PlayerSeekPreview(inputs.host, inputs.ui)
     }
 }
 
 @Composable
-private fun BoxScope.PlayerPlaceholders(state: VideoDetailUiState, ui: PlayerUi, onRetry: () -> Unit) {
+private fun BoxScope.PlayerPlaceholders(state: VideoDetailUiState, ui: PlayerUi, intents: PlayerIntents) {
     val error = ui.error
     when {
         state.playbackError != null && state.playback == null -> Box(
@@ -272,7 +278,14 @@ private fun BoxScope.PlayerPlaceholders(state: VideoDetailUiState, ui: PlayerUi,
                     style = Hsy.typography.bodySmall,
                     color = Color.White,
                 )
-                TextButton(onClick = onRetry) { Text("重试") }
+                Row {
+                    if (state.restrictedVideo && !state.loggedIn) {
+                        TextButton(onClick = intents.onOpenLogin) { Text("登录", color = Color.White) }
+                    }
+                    TextButton(onClick = intents.onRetry) {
+                        Text(if (state.restrictedVideo) "刷新观看权限" else "重试", color = Color.White)
+                    }
+                }
             }
         }
 
@@ -301,7 +314,7 @@ private fun BoxScope.PlayerPlaceholders(state: VideoDetailUiState, ui: PlayerUi,
                 color = Color(PLAYER_ERROR_ARGB),
             )
             // 播放中途的解码/取流错误会把播放器打回 IDLE,resume() 救不回来,只有重取流一条路
-            TextButton(onClick = onRetry) { Text("重试", color = Color.White) }
+            TextButton(onClick = intents.onRetry) { Text("重试", color = Color.White) }
         }
     }
 }

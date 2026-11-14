@@ -52,6 +52,7 @@ internal fun LazyListScope.relatedItems(state: VideoDetailUiState, intents: Deta
                 durationLabel = formatClock(item.brief.durationSec.toLong()),
                 upLine = item.brief.upName,
                 statLine = statLineOf(item),
+                badgeLabel = item.brief.accessType.label,
                 onClick = { intents.onOpenVideo(item.brief.bvid) },
             )
         }

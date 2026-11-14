@@ -5,6 +5,7 @@ import com.videobrowsing.honeysuckle.core.model.Playback
 import com.videobrowsing.honeysuckle.core.network.url.secureMediaUrl
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * `x/player/wbi/playurl` 的 `data` 节点投影。
@@ -14,10 +15,11 @@ import kotlinx.serialization.json.JsonObject
  * 故这里全部走双键容错读取;只考据到"能播"所需的字段,`support_formats`/`dolby`/`flac` 等按需再补。
  */
 internal data class PlayUrlDto(
-    val timelengthMs: Long,
+    val durationMs: Long,
     val videoCodecid: Int,
     val videos: List<TrackDto>,
     val audios: List<TrackDto>,
+    val isPreview: Boolean,
 ) {
 
     /** 音视频轨共用一种投影:音频就是"宽高等于 0 的轨",选轨侧不必分两套类型 */
@@ -46,13 +48,16 @@ internal data class PlayUrlDto(
     }
 
     fun toDomain(): Playback = Playback(
-        durationMs = timelengthMs,
+        durationMs = durationMs,
         videoTracks = videos.map { it.toDomain() },
         audioTracks = audios.map { it.toDomain() },
         videoCodecid = videoCodecid,
+        isPreview = isPreview,
     )
 
     companion object {
+
+        private const val MILLIS_PER_SECOND = 1_000.0
 
         /**
          * 成败判据:一条能播的视频轨都没有。
@@ -66,11 +71,20 @@ internal data class PlayUrlDto(
             if (videos.isEmpty()) return null
 
             return PlayUrlDto(
-                timelengthMs = data.longOr("timelength"),
+                // dash.duration 是这一支流的实际秒数;试看片段在这里就短于全片,
+                // 拿 data.timelength 当进度会把试看片显示成整片时长
+                durationMs = dashDurationMsOf(dash, data),
                 videoCodecid = data.intOr("video_codecid"),
                 videos = videos,
                 audios = dash.tracksOf("audio"),
+                isPreview = data.boolOr("is_preview") || data.boolOr("isPreview"),
             )
+        }
+
+        private fun dashDurationMsOf(dash: JsonObject, data: JsonObject): Long {
+            // 平台偶尔把秒数写成 `123` 或 `123.0`;两种都接住,读不懂才回退 timelength
+            val dashSec = (dash["duration"] as? JsonPrimitive)?.content?.toDoubleOrNull() ?: 0.0
+            return if (dashSec > 0.0) (dashSec * MILLIS_PER_SECOND).toLong() else data.longOr("timelength")
         }
 
         /**

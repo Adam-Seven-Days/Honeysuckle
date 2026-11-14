@@ -92,6 +92,7 @@ internal fun VideoMeta(state: VideoDetailUiState, detail: VideoDetail, intents: 
             style = Hsy.typography.bodySmall,
             color = Hsy.colors.onSurfaceVariant,
         )
+        VideoAccessNotice(state, intents)
         // 简介紧跟在发布日期后面:它是这条稿自己的话,与标题同属一段,不该到页面末尾才出现
         Description(detail.description)
         MetaActionRow(state, detail, intents)

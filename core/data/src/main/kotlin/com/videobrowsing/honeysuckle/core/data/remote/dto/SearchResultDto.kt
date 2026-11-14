@@ -1,6 +1,7 @@
 package com.videobrowsing.honeysuckle.core.data.remote.dto
 
 import com.videobrowsing.honeysuckle.core.model.FeedItem
+import com.videobrowsing.honeysuckle.core.model.VideoAccessType
 import com.videobrowsing.honeysuckle.core.model.VideoBrief
 import kotlinx.serialization.json.JsonObject
 
@@ -22,6 +23,7 @@ internal data class SearchResultDto(
     val author: String,
     val play: Long,
     val danmaku: Long,
+    val accessType: VideoAccessType,
 ) {
 
     fun toDomain(): FeedItem = FeedItem(
@@ -32,6 +34,7 @@ internal data class SearchResultDto(
             durationSec = durationSec,
             coverUrl = httpsCover(pic),
             upName = author,
+            accessType = accessType,
         ),
         publishEpochSec = pubdateSec,
         viewCount = play,
@@ -54,6 +57,7 @@ internal data class SearchResultDto(
                 author = item.stringOr("author"),
                 play = item.longOr("play"),
                 danmaku = item.longOr("danmaku"),
+                accessType = item.accessFlagsOf().accessType,
             )
         }
 

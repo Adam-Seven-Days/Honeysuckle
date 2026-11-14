@@ -1,6 +1,7 @@
 package com.videobrowsing.honeysuckle.core.data.remote.dto
 
 import com.videobrowsing.honeysuckle.core.model.FeedItem
+import com.videobrowsing.honeysuckle.core.model.VideoAccessType
 import com.videobrowsing.honeysuckle.core.model.VideoBrief
 import kotlinx.serialization.json.JsonObject
 
@@ -26,6 +27,7 @@ internal data class FeedItemDto(
     val tname: String,
     val rcmdReason: String,
     val goto: String,
+    val accessType: VideoAccessType,
 ) {
 
     /** 没标路由就当视频项(热门不发 goto);标了就不是 av 路由的一律不进卡片 */
@@ -39,6 +41,7 @@ internal data class FeedItemDto(
             durationSec = durationSec,
             coverUrl = httpsCover(pic),
             upName = ownerName,
+            accessType = accessType,
         ),
         publishEpochSec = pubdateSec,
         viewCount = view,
@@ -79,6 +82,7 @@ internal data class FeedItemDto(
                 tname = item.stringOr("tname"),
                 rcmdReason = item.objOr("rcmd_reason")?.stringOr("content").orEmpty(),
                 goto = item.stringOr("goto"),
+                accessType = item.accessFlagsOf().accessType,
             )
         }
     }

@@ -3,6 +3,7 @@ package com.videobrowsing.honeysuckle.feature.videodetail
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.videobrowsing.honeysuckle.core.common.AppError
 import com.videobrowsing.honeysuckle.core.common.HsyResult
 import com.videobrowsing.honeysuckle.core.common.userMessage
 import com.videobrowsing.honeysuckle.core.common.writeErrorText
@@ -30,10 +31,10 @@ import com.videobrowsing.honeysuckle.core.model.OfflineSource
 import com.videobrowsing.honeysuckle.core.model.Playback
 import com.videobrowsing.honeysuckle.core.model.PlaybackTrackSelector
 import com.videobrowsing.honeysuckle.core.model.QualityTier
+import com.videobrowsing.honeysuckle.core.model.VideoAccessType
 import com.videobrowsing.honeysuckle.core.model.VideoDetail
 import com.videobrowsing.honeysuckle.core.model.VideoInteraction
 import com.videobrowsing.honeysuckle.core.model.VideoPart
-import com.videobrowsing.honeysuckle.core.player.AutoPlayPolicy
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
@@ -60,37 +61,6 @@ private const val DANMAKU_WHITE = 0xFFFFFFL
 
 /** 屏上画质清单的一项;`id = 0` 由 UI 自己补成"自动",不进数据产物 */
 data class QualityOption(val id: Int, val label: String)
-
-/** 播放侧从偏好盘折出的几档读数:同一对象一起回流,屏上不会出现"手势关了但横滑还在"的半套状态 */
-private data class PlayerToggles(
-    val gestures: Boolean,
-    val seek: Boolean,
-    val sideSwapped: Boolean,
-    val longPressBoost: Boolean,
-    val longPressBoostSpeed: Float,
-    val autoNext: Boolean,
-    val pipDanmaku: Boolean,
-    val keepScreenOn: Boolean,
-    val fullscreenOrientationId: String,
-    val rememberBrightness: Boolean,
-    val rememberedBrightness: Float,
-) {
-    companion object {
-        fun of(app: AppPreferences) = PlayerToggles(
-            gestures = app.playerGesturesEnabled,
-            seek = app.seekGestureEnabled,
-            sideSwapped = app.gestureSideSwapped,
-            longPressBoost = app.longPressBoostEnabled,
-            longPressBoostSpeed = app.longPressBoostSpeed,
-            autoNext = app.autoPlayNextPart,
-            pipDanmaku = app.pipDanmakuVisible,
-            keepScreenOn = app.keepScreenOnEnabled,
-            fullscreenOrientationId = app.fullscreenOrientationId,
-            rememberBrightness = app.rememberBrightnessEnabled,
-            rememberedBrightness = app.rememberedBrightness,
-        )
-    }
-}
 
 /**
  * 详情页的全部读数(UI 只读这一份 StateFlow)。
@@ -147,6 +117,8 @@ data class VideoDetailUiState(
     val pendingDanmaku: DanmakuEntry? = null,
     val danmakuAcceptedAt: Long = 0L,
     val loggedIn: Boolean = false,
+    val accountMid: Long = 0L,
+    val playbackRequestId: Long = 0L,
     val timeline: List<DanmakuEntry> = emptyList(),
     val danmakuPreferences: DanmakuPreferences = DanmakuPreferences(),
     /** 盘上的播放选项:手势与小窗在设置里可调,播放页照同一份读数走 */
@@ -341,7 +313,14 @@ class VideoDetailViewModel @Inject constructor(
 
             VideoDetailAction.PauseDownload -> currentDownload()?.let { offlineRepository.pause(it.key) }
 
-            VideoDetailAction.ResumeDownload -> currentDownload()?.let { offlineRepository.resume(it.key) }
+            VideoDetailAction.ResumeDownload -> {
+                val restriction = mutableState.value.downloadRestriction
+                if (restriction != null) {
+                    showMessage(restriction)
+                } else {
+                    currentDownload()?.let { offlineRepository.resume(it.key) }
+                }
+            }
 
             VideoDetailAction.DeleteDownload -> currentDownload()?.let { offlineRepository.remove(it.key) }
 
@@ -376,7 +355,10 @@ class VideoDetailViewModel @Inject constructor(
         val current = mutableState.value
         val detail = current.detail
         val part = current.selectedPart
+        val restriction = current.downloadRestriction
         when {
+            restriction != null -> showMessage(restriction)
+
             detail == null || part == null -> Unit
 
             part.cid <= 0L -> showMessage("当前分 P 未加载完成,请稍后再试")
@@ -397,7 +379,7 @@ class VideoDetailViewModel @Inject constructor(
         when (action) {
             VideoDetailAction.Reload -> load()
             VideoDetailAction.RetryRelated -> loadRelated()
-            VideoDetailAction.RetryPlayback -> loadPart(mutableState.value.partIndex)
+            VideoDetailAction.RetryPlayback -> retryPlayback()
             is VideoDetailAction.SelectPart -> switchPart(action.index)
             is VideoDetailAction.SelectQuality -> selectQuality(action.qualityId)
             is VideoDetailAction.SetSpeed -> setSpeed(action.speed)
@@ -430,56 +412,57 @@ class VideoDetailViewModel @Inject constructor(
                 app.playbackSpeed to (PlayerToggles.of(app) to danmaku)
             }.collect { (speed, rest) ->
                 val (toggles, danmaku) = rest
-                mutableState.update {
-                    it.copy(
-                        speed = speed,
-                        playerGesturesEnabled = toggles.gestures,
-                        seekGestureEnabled = toggles.seek,
-                        gestureSideSwapped = toggles.sideSwapped,
-                        longPressBoostEnabled = toggles.longPressBoost,
-                        longPressBoostSpeed = toggles.longPressBoostSpeed,
-                        autoPlayNextPart = toggles.autoNext,
-                        pipDanmakuVisible = toggles.pipDanmaku,
-                        keepScreenOnEnabled = toggles.keepScreenOn,
-                        fullscreenOrientationId = toggles.fullscreenOrientationId,
-                        rememberBrightnessEnabled = toggles.rememberBrightness,
-                        rememberedBrightness = toggles.rememberedBrightness,
-                        danmakuPreferences = danmaku,
-                    )
-                }
+                mutableState.update { it.withPreferences(speed, toggles, danmaku) }
             }
         }
     }
 
-    /**
-     * 登录态在这一屏只有一个用处:**登录回来时把互动状态重读一次**。
-     * 游客态下 `state()` 直接回默认值,那个结果不能拿来冒充"登录后也是未点赞"。
-     */
     private fun observeLogin() {
         viewModelScope.launch {
-            var wasLoggedIn = false
+            // 首次回流只用来对齐登录态:进页时的 load() 已经在跑,再触发一次等于整页重取。
+            // 之后只有 mid 真的换了(切号/登出)才重取详情与取流 —— 观看权限跟着账号走。
+            var previousMid: Long? = null
             authRepository.profile.collect { profile ->
-                val loggedIn = profile != null
-                mutableState.update { it.copy(loggedIn = loggedIn) }
-                if (loggedIn && !wasLoggedIn) {
-                    mutableState.value.detail?.let { detail ->
-                        loadInteraction(detail)
-                        loadRelation(detail)
-                        loadWatchLater()
+                val mid = profile?.mid ?: 0L
+                val firstEmission = previousMid == null
+                val changed = !firstEmission && mid != previousMid
+                mutableState.update { it.copy(loggedIn = profile != null, accountMid = mid) }
+                when {
+                    firstEmission -> {
+                        previousMid = mid
+                        // 首次回流若晚于详情,详情那一趟是按游客态读的;补读账号态读数,
+                        // 但不重取详情/取流 —— 进页时那两趟已经在跑
+                        mutableState.value.detail?.let { detail ->
+                            loadInteraction(detail)
+                            loadRelation(detail)
+                            loadWatchLater()
+                        }
+                    }
+
+                    changed -> {
+                        previousMid = mid
+                        interactionJob?.cancel()
+                        relationJob?.cancel()
+                        mutableState.update {
+                            it.copy(following = null, interaction = VideoInteraction(), watchLater = null)
+                        }
+                        load(mutableState.value.partIndex)
                     }
                 }
-                if (!loggedIn) {
-                    // 退出后屏上不该还挂着"已关注/已点赞"的上一个身份的回声
-                    mutableState.update {
-                        it.copy(following = null, interaction = VideoInteraction(), watchLater = null)
-                    }
-                }
-                wasLoggedIn = loggedIn
             }
         }
     }
 
-    private fun load() {
+    private fun retryPlayback() {
+        val current = mutableState.value
+        if (current.restrictedVideo || current.playback?.isPreview == true) {
+            load(current.partIndex)
+        } else {
+            loadPart(current.partIndex)
+        }
+    }
+
+    private fun load(partIndex: Int = 0) {
         if (bvid.isBlank()) {
             mutableState.update { it.copy(detailLoading = false, detailError = "缺少视频编号,请返回重新进入") }
             return
@@ -489,28 +472,25 @@ class VideoDetailViewModel @Inject constructor(
         danmakuJob?.cancel()
         relatedJob?.cancel()
         detailJob = viewModelScope.launch {
-            mutableState.update {
-                it.copy(
-                    detailLoading = true,
-                    detailError = null,
-                    detail = null,
-                    related = emptyList(),
-                    following = null,
-                )
-            }
+            mutableState.update { it.resetForReload() }
             when (val result = detailRepository.detail(bvid)) {
                 is HsyResult.Success -> {
                     val detail = result.value
-                    mutableState.update { it.copy(detail = detail, detailLoading = false, partIndex = 0) }
+                    val index = partIndex.coerceIn(0, detail.parts.lastIndex.coerceAtLeast(0))
+                    mutableState.update { it.copy(detail = detail, detailLoading = false, partIndex = index) }
                     loadRelated()
                     loadInteraction(detail)
                     loadWatchLater()
                     if (mutableState.value.loggedIn) loadRelation(detail)
-                    loadPart(0)
+                    loadPart(index)
                 }
 
                 is HsyResult.Failure -> {
-                    val offline = offlineDetailOf(bvid, offlineRepository.downloads.value)
+                    val offline = if (result.error is AppError.Network) {
+                        offlineDetailOf(bvid, offlineRepository.downloads.value)
+                    } else {
+                        null
+                    }
                     if (offline == null) {
                         mutableState.update { it.copy(detailLoading = false, detailError = result.error.userMessage()) }
                     } else {
@@ -578,7 +558,7 @@ class VideoDetailViewModel @Inject constructor(
      */
     private fun autoNextPart() {
         val current = mutableState.value
-        if (!current.autoPlayNextPart) return
+        if (!current.autoPlayNextPart || current.playback?.isPreview == true) return
         val next = PlayerGesture.nextPartIndex(current.partIndex, current.parts.size) ?: return
         val label = current.parts.getOrNull(next)?.let { "第 ${next + 1} P" }.orEmpty()
         mutableState.update { it.copy(interactionMessage = null) }
@@ -618,7 +598,11 @@ class VideoDetailViewModel @Inject constructor(
 
             // 离线优先:盘上有这一 P 的完整两条轨就不再取在线流 ——
             // 取流地址是有有效期的签名 URL,而离线存在的意义正是"没网也能看"。
-            val offline = offlineRepository.source(bvid, part.cid)
+            val offline = if (detail.brief.accessType == VideoAccessType.FREE) {
+                offlineRepository.source(bvid, part.cid)
+            } else {
+                null
+            }
             if (offline != null) {
                 mutableState.update {
                     it.copy(offlineSource = offline, playbackLoading = false, qualities = emptyList())
@@ -629,20 +613,14 @@ class VideoDetailViewModel @Inject constructor(
 
             when (val result = playbackRepository.playback(bvid, part.cid)) {
                 is HsyResult.Success -> {
-                    val playback = result.value
+                    // 平台没给 is_preview 时,用详情权限补一刀:明确无权限却取流成功,
+                    // 拿到的只能是试看片段,后续自动连播/续播/缓存都按试看处理
+                    val playback = result.value.withPreviewInferred(detail)
                     // 默认画质按这一支实际下发的候选换算:这片没那一档时退到不高于它的可用档,
                     // 换算就住在 `QualityTier.resolve`,这里不问平台档号
                     val qualityId = QualityTier.fromStorageId(prefs.defaultQualityId).resolve(playback)
-                    mutableState.update {
-                        it.copy(
-                            playback = playback,
-                            playbackLoading = false,
-                            qualities = qualityOptionsOf(playback),
-                            selectedQualityId = qualityId,
-                            // 计费网络只在这一支真的要走网络时才问
-                            playbackAutoStart = autoStartOf(prefs, metered = networkReader.isMetered()),
-                        )
-                    }
+                    val metered = networkReader.isMetered()
+                    mutableState.update { it.withPlayback(playback, qualityId, prefs, metered) }
                     collectDanmaku(part.cid, playback.durationMs)
                 }
 
@@ -966,6 +944,18 @@ class VideoDetailViewModel @Inject constructor(
     }
 }
 
+/**
+ * 详情已判定"当前账号无观看权限"却取流成功时,平台给的是试看片段。
+ *
+ * 取流接口不保证回 `is_preview`,而详情里的权限是明确答案:两者取或,
+ * 试看片段才不会被当成整片(自动连播、续播点、缓存入口都跟着这一位走)。
+ */
+private fun Playback.withPreviewInferred(detail: VideoDetail): Playback {
+    val restrictedWithoutPermission =
+        detail.brief.accessType != VideoAccessType.FREE && detail.canWatch == false
+    return if (restrictedWithoutPermission && !isPreview) copy(isPreview = true) else this
+}
+
 /** 可选清晰度 + 屏上文案:P 数取候选轨自己的高度,不另维护一份 qn 码表 */
 internal fun qualityOptionsOf(playback: Playback): List<QualityOption> {
     val heights = playback.videoTracks
@@ -975,15 +965,6 @@ internal fun qualityOptionsOf(playback: Playback): List<QualityOption> {
         heights[id]?.let { height -> QualityOption(id = id, label = "${height}P") }
     }
 }
-
-/**
- * "自动播放"那一档乘上此刻的网络。
- *
- * 离线文件走 `[metered] = false`:本机读出来的两条轨不花流量,那一档拦它没有道理 ——
- * 用户在移动网络上想接着看缓存,不该被自己的省流量设置按停。
- */
-private fun autoStartOf(prefs: AppPreferences, metered: Boolean): Boolean =
-    AutoPlayPolicy.fromStorageId(prefs.autoPlayPolicyId).allowsAutoStart(metered)
 
 /**
  * 收藏面板的读数:夹列表 + 这条稿此刻所在的夹。
@@ -1020,6 +1001,7 @@ private fun favoriteChangedMessage(folders: List<FavoriteFolder>, add: Set<Long>
 /** 换 P 那一刻的清空:上一 P 的流、弹幕与续播点都不许留到这一 P 的屏上 */
 private fun VideoDetailUiState.resetForPart(index: Int, cid: Long, prefs: AppPreferences): VideoDetailUiState = copy(
     partIndex = index,
+    playbackRequestId = playbackRequestId + 1L,
     playbackLoading = true,
     playbackError = null,
     playback = null,

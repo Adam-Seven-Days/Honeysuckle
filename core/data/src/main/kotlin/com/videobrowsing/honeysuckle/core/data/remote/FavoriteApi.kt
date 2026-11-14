@@ -3,6 +3,7 @@ package com.videobrowsing.honeysuckle.core.data.remote
 import com.videobrowsing.honeysuckle.core.common.AppError
 import com.videobrowsing.honeysuckle.core.common.HsyResult
 import com.videobrowsing.honeysuckle.core.common.flatMap
+import com.videobrowsing.honeysuckle.core.data.remote.dto.accessFlagsOf
 import com.videobrowsing.honeysuckle.core.data.remote.dto.arrOr
 import com.videobrowsing.honeysuckle.core.data.remote.dto.boolOr
 import com.videobrowsing.honeysuckle.core.data.remote.dto.httpsCover
@@ -172,6 +173,7 @@ class FavoriteApi(
             upName = media.objOr("upper")?.stringOr("name").orEmpty(),
             folderId = folderId,
             folderTitle = folderTitle,
+            accessType = media.accessFlagsOf().accessType,
         )
     }
 

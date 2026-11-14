@@ -45,7 +45,6 @@ import com.videobrowsing.honeysuckle.core.designsystem.theme.Hsy
 import com.videobrowsing.honeysuckle.core.designsystem.ui.CircularProgressIndicator
 import com.videobrowsing.honeysuckle.core.designsystem.ui.DropdownMenu
 import com.videobrowsing.honeysuckle.core.designsystem.ui.DropdownMenuItem
-import com.videobrowsing.honeysuckle.core.designsystem.ui.EmojiText
 import com.videobrowsing.honeysuckle.core.designsystem.ui.HorizontalDivider
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Icon
 import com.videobrowsing.honeysuckle.core.designsystem.ui.OutlinedTextField
@@ -236,11 +235,9 @@ private fun CommentList(state: CommentUiState, intents: CommentIntents) {
 private fun CommentRow(comment: Comment, state: CommentUiState, intents: CommentIntents) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
         CommentHeader(comment = comment, onOpenSpace = intents.onOpenSpace)
-        EmojiText(
-            text = comment.content,
-            emotes = comment.emotes,
-            color = Hsy.colors.onSurface,
-            style = Hsy.typography.bodyMedium,
+        CommentContent(
+            comment = comment,
+            onOpenSpace = intents.onOpenSpace,
             modifier = Modifier.padding(start = ReplyIndent, top = 4.dp),
         )
         Row(

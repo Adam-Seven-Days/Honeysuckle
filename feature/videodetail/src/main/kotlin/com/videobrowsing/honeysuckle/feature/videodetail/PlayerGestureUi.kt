@@ -76,8 +76,8 @@ internal fun GestureLayer(
                     Modifier.pointerInput(Unit) {
                         detectHorizontalDragGestures(
                             onDragStart = {
-                                ui.dragging = true
-                                ui.dragPositionMs = host.positionMs
+                                ui.dragging = ui.durationMs > 0L
+                                ui.dragPositionMs = host.positionMs.coerceIn(0L, ui.durationMs)
                             },
                             onHorizontalDrag = { change, dragAmount ->
                                 change.consume()

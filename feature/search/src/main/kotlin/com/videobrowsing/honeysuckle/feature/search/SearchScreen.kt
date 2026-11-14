@@ -222,6 +222,7 @@ private fun ResultCard(item: FeedItem, onClick: () -> Unit) {
         durationLabel = formatClock(item.brief.durationSec.toLong()),
         upLine = item.brief.upName,
         statLine = statLineOf(item),
+        badgeLabel = item.brief.accessType.label,
         onClick = onClick,
     )
 }

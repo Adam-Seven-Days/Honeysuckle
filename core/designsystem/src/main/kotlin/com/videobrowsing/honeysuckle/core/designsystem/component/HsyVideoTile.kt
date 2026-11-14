@@ -48,6 +48,7 @@ fun HsyVideoTile(
     statLine: String,
     modifier: Modifier = Modifier,
     featured: Boolean = false,
+    badgeLabel: String = "",
     onClick: (() -> Unit)? = null,
 ) {
     val clickable = if (onClick == null) {
@@ -56,34 +57,12 @@ fun HsyVideoTile(
         modifier.clickable(onClickLabel = "打开视频", role = Role.Button, onClick = onClick)
     }
     Column(modifier = clickable.fillMaxWidth()) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(if (featured) HERO_ASPECT else TILE_ASPECT)
-                .clip(TileShape)
-                .background(Hsy.colors.surfaceVariant),
-        ) {
-            if (coverUrl.isNotBlank()) {
-                AsyncImage(
-                    model = coverUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-            if (durationLabel.isNotBlank()) {
-                Text(
-                    text = durationLabel,
-                    style = Hsy.typography.labelSmall,
-                    color = Color.White,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(6.dp)
-                        .background(Color.Black.copy(alpha = 0.62f), BadgeShape)
-                        .padding(horizontal = 5.dp, vertical = 1.dp),
-                )
-            }
-        }
+        TileCover(
+            coverUrl = coverUrl,
+            durationLabel = durationLabel,
+            badgeLabel = badgeLabel,
+            featured = featured,
+        )
         Column(
             modifier = Modifier.padding(top = 8.dp),
             verticalArrangement = Arrangement.spacedBy(3.dp),
@@ -101,6 +80,53 @@ fun HsyVideoTile(
                 color = Hsy.colors.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/** 封面这一层:图、左上角权限标识、右下角时长;三者叠在同一块圆角里,文字不跟着图一起压暗 */
+@Composable
+private fun TileCover(coverUrl: String, durationLabel: String, badgeLabel: String, featured: Boolean) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(if (featured) HERO_ASPECT else TILE_ASPECT)
+            .clip(TileShape)
+            .background(Hsy.colors.surfaceVariant),
+    ) {
+        if (coverUrl.isNotBlank()) {
+            AsyncImage(
+                model = coverUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        if (badgeLabel.isNotBlank()) {
+            Text(
+                text = badgeLabel,
+                style = Hsy.typography.labelSmall,
+                color = Hsy.colors.onPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(6.dp)
+                    .background(Hsy.colors.primary, BadgeShape)
+                    .padding(horizontal = 5.dp, vertical = 1.dp),
+            )
+        }
+        if (durationLabel.isNotBlank()) {
+            Text(
+                text = durationLabel,
+                style = Hsy.typography.labelSmall,
+                color = Color.White,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(6.dp)
+                    .background(Color.Black.copy(alpha = 0.62f), BadgeShape)
+                    .padding(horizontal = 5.dp, vertical = 1.dp),
             )
         }
     }

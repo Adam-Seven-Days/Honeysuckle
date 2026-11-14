@@ -14,7 +14,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.videobrowsing.honeysuckle.core.common.formatCount
 import com.videobrowsing.honeysuckle.core.designsystem.theme.Hsy
-import com.videobrowsing.honeysuckle.core.designsystem.ui.EmojiText
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Text
 import com.videobrowsing.honeysuckle.core.designsystem.ui.TextButton
 import com.videobrowsing.honeysuckle.core.model.Comment
@@ -36,10 +35,9 @@ private const val PREVIEW_REPLIES = 2
 internal fun ReplyRow(reply: Comment, state: CommentUiState, intents: CommentIntents, modifier: Modifier = Modifier) {
     Column(modifier = modifier.fillMaxWidth().padding(top = 8.dp)) {
         CommentHeader(comment = reply, avatarSize = ReplyAvatarSize, onOpenSpace = intents.onOpenSpace)
-        EmojiText(
-            text = reply.content,
-            emotes = reply.emotes,
-            color = Hsy.colors.onSurface,
+        CommentContent(
+            comment = reply,
+            onOpenSpace = intents.onOpenSpace,
             style = Hsy.typography.bodySmall,
             modifier = Modifier.padding(start = ReplyAvatarSize + ReplyAvatarGap, top = 2.dp),
         )

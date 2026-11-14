@@ -66,6 +66,7 @@ fun HsyVideoCard(
     upLine: String,
     statLine: String,
     modifier: Modifier = Modifier,
+    badgeLabel: String = "",
     onClick: (() -> Unit)? = null,
 ) {
     val rowModifier = if (onClick == null) {
@@ -78,7 +79,7 @@ fun HsyVideoCard(
         modifier = rowModifier.padding(horizontal = RowPaddingHorizontal, vertical = RowPaddingVertical),
         horizontalArrangement = Arrangement.spacedBy(CoverToTextGap),
     ) {
-        Cover(coverUrl = coverUrl, durationLabel = durationLabel)
+        Cover(coverUrl = coverUrl, durationLabel = durationLabel, badgeLabel = badgeLabel)
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(TextGap),
@@ -143,7 +144,7 @@ private fun Modifier.skeletonLine(fraction: Float, color: Color): Modifier = thi
     .background(color)
 
 @Composable
-private fun Cover(coverUrl: String, durationLabel: String) {
+private fun Cover(coverUrl: String, durationLabel: String, badgeLabel: String) {
     Box(
         modifier = Modifier
             .size(width = CoverWidth, height = CoverHeight)
@@ -156,6 +157,20 @@ private fun Cover(coverUrl: String, durationLabel: String) {
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
+            )
+        }
+        if (badgeLabel.isNotBlank()) {
+            Text(
+                text = badgeLabel,
+                style = Hsy.typography.labelSmall,
+                color = Hsy.colors.onPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(BadgeInset)
+                    .background(Hsy.colors.primary, BadgeShape)
+                    .padding(horizontal = BadgePaddingHorizontal, vertical = BadgePaddingVertical),
             )
         }
         if (durationLabel.isNotBlank()) {

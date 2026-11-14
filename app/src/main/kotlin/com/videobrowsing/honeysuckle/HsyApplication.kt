@@ -1,9 +1,12 @@
 package com.videobrowsing.honeysuckle
 
 import android.app.Application
+import android.os.Build
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
+import coil3.gif.AnimatedImageDecoder
+import coil3.gif.GifDecoder
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import com.videobrowsing.honeysuckle.core.data.crash.CrashStore
 import com.videobrowsing.honeysuckle.core.datastore.account.AccountPreferenceRepository
@@ -105,6 +108,11 @@ class HsyApplication :
             // 递 lambda 而不是直接读 [httpClients]:newImageLoader 可能早于 onCreate 的注入被调用,
             // 那时读 lateinit 就是崩溃;lambda 到真正取图那一刻才读,必然已经注入完
             add(OkHttpNetworkFetcherFactory(callFactory = { httpClients.web.current() }))
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                add(AnimatedImageDecoder.Factory())
+            } else {
+                add(GifDecoder.Factory())
+            }
         }
         .build()
 }

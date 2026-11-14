@@ -26,6 +26,7 @@ internal data class VideoViewDto(
     val ownerSign: String,
     val stat: StatDto,
     val pages: List<PageDto>,
+    val access: VideoAccessFlags,
 ) {
 
     internal data class StatDto(
@@ -48,6 +49,7 @@ internal data class VideoViewDto(
             durationSec = durationSec,
             coverUrl = httpsCover(pic),
             upName = ownerName,
+            accessType = access.accessType,
         ),
         ownerMid = ownerMid,
         ownerAvatarUrl = httpsCover(ownerFace),
@@ -67,6 +69,8 @@ internal data class VideoViewDto(
         parts = pages.map {
             VideoPart(cid = it.cid, index = it.page, title = it.part, durationSec = it.durationSec)
         },
+        canWatch = access.canWatch,
+        canDownload = access.canDownload,
     )
 
     companion object {
@@ -112,6 +116,7 @@ internal data class VideoViewDto(
                         )
                     }
                 }.orEmpty(),
+                access = data.accessFlagsOf(),
             )
         }
     }

@@ -296,7 +296,7 @@ private fun FavoriteRow(item: FavoriteItem, supporting: String, selection: ListS
     HsySettingRow(
         title = item.title,
         leading = { HsyVideoThumb(coverUrl = item.coverUrl) },
-        supporting = supporting,
+        supporting = listOf(supporting, item.accessType.label).filter { it.isNotBlank() }.joinToString(" · "),
         onClick = { selection.click(item.bvid, onOpen) },
         trailing = if (selection.selecting) {
             { Checkbox(checked = selection.checked(item.bvid), onCheckedChange = null) }

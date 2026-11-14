@@ -12,6 +12,7 @@ import com.videobrowsing.honeysuckle.core.data.remote.dto.objOr
 import com.videobrowsing.honeysuckle.core.data.remote.dto.stringOr
 import com.videobrowsing.honeysuckle.core.model.Comment
 import com.videobrowsing.honeysuckle.core.model.CommentPage
+import com.videobrowsing.honeysuckle.core.model.CommentPicture
 import com.videobrowsing.honeysuckle.core.model.CommentSort
 import com.videobrowsing.honeysuckle.core.network.client.HsyFormSource
 import com.videobrowsing.honeysuckle.core.network.client.HsyJsonSource
@@ -19,6 +20,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 /**
  * 评论列表与发表。
@@ -220,6 +222,8 @@ class CommentApi(
             avatarUrl = httpsCover(member?.stringOr("avatar").orEmpty()),
             content = content?.stringOr("message").orEmpty(),
             emotes = content.emoteUrls(),
+            mentions = content.mentions(),
+            pictures = content.pictures(),
             likeCount = obj.intOr("like"),
             replyCount = obj.intOr("rcount"),
             createEpochSec = obj.longOr("ctime"),
@@ -251,6 +255,31 @@ class CommentApi(
                     ?.let { url -> put(placeholder, httpsCover(url)) }
             }
         }
+    }
+
+    private fun JsonObject?.mentions(): Map<String, Long> = buildMap {
+        this@mentions?.arrOr("members").orEmpty().forEach { element ->
+            val member = element as? JsonObject ?: return@forEach
+            val name = member.stringOr("uname")
+            val mid = member.longOr("mid")
+            if (name.isNotBlank() && mid > 0L) put(name, mid)
+        }
+        val names = this@mentions?.objOr("at_name_to_mid")
+        names?.keys?.forEach { name ->
+            val mid = names.longOr(name)
+            if (name.isNotBlank() && mid > 0L) put(name, mid)
+        }
+    }
+
+    private fun JsonObject?.pictures(): List<CommentPicture> = this?.arrOr("pictures").orEmpty().mapNotNull { element ->
+        val picture = element as? JsonObject ?: return@mapNotNull null
+        val url = httpsCover(picture.stringOr("img_src")).toHttpUrlOrNull()
+            ?.takeIf { it.isHttps } ?: return@mapNotNull null
+        CommentPicture(
+            url = url.toString(),
+            width = picture.intOr("img_width").coerceAtLeast(0),
+            height = picture.intOr("img_height").coerceAtLeast(0),
+        )
     }
 
     private fun JsonObject.pageCount(): Int = objOr("page")?.intOr("count") ?: 0

@@ -40,6 +40,8 @@ import com.videobrowsing.honeysuckle.core.model.DownloadTask
 @Composable
 internal fun OfflineBar(state: VideoDetailUiState, intents: DetailIntents) {
     val task = state.downloads.firstOrNull { it.cid == state.playbackCid }
+    val restriction = state.downloadRestriction
+    val canPause = task?.state == DownloadState.QUEUED || task?.state == DownloadState.DOWNLOADING
     var expanded by remember { mutableStateOf(false) }
     val tint = when (task?.state) {
         DownloadState.FAILED -> Hsy.colors.error
@@ -58,7 +60,7 @@ internal fun OfflineBar(state: VideoDetailUiState, intents: DetailIntents) {
             modifier = Modifier.size(18.dp),
         )
         Text(
-            text = offlineNoteOf(task),
+            text = if (task == null) restriction ?: offlineNoteOf(null) else offlineNoteOf(task),
             style = Hsy.typography.bodySmall,
             color = tint,
             modifier = Modifier.weight(1f),
@@ -66,7 +68,7 @@ internal fun OfflineBar(state: VideoDetailUiState, intents: DetailIntents) {
         actionLabelOf(task)?.let { label ->
             TextButton(
                 onClick = { intents.onAction(actionOf(task)) },
-                enabled = state.playbackCid > 0L,
+                enabled = state.playbackCid > 0L && (restriction == null || canPause),
             ) { Text(label) }
         }
         if (task != null) {

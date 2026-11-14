@@ -31,6 +31,8 @@ data class Comment(
      * 正文里出现这张表没有的占位符(用户没该表情包权限、平台漏发),照原文摆着,不猜也不空。
      */
     val emotes: Map<String, String> = emptyMap(),
+    val mentions: Map<String, Long> = emptyMap(),
+    val pictures: List<CommentPicture> = emptyList(),
     val likeCount: Int = 0,
     val replyCount: Int = 0,
     val createEpochSec: Long = 0,
@@ -44,6 +46,8 @@ data class Comment(
      */
     val foldedReplies: List<Comment> = emptyList(),
 )
+
+data class CommentPicture(val url: String, val width: Int = 0, val height: Int = 0)
 
 /**
  * 评论一页:条目 + "还能不能再要" + 平台报的总数 + 下一页游标。

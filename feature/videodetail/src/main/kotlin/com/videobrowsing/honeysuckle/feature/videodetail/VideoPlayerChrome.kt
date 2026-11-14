@@ -1,6 +1,5 @@
 package com.videobrowsing.honeysuckle.feature.videodetail
 
-import android.net.Uri
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -15,14 +14,9 @@ import androidx.media3.common.Player
 import com.videobrowsing.honeysuckle.core.designsystem.ui.DropdownMenu
 import com.videobrowsing.honeysuckle.core.designsystem.ui.DropdownMenuItem
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Text
-import com.videobrowsing.honeysuckle.core.model.MediaTrack
-import com.videobrowsing.honeysuckle.core.model.MediaTrackSelection
-import com.videobrowsing.honeysuckle.core.model.OfflineSource
 import com.videobrowsing.honeysuckle.core.model.PlaybackTrackSelector
 import com.videobrowsing.honeysuckle.core.player.HsyPlayerHost
 import com.videobrowsing.honeysuckle.core.player.PlaybackEngine
-import com.videobrowsing.honeysuckle.core.player.PlaybackSession
-import java.io.File
 import kotlinx.coroutines.delay
 
 /** 播放器错误回调的挂与卸:错误码只有分支价值,屏上摆的是翻译后的下一步 */
@@ -100,10 +94,19 @@ internal fun PlaybackSeatEffect(engine: PlaybackEngine, host: HsyPlayerHost, sta
     var seatedCid by remember { mutableStateOf<Long?>(null) }
     var seatedQualityId by remember { mutableStateOf<Int?>(null) }
     val autoStart = ui.startedByUser || state.playbackAutoStart
-    LaunchedEffect(state.bvid, state.playback, state.offlineSource, state.selectedQualityId) {
+    LaunchedEffect(
+        state.bvid,
+        state.playback,
+        state.offlineSource,
+        state.selectedQualityId,
+        state.accountMid,
+        state.playbackRequestId,
+        state.detail?.brief?.accessType,
+    ) {
+        ui.dragging = false
+        ui.error = null
         val offline = state.offlineSource
         if (offline != null) {
-            ui.error = null
             val startAtMs = startAtMsOf(engine, host, state, seatedCid)
             if (!(engine.isSeated(state.bvid, state.playbackCid) && seatedQualityId == null)) {
                 engine.play(
@@ -120,13 +123,12 @@ internal fun PlaybackSeatEffect(engine: PlaybackEngine, host: HsyPlayerHost, sta
         }
         val playback = state.playback
         if (playback == null) {
-            // 打开的是另一支视频才停掉旧会话;同一支视频的加载间隙不该把声音掐断
-            if (engine.session.value?.bvid != state.bvid) engine.stop()
+            stopStaleSession(engine, state)
             seatedCid = null
             seatedQualityId = null
             return@LaunchedEffect
         }
-        if (engine.isSeated(state.bvid, state.playbackCid) && seatedQualityId == null) {
+        if (engine.isSeated(state.bvid, state.playbackCid) && state.canAdoptSeated(playback, seatedQualityId)) {
             seatedCid = state.playbackCid
             seatedQualityId = state.selectedQualityId
             return@LaunchedEffect
@@ -136,7 +138,6 @@ internal fun PlaybackSeatEffect(engine: PlaybackEngine, host: HsyPlayerHost, sta
             ui.error = "当前清晰度不可用,请更换清晰度或重试"
             return@LaunchedEffect
         }
-        ui.error = null
         engine.play(
             selection = selection,
             startAtMs = startAtMsOf(engine, host, state, seatedCid),
@@ -149,33 +150,6 @@ internal fun PlaybackSeatEffect(engine: PlaybackEngine, host: HsyPlayerHost, sta
     }
 }
 
-/** 起播点:引擎里坐着的、或本页刚坐过的是同一 P,就从当前播放头继续;否则用历史续播点 */
-private fun startAtMsOf(
-    engine: PlaybackEngine,
-    host: HsyPlayerHost,
-    state: VideoDetailUiState,
-    seatedCid: Long?,
-): Long = when {
-    engine.isSeated(state.bvid, state.playbackCid) -> host.positionMs
-    seatedCid == state.playbackCid -> host.positionMs
-    else -> state.resumePositionSec * MS_PER_SECOND
-}
-
-/** 通知/锁屏要的身份:屏上详情有什么就交什么,离线任务在这几项上是一致的 */
-private fun playbackSessionOf(state: VideoDetailUiState): PlaybackSession = PlaybackSession(
-    bvid = state.bvid,
-    cid = state.playbackCid,
-    title = state.detail?.brief?.title.orEmpty(),
-    upName = state.detail?.brief?.upName.orEmpty(),
-    coverUrl = state.detail?.brief?.coverUrl.orEmpty(),
-)
-
-/** 离线的一对轨:URL 换成应用私有目录下的本地文件,其余交给播放器的合并路径 */
-private fun offlineSelectionOf(source: OfflineSource): MediaTrackSelection = MediaTrackSelection(
-    video = MediaTrack(url = Uri.fromFile(File(source.videoPath)).toString()),
-    audio = MediaTrack(url = Uri.fromFile(File(source.audioPath)).toString()),
-)
-
 /**
  * 播放器读数抄给屏上。
  *
@@ -187,6 +161,7 @@ internal suspend fun keepClock(host: HsyPlayerHost, ui: PlayerUi) {
     while (true) {
         delay(POSITION_TICK_MS)
         ui.playing = host.isPlaying
+        ui.ended = host.player.playbackState == Player.STATE_ENDED
         // 只要画面真的动过一次就算"用户要播" —— 按的是屏上的播放键、通知栏还是小窗,结论一样
         if (host.isPlaying) ui.startedByUser = true
         ui.durationMs = host.durationMs

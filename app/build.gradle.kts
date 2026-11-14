@@ -105,6 +105,7 @@ dependencies {
     // 封面取图:图由 designsystem 的 HsyVideoCard 摆,用哪个 HTTP 客户端归这里定(见 HsyApplication)
     implementation(platform(libs.coil.bom))
     implementation(libs.coil.compose)
+    implementation(libs.coil.gif)
     implementation(libs.coil.network.okhttp)
 
     implementation(libs.hilt.android)

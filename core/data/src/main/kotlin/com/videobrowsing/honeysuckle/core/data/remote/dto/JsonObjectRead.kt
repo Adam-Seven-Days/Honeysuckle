@@ -27,9 +27,13 @@ internal fun JsonObject.objOr(key: String): JsonObject? = this[key] as? JsonObje
 
 internal fun JsonObject.arrOr(key: String): JsonArray? = this[key] as? JsonArray
 
-/** 布尔只认字面 true/false;写成人话("1"/"yes")一律按缺失处理,回退由调用方给 */
+/** 布尔认 true/false 与平台常见的 1/0;其余写法按缺失处理,回退由调用方给 */
 internal fun JsonObject.boolOr(key: String, default: Boolean = false): Boolean =
-    (this[key] as? JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: default
+    when ((this[key] as? JsonPrimitive)?.content) {
+        "true", "1" -> true
+        "false", "0" -> false
+        else -> default
+    }
 
 /**
  * 同一字段的两套键名都读(camelCase 与 snake_case)。

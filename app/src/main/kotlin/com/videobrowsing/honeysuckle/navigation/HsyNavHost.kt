@@ -109,8 +109,9 @@ fun HsyNavHost(
     // 通知栏/锁屏按播放、重进详情页续播,接的都还是同一只播放器、同一个进度。
     val backStack by navController.currentBackStack.collectAsStateWithLifecycle()
     val videoInBackStack = backStack.any { it.destination.route?.startsWith(VIDEO_ROUTE_PREFIX) == true }
+    val pauseHiddenVideo = shouldPauseHiddenVideo(videoInBackStack, inPip, pipEnabled, backgroundPlayEnabled)
     LaunchedEffect(videoInBackStack, inPip, pipEnabled, backgroundPlayEnabled) {
-        if (!videoInBackStack && !inPip && !pipEnabled && !backgroundPlayEnabled) {
+        if (pauseHiddenVideo) {
             // 不做 isPlaying 过滤:缓冲中的播放器读数不在播,playWhenReady 却已抬起,照样要拦
             engine.activeHost?.pause()
         }
@@ -120,9 +121,7 @@ fun HsyNavHost(
     val showTabs = !inPip && tabs.any { it.first == currentRoute }
 
     // 格子被关掉时正停在那一屏(多窗口里改设置才会撞上):退回首页,别把用户留在一屏没有出口的地方
-    val stuckOnHiddenTab = currentRoute != null &&
-        TOP_LEVEL_TABS.any { it.first == currentRoute } &&
-        tabs.none { it.first == currentRoute }
+    val stuckOnHiddenTab = stuckOnHiddenTab(currentRoute, tabs)
     LaunchedEffect(stuckOnHiddenTab) {
         if (stuckOnHiddenTab) navController.switchTab(HsyRoute.HOME)
     }

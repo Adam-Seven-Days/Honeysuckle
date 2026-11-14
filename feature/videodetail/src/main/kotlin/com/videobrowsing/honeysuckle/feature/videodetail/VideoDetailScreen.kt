@@ -108,7 +108,10 @@ fun VideoDetailScreen(
         when {
             // 画中画里只有画面:返回键、底栏、推荐流都不该挤进那块小窗口
             inPip -> {
-                LaunchedEffect(inPip) { playerUi.controlsVisible = false }
+                LaunchedEffect(inPip) {
+                    playerUi.dragging = false
+                    playerUi.controlsVisible = false
+                }
                 DetachedStage(stage, state, intents, WindowIntents({}, {}, null), Modifier.fillMaxSize())
             }
 
@@ -204,6 +207,7 @@ private fun rememberDetailStage(
 /** 三处舞台共用同一套播放动作;全屏/画中画的进退各不相同,由调用方递入 */
 private fun playerIntentsOf(engine: PlaybackEngine, intents: DetailIntents, window: WindowIntents) = PlayerIntents(
     onRetry = { intents.onAction(VideoDetailAction.RetryPlayback) },
+    onOpenLogin = intents.onOpenLogin,
     onSelectQuality = { intents.onAction(VideoDetailAction.SelectQuality(it)) },
     onSelectSpeed = { intents.onAction(VideoDetailAction.SetSpeed(it)) },
     onToggleDanmaku = { intents.onAction(VideoDetailAction.ToggleDanmaku) },
@@ -269,8 +273,8 @@ private fun VideoPageEffects(
     // 倍速只有这一个写口:长按借出去那一档时它跟着变,松手也跟着变回来,盘上那一份始终不动
     LaunchedEffect(state.speed, playerUi.boostSpeed) { host.setSpeed(playerUi.speedNow(state.speed)) }
     LaunchedEffect(host, state.playback) { keepClock(host, playerUi) }
-    LaunchedEffect(playerUi.controlsVisible, playerUi.playing) {
-        if (playerUi.controlsVisible && playerUi.playing) {
+    LaunchedEffect(playerUi.controlsVisible, playerUi.playing, playerUi.dragging) {
+        if (playerUi.controlsVisible && playerUi.playing && !playerUi.dragging) {
             delay(CONTROLS_LINGER_MS)
             playerUi.controlsVisible = false
         }

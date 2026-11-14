@@ -16,6 +16,7 @@ data class FavoriteItem(
     val folderId: Long,
     val folderTitle: String = "",
     val addedAtEpochSec: Long = 0,
+    val accessType: VideoAccessType = VideoAccessType.FREE,
 )
 
 /** 收藏夹里的一页资源 */
