@@ -71,6 +71,7 @@ import com.videobrowsing.honeysuckle.feature.videodetail.THREAD_AID_ARG
 import com.videobrowsing.honeysuckle.feature.videodetail.THREAD_ROOT_ARG
 import com.videobrowsing.honeysuckle.feature.videodetail.THREAD_UP_MID_ARG
 import com.videobrowsing.honeysuckle.feature.videodetail.VIDEO_BVID_ARG
+import com.videobrowsing.honeysuckle.feature.videodetail.VIDEO_CID_ARG
 import com.videobrowsing.honeysuckle.feature.videodetail.VideoDetailCallbacks
 import com.videobrowsing.honeysuckle.feature.videodetail.VideoDetailScreen
 
@@ -315,7 +316,13 @@ private fun NavGraphBuilder.pushedDestinations(
     }
     composable(
         route = HsyRoute.VIDEO_PATTERN,
-        arguments = listOf(navArgument(VIDEO_BVID_ARG) { type = NavType.StringType }),
+        arguments = listOf(
+            navArgument(VIDEO_BVID_ARG) { type = NavType.StringType },
+            navArgument(VIDEO_CID_ARG) {
+                type = NavType.LongType
+                defaultValue = 0L
+            },
+        ),
     ) {
         VideoDetailScreen(
             viewModel = hiltViewModel(),
@@ -323,6 +330,7 @@ private fun NavGraphBuilder.pushedDestinations(
             callbacks = VideoDetailCallbacks(
                 onBack = { navController.popBackStack() },
                 onOpenVideo = openVideo,
+                onOpenSeasonEpisode = { bvid, cid -> navController.navigate(HsyRoute.video(bvid, cid)) },
                 onOpenSpace = openSpace,
                 onOpenLogin = { navController.navigate(HsyRoute.LOGIN) },
                 onOpenThread = { aid, rootId, upMid ->

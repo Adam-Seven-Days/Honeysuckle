@@ -86,6 +86,19 @@ data class AppPreferences(
     val autoPlayPolicyId: String = DEFAULT_AUTO_PLAY_POLICY_ID,
     /** 播放默认清晰度的英文名(`auto` / `1080p` / `720p` / `480p`);`""` = 没设过,退自动 */
     val defaultQualityId: String = DEFAULT_PLAYBACK_QUALITY_ID,
+    /**
+     * 允许使用的视频编码(英文 id 集合:`avc` / `hevc` / `av1`)。
+     *
+     * 空集 = 没设过,读侧退"只用 AVC";用户勾了多项时播放器按 AV1 → HEVC → AVC 的顺序试,
+     * 本机或这一条流解不了就向下退 —— 词表与尝试顺序在 `:core:model` 的 `VideoCodec` 那一处。
+     */
+    val videoCodecIds: Set<String> = DEFAULT_VIDEO_CODEC_IDS,
+    /**
+     * 备用 CDN:主播放地址建连/读取失败时,自动换平台下发的 `backupUrls` 重试。
+     *
+     * 默认开 —— 多一条退路不改变"播哪条流",只是同一条流换一个节点;关掉后主地址失败就直接报错。
+     */
+    val backupCdnEnabled: Boolean = DEFAULT_BACKUP_CDN_ENABLED,
     /** 播放时保持屏幕常亮;默认开 —— 看片看到一半屏幕自己睡过去,没人会当成正常行为 */
     val keepScreenOnEnabled: Boolean = DEFAULT_KEEP_SCREEN_ON_ENABLED,
     /** 详情页评论的默认排序(`hot` / `time`);`""` = 没设过,退最热 */
@@ -169,6 +182,15 @@ data class AppPreferences(
          */
         const val DEFAULT_AUTO_PLAY_POLICY_ID = TIER_ID_UNSET
         const val DEFAULT_PLAYBACK_QUALITY_ID = TIER_ID_UNSET
+
+        /**
+         * 编码多选的缺省仍是"没设过"(空集),而不是把 `avc` 这个字面量抄进存储层:
+         * 读侧拿空集去问 `:core:model` 的词表,退到哪一档由那边决定。
+         */
+        val DEFAULT_VIDEO_CODEC_IDS: Set<String> = emptySet()
+
+        /** 备用 CDN 默认开:主地址失败时换一条退路,不改变用户选的清晰度与编码 */
+        const val DEFAULT_BACKUP_CDN_ENABLED = true
         const val DEFAULT_COMMENT_SORT_ID = TIER_ID_UNSET
         const val DEFAULT_FULLSCREEN_ORIENTATION_ID = TIER_ID_UNSET
         const val DEFAULT_DOWNLOAD_QUALITY_ID = TIER_ID_UNSET

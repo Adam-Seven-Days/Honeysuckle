@@ -1,5 +1,6 @@
 package com.videobrowsing.honeysuckle.feature.videodetail
 
+import android.util.Log
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -14,18 +15,34 @@ import androidx.media3.common.Player
 import com.videobrowsing.honeysuckle.core.designsystem.ui.DropdownMenu
 import com.videobrowsing.honeysuckle.core.designsystem.ui.DropdownMenuItem
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Text
+import com.videobrowsing.honeysuckle.core.model.MediaTrack
+import com.videobrowsing.honeysuckle.core.model.MediaTrackSelection
+import com.videobrowsing.honeysuckle.core.model.Playback
 import com.videobrowsing.honeysuckle.core.model.PlaybackTrackSelector
 import com.videobrowsing.honeysuckle.core.player.HsyPlayerHost
 import com.videobrowsing.honeysuckle.core.player.PlaybackEngine
+import com.videobrowsing.honeysuckle.core.player.VideoCodecSupport
 import kotlinx.coroutines.delay
 
-/** 播放器错误回调的挂与卸:错误码只有分支价值,屏上摆的是翻译后的下一步 */
+/**
+ * 播放器错误回调的挂与卸:错误码只有分支价值,屏上摆的是翻译后的下一步。
+ *
+ * 错误码名整份进日志:用户报"黑屏"时,屏上那句话只能告诉我们"解不开/断网",
+ * 而 `errorCodeName` 能指出是哪一层(IO / 解析 / 解码)。备用 CDN 重试成功会回到 READY,
+ * 那时把屏上那句话收走 —— 用户不该在已经恢复的画面上继续看到"请重试"。
+ */
 @Composable
 internal fun PlayerErrorEffect(host: HsyPlayerHost, ui: PlayerUi) {
     DisposableEffect(host) {
         val listener = object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
+                Log.w(PLAYER_LOG_TAG, "播放失败:${error.errorCodeName}", error)
                 ui.error = playbackErrorText(error.errorCodeName)
+                ui.controlsVisible = true
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_READY) ui.error = null
             }
         }
         host.player.addListener(listener)
@@ -89,6 +106,7 @@ internal fun PlayerEndedEffect(host: HsyPlayerHost, onEnded: () -> Unit) {
  * 而 [PlayerUi.startedByUser] 说"用户在这屏已经按过播了"之后,换清晰度、换分 P 都接着动 ——
  * 否则一个"不想让它自己动"的开关会变成"每次换档都要再按一次"。
  */
+@Suppress("LongMethod")
 @Composable
 internal fun PlaybackSeatEffect(engine: PlaybackEngine, host: HsyPlayerHost, state: VideoDetailUiState, ui: PlayerUi) {
     var seatedCid by remember { mutableStateOf<Long?>(null) }
@@ -133,7 +151,8 @@ internal fun PlaybackSeatEffect(engine: PlaybackEngine, host: HsyPlayerHost, sta
             seatedQualityId = state.selectedQualityId
             return@LaunchedEffect
         }
-        val selection = PlaybackTrackSelector.select(playback, state.selectedQualityId)
+        val attempt = playbackAttemptOf(state, playback)
+        val selection = attempt.selection
         if (selection == null) {
             ui.error = "当前清晰度不可用,请更换清晰度或重试"
             return@LaunchedEffect
@@ -143,11 +162,26 @@ internal fun PlaybackSeatEffect(engine: PlaybackEngine, host: HsyPlayerHost, sta
             startAtMs = startAtMsOf(engine, host, state, seatedCid),
             session = playbackSessionOf(state),
             autoStart = autoStart,
+            fallbackVideos = attempt.fallbackVideos,
         )
         host.setSpeed(ui.speedNow(state.speed))
         seatedCid = state.playbackCid
         seatedQualityId = state.selectedQualityId
     }
+}
+
+private data class PlaybackAttempt(val selection: MediaTrackSelection?, val fallbackVideos: List<MediaTrack>)
+
+private fun playbackAttemptOf(state: VideoDetailUiState, playback: Playback): PlaybackAttempt {
+    val videos = PlaybackTrackSelector.videoCandidates(
+        playback = playback,
+        qualityId = state.selectedQualityId,
+        codecPreference = state.videoCodecs,
+        isTrackPlayable = VideoCodecSupport::isTrackPlayable,
+    )
+    val audio = playback.audioTracks.maxByOrNull { it.bandwidthBps }
+    val selection = videos.firstOrNull()?.let { video -> audio?.let { MediaTrackSelection(video, it) } }
+    return PlaybackAttempt(selection = selection, fallbackVideos = videos.drop(1))
 }
 
 /**

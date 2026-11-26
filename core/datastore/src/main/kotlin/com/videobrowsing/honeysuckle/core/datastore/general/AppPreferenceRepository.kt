@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import com.videobrowsing.honeysuckle.core.datastore.di.GeneralStore
 import com.videobrowsing.honeysuckle.core.datastore.sanitizeStorageId
 import java.io.IOException
@@ -41,6 +42,8 @@ private val KEY_COMMENT_LIKE_READ_ONLY = booleanPreferencesKey("app.commentLikeR
 private val KEY_REPLY_LIKES_VISIBLE = booleanPreferencesKey("app.replyLikesVisible")
 private val KEY_AUTO_PLAY_POLICY = stringPreferencesKey("app.autoPlayPolicy")
 private val KEY_DEFAULT_QUALITY = stringPreferencesKey("app.defaultQuality")
+private val KEY_VIDEO_CODECS = stringSetPreferencesKey("app.videoCodecs")
+private val KEY_BACKUP_CDN = booleanPreferencesKey("app.backupCdn")
 private val KEY_KEEP_SCREEN_ON = booleanPreferencesKey("app.keepScreenOn")
 private val KEY_COMMENT_SORT = stringPreferencesKey("app.commentSort")
 private val KEY_WIFI_ONLY_DOWNLOAD = booleanPreferencesKey("app.wifiOnlyDownload")
@@ -86,6 +89,8 @@ private val GROUP_PLAYBACK = listOf<Preferences.Key<*>>(
     KEY_PLAYBACK_SPEED,
     KEY_AUTO_PLAY_POLICY,
     KEY_DEFAULT_QUALITY,
+    KEY_VIDEO_CODECS,
+    KEY_BACKUP_CDN,
     KEY_KEEP_SCREEN_ON,
     KEY_AUTO_PIP,
     KEY_PIP_ONLY_WHILE_PLAYING,
@@ -242,6 +247,19 @@ class AppPreferenceRepository @Inject constructor(@GeneralStore private val data
         dataStore.edit { it[KEY_DEFAULT_QUALITY] = id.sanitizeStorageId() }
     }
 
+    /**
+     * 编码多选:盘上仍只落英文 id,词表与"空集退 AVC"由读侧(`:core:model` 的 `VideoCodec`)决定。
+     *
+     * 写侧顺手清洗一遍:空串与超长的旧值不进盘,免得读侧每一次都要过滤同一批垃圾。
+     */
+    override suspend fun setVideoCodecIds(ids: Set<String>) {
+        dataStore.edit { prefs -> prefs[KEY_VIDEO_CODECS] = ids.sanitizeStorageIds() }
+    }
+
+    override suspend fun setBackupCdnEnabled(enabled: Boolean) {
+        dataStore.edit { it[KEY_BACKUP_CDN] = enabled }
+    }
+
     override suspend fun setKeepScreenOnEnabled(enabled: Boolean) {
         dataStore.edit { it[KEY_KEEP_SCREEN_ON] = enabled }
     }
@@ -384,6 +402,8 @@ internal fun Preferences.toAppPreferences(): AppPreferences = AppPreferences(
     replyLikesVisible = this[KEY_REPLY_LIKES_VISIBLE] ?: AppPreferences.DEFAULT_REPLY_LIKES_VISIBLE,
     autoPlayPolicyId = this[KEY_AUTO_PLAY_POLICY].sanitizeStorageId(),
     defaultQualityId = this[KEY_DEFAULT_QUALITY].sanitizeStorageId(),
+    videoCodecIds = this[KEY_VIDEO_CODECS].orEmpty().sanitizeStorageIds(),
+    backupCdnEnabled = this[KEY_BACKUP_CDN] ?: AppPreferences.DEFAULT_BACKUP_CDN_ENABLED,
     keepScreenOnEnabled = this[KEY_KEEP_SCREEN_ON] ?: AppPreferences.DEFAULT_KEEP_SCREEN_ON_ENABLED,
     commentSortId = this[KEY_COMMENT_SORT].sanitizeStorageId(),
     wifiOnlyDownload = this[KEY_WIFI_ONLY_DOWNLOAD] ?: AppPreferences.DEFAULT_WIFI_ONLY_DOWNLOAD,
@@ -399,6 +419,10 @@ internal fun Preferences.toAppPreferences(): AppPreferences = AppPreferences(
     http2Enabled = this[KEY_HTTP2_ENABLED] ?: AppPreferences.DEFAULT_HTTP2_ENABLED,
     updateCheckEnabled = this[KEY_UPDATE_CHECK_ENABLED] ?: AppPreferences.DEFAULT_UPDATE_CHECK_ENABLED,
 )
+
+/** 多选档位的共同写/读口:每个 id 都走一次单档清洗,空串与超长值直接丢掉 */
+private fun Set<String>.sanitizeStorageIds(): Set<String> =
+    mapNotNullTo(mutableSetOf()) { id -> id.sanitizeStorageId().takeIf { it.isNotEmpty() } }
 
 /** 三格的读序:自己的新键 → 旧版"三格总开关" → 默认(全开) */
 private fun Preferences.tabVisible(key: Preferences.Key<Boolean>, default: Boolean): Boolean =

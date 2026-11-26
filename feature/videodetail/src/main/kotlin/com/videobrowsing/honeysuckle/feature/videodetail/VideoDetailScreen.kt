@@ -62,6 +62,7 @@ import kotlinx.coroutines.launch
  * [VideoDetailCallbacks.onOpenVideo] 给相关推荐用(同一实例上换 bvid 会由导航层重新建目的地);
  * [VideoDetailCallbacks.onOpenLogin] 给游客态下的互动按钮:点了会去扫码页,而不是丢一句"未登录"就结束。
  */
+@Suppress("LongMethod")
 @Composable
 fun VideoDetailScreen(
     viewModel: VideoDetailViewModel,
@@ -79,13 +80,20 @@ fun VideoDetailScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val engine = rememberPlaybackEngine()
     val host = engine.host
-    // 进页那一刻引擎里是否已经在放这一支:决定注记说"接着后台"还是"从头/从历史点"
-    val continuingOnEntry = remember(state.bvid) { engine.session.value?.bvid == state.bvid }
-    val playerUi = remember { PlayerUi() }
-    // 分 P 清单压在整页之上;清单数据就在这一屏的 state 里,不必另开 ViewModel
+    // 进页那一刻引擎里是否已经在放这一支:决定注记说"接着后台"还是"从头/从历史点",
+    // 也决定封面要不要先盖住播放器解出的第一帧 —— 已经在放(或停在半路)的同一支视频不该被封面闪一下
+    val continuingOnEntry = remember(state.bvid) { engine.isHolding(state.bvid) }
+    val playerUi = remember { PlayerUi(startedByUser = continuingOnEntry) }
+    // 分 P 与合集清单都压在整页之上;数据就在这一屏的 state 里,不必另开 ViewModel
     var partsOpen by rememberSaveable { mutableStateOf(false) }
+    var seasonOpen by rememberSaveable { mutableStateOf(false) }
     // 回调/读数的容器缓存成同一实例,子组件的跳过判断才真正生效;总数传"怎么读"而不是值
-    val intents = rememberDetailIntents(viewModel, callbacks, onOpenParts = { partsOpen = true }) {
+    val intents = rememberDetailIntents(
+        viewModel = viewModel,
+        callbacks = callbacks,
+        onOpenParts = { partsOpen = true },
+        onOpenSeason = { seasonOpen = true },
+    ) {
         onFullscreenChange(true)
     }
     // 评论区整份状态只在 CommentPane 内部收集:顶层只留"总数",打字/翻页/点赞不再拖着播放器重组
@@ -93,8 +101,10 @@ fun VideoDetailScreen(
 
     DetailBackHandler(
         partsOpen = partsOpen,
+        seasonOpen = seasonOpen,
         fullscreen = fullscreen,
         onCloseParts = { partsOpen = false },
+        onCloseSeason = { seasonOpen = false },
         onExitFullscreen = { onFullscreenChange(false) },
         onBack = callbacks.onBack,
     )
@@ -135,6 +145,12 @@ fun VideoDetailScreen(
             state = state,
             viewModel = viewModel,
             onClose = { partsOpen = false },
+        )
+        SeasonPageHost(
+            open = seasonOpen && !inPip,
+            state = state,
+            intents = intents,
+            onClose = { seasonOpen = false },
         )
     }
 
@@ -403,6 +419,9 @@ private fun IntroFeed(
                     onOpenSpace = { intents.onOpenSpace(detail.ownerMid) },
                     onOpenLogin = intents.onOpenLogin,
                 )
+            }
+            if (detail.season?.episodes?.isNotEmpty() == true) {
+                item(key = "season") { SeasonCard(state = state, onOpenAll = intents.onOpenSeason) }
             }
         }
         if (state.parts.size > 1) {

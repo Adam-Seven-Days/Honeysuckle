@@ -28,15 +28,15 @@ object HsyRoute {
     const val SEARCH = "search"
     const val LOGIN = "login"
     const val MESSAGES = "messages"
-    const val VIDEO_PATTERN = "video/{bvid}"
+    const val VIDEO_PATTERN = "video/{bvid}?cid={cid}"
     const val COMMENT_THREAD_PATTERN = "comment-thread/{aid}/{root}/{upMid}"
     const val LIVE_ROOM_PATTERN = "live/{roomId}"
     const val ANIME_PATTERN = "anime/{seasonId}"
     const val SPACE_PATTERN = "space/{mid}"
     const val ARTICLE_PATTERN = "article/{articleId}"
 
-    /** bvid 只由字母数字组成(如 `BV1xx411c7mD`),不含需要转义的字符 */
-    fun video(bvid: String): String = "video/$bvid"
+    /** bvid 只由字母数字组成;cid 为 0 时沿用默认分 P,否则直接定位到指定分 P。 */
+    fun video(bvid: String, cid: Long = 0L): String = if (cid > 0L) "video/$bvid?cid=$cid" else "video/$bvid"
 
     /**
      * 某一楼的楼中楼页。

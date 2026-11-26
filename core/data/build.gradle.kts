@@ -29,4 +29,6 @@ dependencies {
     // 绑定与调度器槽(@Module / @Binds / @Qualifiers)在本模块,Hilt 插件仍只挂在 :app
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
+
+    testImplementation(kotlin("test-junit"))
 }

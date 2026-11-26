@@ -25,6 +25,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -181,6 +183,36 @@ internal fun <T> TierRow(
         ) {
             options.forEach { option ->
                 TierChip(text = name(option), selected = option == selected, onClick = { onSelect(option) })
+            }
+        }
+    }
+}
+
+@Suppress("LongParameterList")
+@Composable
+internal fun <T> MultiSelectRow(
+    label: String,
+    options: List<T>,
+    selected: Set<T>,
+    name: (T) -> String,
+    onToggle: (T) -> Unit,
+    supporting: String,
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+        Text(text = label, style = Hsy.typography.bodyLarge, color = Hsy.colors.onSurface)
+        Text(text = supporting, style = Hsy.typography.bodyMedium, color = Hsy.colors.onSurfaceVariant)
+        Row(
+            modifier = Modifier.padding(top = 4.dp).horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            options.forEach { option ->
+                val checked = option in selected
+                FilterChip(
+                    selected = checked,
+                    onClick = { onToggle(option) },
+                    modifier = Modifier.padding(end = 8.dp).semantics { this.selected = checked },
+                    label = { Text(name(option)) },
+                )
             }
         }
     }

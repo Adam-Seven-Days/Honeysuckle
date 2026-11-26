@@ -21,6 +21,8 @@ data class VideoDetail(
     val stat: VideoStat = VideoStat(),
     /** 分 P(单 P 视频为一项) */
     val parts: List<VideoPart> = emptyList(),
+    /** UP 主投稿合集;普通视频没有这一块 */
+    val season: VideoSeason? = null,
     val canWatch: Boolean? = null,
     val canDownload: Boolean? = null,
 )
@@ -43,5 +45,24 @@ data class VideoPart(
     /** 1 起的分 P 序号 */
     val index: Int,
     val title: String,
+    val durationSec: Int = 0,
+)
+
+/** UP 主投稿合集;选集顺序以平台 episodes 顺序为准。 */
+data class VideoSeason(
+    val id: Long,
+    val title: String,
+    val coverUrl: String,
+    val description: String = "",
+    val totalCount: Int = 0,
+    val episodes: List<VideoSeasonEpisode> = emptyList(),
+)
+
+data class VideoSeasonEpisode(
+    val bvid: String,
+    val cid: Long,
+    val aid: Long = 0,
+    val title: String = "",
+    val coverUrl: String = "",
     val durationSec: Int = 0,
 )

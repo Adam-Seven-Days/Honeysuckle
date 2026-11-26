@@ -7,6 +7,7 @@ import com.videobrowsing.honeysuckle.core.designsystem.component.HsySettingRow
 import com.videobrowsing.honeysuckle.core.designsystem.ui.Switch
 import com.videobrowsing.honeysuckle.core.model.DownloadQuality
 import com.videobrowsing.honeysuckle.core.model.QualityTier
+import com.videobrowsing.honeysuckle.core.model.VideoCodec
 import com.videobrowsing.honeysuckle.core.player.AutoPlayPolicy
 import com.videobrowsing.honeysuckle.core.player.FullscreenOrientation
 import com.videobrowsing.honeysuckle.core.player.PipAspect
@@ -62,6 +63,28 @@ private fun StartOptionsCard(app: AppPreferences, onAction: (SettingsAction) -> 
             name = { it.displayName },
             supporting = "没有该档时自动降低,播放中仍可切换",
             onSelect = { onAction(SettingsAction.DefaultQuality(it.storageId)) },
+        )
+        MultiSelectRow(
+            label = "视频编码",
+            options = VideoCodec.entries.toList(),
+            selected = VideoCodec.selectionOf(app.videoCodecIds),
+            name = { it.displayName },
+            supporting = "可多选,优先使用 AV1、HEVC,解不了时向下兼容",
+            onToggle = { onAction(SettingsAction.ToggleVideoCodec(it.storageId)) },
+        )
+        HsySettingRow(
+            title = "备用 CDN",
+            supporting = if (app.backupCdnEnabled) {
+                "主线路加载失败时自动切换备用地址"
+            } else {
+                "只使用主线路,失败后直接提示重试"
+            },
+            trailing = {
+                Switch(
+                    checked = app.backupCdnEnabled,
+                    onCheckedChange = { onAction(SettingsAction.BackupCdnEnabled(it)) },
+                )
+            },
         )
     }
     WatchingOptionsCard(app, onAction)

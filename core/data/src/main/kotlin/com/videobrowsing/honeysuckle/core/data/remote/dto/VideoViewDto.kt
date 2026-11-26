@@ -3,6 +3,8 @@ package com.videobrowsing.honeysuckle.core.data.remote.dto
 import com.videobrowsing.honeysuckle.core.model.VideoBrief
 import com.videobrowsing.honeysuckle.core.model.VideoDetail
 import com.videobrowsing.honeysuckle.core.model.VideoPart
+import com.videobrowsing.honeysuckle.core.model.VideoSeason
+import com.videobrowsing.honeysuckle.core.model.VideoSeasonEpisode
 import com.videobrowsing.honeysuckle.core.model.VideoStat
 import kotlinx.serialization.json.JsonObject
 
@@ -26,6 +28,7 @@ internal data class VideoViewDto(
     val ownerSign: String,
     val stat: StatDto,
     val pages: List<PageDto>,
+    val season: SeasonDto?,
     val access: VideoAccessFlags,
 ) {
 
@@ -40,6 +43,42 @@ internal data class VideoViewDto(
     )
 
     internal data class PageDto(val cid: Long, val page: Int, val part: String, val durationSec: Int)
+
+    internal data class SeasonDto(
+        val id: Long,
+        val title: String,
+        val coverUrl: String,
+        val description: String,
+        val totalCount: Int,
+        val episodes: List<EpisodeDto>,
+    ) {
+        fun toDomain(): VideoSeason = VideoSeason(
+            id = id,
+            title = title,
+            coverUrl = coverUrl,
+            description = description,
+            totalCount = totalCount,
+            episodes = episodes.map { it.toDomain() },
+        )
+    }
+
+    internal data class EpisodeDto(
+        val bvid: String,
+        val cid: Long,
+        val aid: Long,
+        val title: String,
+        val coverUrl: String,
+        val durationSec: Int,
+    ) {
+        fun toDomain(): VideoSeasonEpisode = VideoSeasonEpisode(
+            bvid = bvid,
+            cid = cid,
+            aid = aid,
+            title = title,
+            coverUrl = coverUrl,
+            durationSec = durationSec,
+        )
+    }
 
     fun toDomain(): VideoDetail = VideoDetail(
         brief = VideoBrief(
@@ -69,6 +108,7 @@ internal data class VideoViewDto(
         parts = pages.map {
             VideoPart(cid = it.cid, index = it.page, title = it.part, durationSec = it.durationSec)
         },
+        season = season?.toDomain(),
         canWatch = access.canWatch,
         canDownload = access.canDownload,
     )
@@ -116,7 +156,35 @@ internal data class VideoViewDto(
                         )
                     }
                 }.orEmpty(),
+                season = data.objOr("ugc_season")?.let { seasonDtoOf(it) },
                 access = data.accessFlagsOf(),
+            )
+        }
+
+        private fun seasonDtoOf(node: JsonObject): SeasonDto? {
+            val episodes = node.arrOr("episodes").orEmpty().mapNotNull { element ->
+                (element as? JsonObject)?.let { episodeDtoOrNull(it) }
+            }
+            if (episodes.isEmpty()) return null
+            return SeasonDto(
+                id = node.longOr("id"),
+                title = node.stringOr("title"),
+                coverUrl = httpsCover(node.stringOr("cover")),
+                description = node.stringOr("intro"),
+                totalCount = node.intOr("ep_count").takeIf { it > 0 } ?: episodes.size,
+                episodes = episodes,
+            )
+        }
+
+        private fun episodeDtoOrNull(node: JsonObject): EpisodeDto? {
+            val bvid = node.stringOr("bvid").takeIf { it.isNotBlank() } ?: return null
+            return EpisodeDto(
+                bvid = bvid,
+                cid = node.longOr("cid"),
+                aid = node.longOr("aid"),
+                title = node.stringOr("title"),
+                coverUrl = httpsCover(node.stringOr("cover")),
+                durationSec = node.intOr("duration"),
             )
         }
     }

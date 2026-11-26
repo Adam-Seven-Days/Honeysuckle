@@ -64,6 +64,12 @@ interface AppPreferenceStore {
 
     suspend fun setDefaultQualityId(id: String)
 
+    /** 视频编码多选:盘上只落英文 id 集合,空集 = 没设过(读侧退 AVC) */
+    suspend fun setVideoCodecIds(ids: Set<String>)
+
+    /** 备用 CDN:主地址失败时换 `backupUrls` 重试 */
+    suspend fun setBackupCdnEnabled(enabled: Boolean)
+
     suspend fun setKeepScreenOnEnabled(enabled: Boolean)
 
     suspend fun setCommentSortId(id: String)

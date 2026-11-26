@@ -1,6 +1,7 @@
 package com.videobrowsing.honeysuckle.feature.videodetail
 
 import com.videobrowsing.honeysuckle.core.datastore.general.AppPreferences
+import com.videobrowsing.honeysuckle.core.model.VideoCodec
 
 /** 播放侧从偏好盘折出的几档读数:同一对象一起回流,屏上不会出现"手势关了但横滑还在"的半套状态 */
 internal data class PlayerToggles(
@@ -15,6 +16,9 @@ internal data class PlayerToggles(
     val fullscreenOrientationId: String,
     val rememberBrightness: Boolean,
     val rememberedBrightness: Float,
+    /** 已按 AV1 → HEVC → AVC 排好的编码尝试顺序;空集在盘上表示没设过,这里已退成 [VideoCodec.AVC] */
+    val videoCodecs: List<VideoCodec>,
+    val backupCdnEnabled: Boolean,
 ) {
     companion object {
         fun of(app: AppPreferences) = PlayerToggles(
@@ -29,6 +33,8 @@ internal data class PlayerToggles(
             fullscreenOrientationId = app.fullscreenOrientationId,
             rememberBrightness = app.rememberBrightnessEnabled,
             rememberedBrightness = app.rememberedBrightness,
+            videoCodecs = VideoCodec.orderedSelection(app.videoCodecIds),
+            backupCdnEnabled = app.backupCdnEnabled,
         )
     }
 }

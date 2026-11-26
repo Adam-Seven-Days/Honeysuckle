@@ -32,6 +32,7 @@ import com.videobrowsing.honeysuckle.core.model.Playback
 import com.videobrowsing.honeysuckle.core.model.PlaybackTrackSelector
 import com.videobrowsing.honeysuckle.core.model.QualityTier
 import com.videobrowsing.honeysuckle.core.model.VideoAccessType
+import com.videobrowsing.honeysuckle.core.model.VideoCodec
 import com.videobrowsing.honeysuckle.core.model.VideoDetail
 import com.videobrowsing.honeysuckle.core.model.VideoInteraction
 import com.videobrowsing.honeysuckle.core.model.VideoPart
@@ -47,8 +48,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** 导航目的地里的那个参数名;`:app` 的路由模板必须使用同一个字面量 */
+/** 导航目的地里的参数名;`:app` 的路由模板必须使用同两个字面量。 */
 const val VIDEO_BVID_ARG = "bvid"
+const val VIDEO_CID_ARG = "cid"
 
 /** 互动回执在屏上留多久 */
 private const val MESSAGE_LINGER_MS = 4_000L
@@ -87,6 +89,15 @@ data class VideoDetailUiState(
     val downloads: List<DownloadTask> = emptyList(),
     val qualities: List<QualityOption> = emptyList(),
     val selectedQualityId: Int = PlaybackTrackSelector.AUTO_QUALITY,
+    /**
+     * 设置里勾选的编码,已按 AV1 → HEVC → AVC 排成尝试顺序。
+     *
+     * 只在"选这一对轨"时读:用户看着看着改设置,不该把手上这一支重新起播;
+     * 下一次换清晰度/换分 P 落座时才按新顺序挑。
+     */
+    val videoCodecs: List<VideoCodec> = listOf(VideoCodec.AVC),
+    /** 备用 CDN 开关:交给播放宿主在错误回调里决定要不要换地址重试 */
+    val backupCdnEnabled: Boolean = AppPreferences.DEFAULT_BACKUP_CDN_ENABLED,
     val speed: Float = AppPreferences.DEFAULT_PLAYBACK_SPEED,
     /** 当前分 P 的续播起点(秒);换了 P 或上次看的是别的 P 时为 0 */
     val resumePositionSec: Int = 0,
@@ -242,6 +253,7 @@ class VideoDetailViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val bvid: String = savedStateHandle.get<String>(VIDEO_BVID_ARG).orEmpty()
+    private var pendingCid: Long? = savedStateHandle.get<Long>(VIDEO_CID_ARG)?.takeIf { it > 0L }
 
     private val mutableState = MutableStateFlow(VideoDetailUiState(bvid = bvid))
     val state: StateFlow<VideoDetailUiState> = mutableState.asStateFlow()
@@ -476,7 +488,7 @@ class VideoDetailViewModel @Inject constructor(
             when (val result = detailRepository.detail(bvid)) {
                 is HsyResult.Success -> {
                     val detail = result.value
-                    val index = partIndex.coerceIn(0, detail.parts.lastIndex.coerceAtLeast(0))
+                    val index = initialPartIndex(detail, partIndex)
                     mutableState.update { it.copy(detail = detail, detailLoading = false, partIndex = index) }
                     loadRelated()
                     loadInteraction(detail)
@@ -494,13 +506,21 @@ class VideoDetailViewModel @Inject constructor(
                     if (offline == null) {
                         mutableState.update { it.copy(detailLoading = false, detailError = result.error.userMessage()) }
                     } else {
-                        mutableState.update { it.copy(detail = offline, detailLoading = false, detailError = null) }
+                        val index = initialPartIndex(offline, partIndex)
+                        mutableState.update { it.copy(detail = offline, detailLoading = false, partIndex = index) }
                         showMessage("当前无网络,正在播放离线缓存")
-                        loadPart(0)
+                        loadPart(index)
                     }
                 }
             }
         }
+    }
+
+    private fun initialPartIndex(detail: VideoDetail, fallbackIndex: Int): Int {
+        val fallback = fallbackIndex.coerceIn(0, detail.parts.lastIndex.coerceAtLeast(0))
+        val cid = pendingCid ?: return fallback
+        pendingCid = null
+        return detail.parts.indexOfFirst { it.cid == cid }.takeIf { it >= 0 } ?: fallback
     }
 
     private fun loadRelated() {

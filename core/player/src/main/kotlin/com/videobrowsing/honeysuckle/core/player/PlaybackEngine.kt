@@ -5,6 +5,8 @@ import android.content.Intent
 import android.os.SystemClock
 import com.videobrowsing.honeysuckle.core.datastore.account.AccountPreferenceRepository
 import com.videobrowsing.honeysuckle.core.datastore.general.AppPreferenceStore
+import com.videobrowsing.honeysuckle.core.datastore.general.AppPreferences
+import com.videobrowsing.honeysuckle.core.model.MediaTrack
 import com.videobrowsing.honeysuckle.core.model.MediaTrackSelection
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -75,6 +77,7 @@ data class PlaybackExtras(
  * [session]、[progress]、[extras] 是线程安全的 StateFlow,壳层可安全订阅。
  */
 @Singleton
+@Suppress("TooManyFunctions")
 class PlaybackEngine @Inject constructor(
     @ApplicationContext private val context: Context,
     appPreferences: AppPreferenceStore,
@@ -83,6 +86,9 @@ class PlaybackEngine @Inject constructor(
 
     private var hostOrNull: HsyPlayerHost? = null
 
+    /** 设置里那一格"备用 CDN";第一次建宿主时交给它,之后随盘上的值直接改宿主 */
+    private var backupCdnEnabled = AppPreferences.DEFAULT_BACKUP_CDN_ENABLED
+
     /**
      * 唯一那只播放器;第一次被要的时候才建(启动应用不等于要建解码器)。
      *
@@ -90,7 +96,7 @@ class PlaybackEngine @Inject constructor(
      * 这里不做"复活已释放对象"的魔法。
      */
     val host: HsyPlayerHost
-        get() = hostOrNull ?: HsyPlayerHost(context).also { hostOrNull = it }
+        get() = hostOrNull ?: HsyPlayerHost(context, backupCdnEnabled = backupCdnEnabled).also { hostOrNull = it }
 
     /**
      * 已经存在的那只播放器,没有就返回 null。
@@ -153,11 +159,33 @@ class PlaybackEngine @Inject constructor(
                     mutableExtras.value = playbackExtras.state
                 }
         }
+        // 备用 CDN 是"主地址失败才用"的一条退路:建宿主前先记着,已建好的宿主随盘上的值直接改
+        engineScope.launch {
+            appPreferences.preferences
+                .map { it.backupCdnEnabled }
+                .distinctUntilChanged()
+                .collect { enabled ->
+                    backupCdnEnabled = enabled
+                    hostOrNull?.backupCdnEnabled = enabled
+                }
+        }
     }
 
-    /** 这一支视频已经坐进播放器且仍是当前会话:重新进入详情页时据此跳过重开播 */
-    fun isSeated(bvid: String, cid: Long): Boolean =
-        hostOrNull != null && mutableSession.value?.let { it.bvid == bvid && it.cid == cid } == true
+    /**
+     * 这一支视频已经坐进播放器且仍是当前会话,并且那只播放器还能接着播。
+     *
+     * 只比 bvid/cid 不够:错误态与还没 prepare 成功的 IDLE 会留在会话表里,
+     * 重新进页面若把这种"坏会话"领回来,屏上就是点进去黑屏、点播放不动。
+     */
+    fun isSeated(bvid: String, cid: Long): Boolean {
+        val host = hostOrNull ?: return false
+        val seated = mutableSession.value ?: return false
+        return seated.bvid == bvid && seated.cid == cid && host.canContinuePlayback()
+    }
+
+    /** 引擎里坐着这一支且还能继续播:详情页进页时据此决定"接着后台"还是重新选轨落座 */
+    fun isHolding(bvid: String): Boolean =
+        mutableSession.value?.bvid == bvid && hostOrNull?.canContinuePlayback() == true
 
     /**
      * 开播并确保前台服务在场。
@@ -171,6 +199,7 @@ class PlaybackEngine @Inject constructor(
         startAtMs: Long,
         session: PlaybackSession,
         autoStart: Boolean = true,
+        fallbackVideos: List<MediaTrack> = emptyList(),
     ): MediaTrackSelection? {
         val seated = host.play(
             selection = selection,
@@ -181,6 +210,7 @@ class PlaybackEngine @Inject constructor(
                 artworkUrl = session.coverUrl,
             ),
             autoStart = autoStart,
+            fallbackVideos = fallbackVideos,
         ) ?: return null
         if (mutableSession.value?.let { it.bvid == session.bvid && it.cid == session.cid } != true) {
             playbackExtras.clearAbPoints()
@@ -224,10 +254,7 @@ class PlaybackEngine @Inject constructor(
     /** 用户明确关掉播放(小窗的叉、通知栏划走):停媒体、清通知,但不释放实例 */
     fun stop() {
         ticker.stop()
-        hostOrNull?.let {
-            it.player.stop()
-            it.player.clearMediaItems()
-        }
+        hostOrNull?.stop()
         mutableSession.value = null
         mutableProgress.value = null
         playbackExtras.reset()

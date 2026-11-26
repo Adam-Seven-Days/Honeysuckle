@@ -1,3 +1,5 @@
+@file:Suppress("TooManyFunctions")
+
 package com.videobrowsing.honeysuckle.feature.videodetail
 
 import android.view.LayoutInflater
@@ -12,8 +14,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -29,6 +33,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.keepScreenOn
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -67,7 +72,15 @@ import kotlinx.coroutines.withContext
  * 字段都是 Compose 的 [mutableStateOf]:实例本身在页面生命周期内不变,读值处自动订阅。
  */
 @Stable
-internal class PlayerUi {
+internal class PlayerUi(
+    /**
+     * 进页那一刻画面是否已经在动(从别的页面/小窗回到同一支视频)。
+     *
+     * 它只决定封面要不要先盖住画面:已经在动的视频不该被自己的封面闪一下,
+     * 而停在第一帧的视频要等真正开播之后才让位(见 `PlayerPoster`)。
+     */
+    startedByUser: Boolean = false,
+) {
     var playing by mutableStateOf(false)
     var ended by mutableStateOf(false)
     var positionMs by mutableStateOf(0L)
@@ -83,8 +96,11 @@ internal class PlayerUi {
      * 它是"自动播放"那一档的第二半个判据:设置说"不自动播",说的是**第一次进这一段**别自己动;
      * 用户已经按过播放、接着换清晰度或换分 P 时被拦在第二帧不动,那不是他要的效果。
      * 读数挂在 [PlayerUi] 而不是 ViewModel:它跟着这一处渲染面的生命周期走,退页就作废。
+     *
+     * 它同时管封面:进页时播放器解出的第一帧是"上次看到哪儿"的定格,不是这支视频的样子;
+     * 画面真的动起来之前屏上盖详情封面,动过之后封面不再回来(中途暂停看到的是暂停的那一帧)。
      */
-    var startedByUser by mutableStateOf(false)
+    var startedByUser by mutableStateOf(startedByUser)
 
     /** 竖向手势的屏上读数(亮度 / 音量);null = 没有正在说的事 */
     var gestureLabel by mutableStateOf<String?>(null)
@@ -250,11 +266,15 @@ internal fun PlayerStage(inputs: PlayerStageInputs, intents: PlayerIntents, modi
             )
         }
 
+        // 第一帧在封面之下:进页时播放器会先解出起点那一帧,那是"上次看到哪儿"的定格,
+        // 不是这支视频的样子。盖上详情封面,等画面真的动起来再让位。
+        PlayerPoster(inputs.state, inputs.ui)
+
         GestureLayer(inputs.host, inputs.ui, hasVideo, inputs.gestureOptions, intents.onBrightness)
 
         GestureHud(inputs.ui.gestureLabel)
 
-        PlayerPlaceholders(inputs.state, inputs.ui, intents)
+        PlayerPlaceholders(inputs.state, intents)
 
         val previewEnded = inputs.state.playback?.isPreview == true && inputs.ui.ended
         if (hasVideo && inputs.ui.controlsVisible && !previewEnded) PlayerControls(inputs, intents)
@@ -265,8 +285,7 @@ internal fun PlayerStage(inputs: PlayerStageInputs, intents: PlayerIntents, modi
 }
 
 @Composable
-private fun BoxScope.PlayerPlaceholders(state: VideoDetailUiState, ui: PlayerUi, intents: PlayerIntents) {
-    val error = ui.error
+private fun BoxScope.PlayerPlaceholders(state: VideoDetailUiState, intents: PlayerIntents) {
     when {
         state.playbackError != null && state.playback == null -> Box(
             modifier = Modifier.fillMaxSize().padding(24.dp),
@@ -303,64 +322,91 @@ private fun BoxScope.PlayerPlaceholders(state: VideoDetailUiState, ui: PlayerUi,
                 )
             }
         }
-
-        error != null -> Column(
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 84.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                text = checkNotNull(error),
-                style = Hsy.typography.bodySmall,
-                color = Color(PLAYER_ERROR_ARGB),
-            )
-            // 播放中途的解码/取流错误会把播放器打回 IDLE,resume() 救不回来,只有重取流一条路
-            TextButton(onClick = intents.onRetry) { Text("重试", color = Color.White) }
-        }
     }
 }
 
 @Composable
 private fun PlayerControls(inputs: PlayerStageInputs, intents: PlayerIntents) {
-    val host = inputs.host
-    val ui = inputs.ui
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = CONTROL_SCRIM_ALPHA))) {
-        PlayerTopRow(inputs, intents)
+    val needsRetry = inputs.ui.error != null || inputs.host.player.playerError != null
+    val scrimAlpha = if (needsRetry) ERROR_SCRIM_ALPHA else CONTROL_SCRIM_ALPHA
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = scrimAlpha))) {
+        if (!needsRetry) PlayerTopRow(inputs, intents)
+        PlayerCenterControl(inputs.host, inputs.ui, inputs.ui.error, needsRetry, intents.onRetry)
+        if (!needsRetry) PlayerBottomControls(inputs, intents)
+    }
+}
 
+@Composable
+private fun BoxScope.PlayerCenterControl(
+    host: HsyPlayerHost,
+    ui: PlayerUi,
+    error: String?,
+    needsRetry: Boolean,
+    onRetry: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.align(Alignment.Center).fillMaxWidth().padding(horizontal = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        if (error != null) {
+            Text(
+                text = error,
+                style = Hsy.typography.bodyMedium,
+                color = Color.White,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.Black.copy(alpha = CONTROL_SCRIM_ALPHA))
+                    .padding(16.dp),
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+        val buttonShape = if (needsRetry) RoundedCornerShape(32.dp) else CircleShape
+        val buttonSize = if (needsRetry) Modifier.width(96.dp).height(64.dp) else Modifier.size(64.dp)
         Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .size(64.dp)
-                .clip(CircleShape)
+            modifier = buttonSize
+                .clip(buttonShape)
                 .background(Color.Black.copy(alpha = CONTROL_SCRIM_ALPHA))
-                .clickable {
-                    if (host.isPlaying) host.pause() else host.resume()
+                .clickable(role = Role.Button) {
+                    when {
+                        needsRetry -> onRetry()
+                        host.isPlaying -> host.pause()
+                        else -> host.resume()
+                    }
                     ui.controlsVisible = true
                 },
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = if (ui.playing) "暂停" else "播放",
+                text = when {
+                    needsRetry -> "重试播放"
+                    ui.playing -> "暂停"
+                    else -> "播放"
+                },
                 style = Hsy.typography.titleMedium,
                 color = Color.White,
             )
         }
+    }
+}
 
-        Column(
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 8.dp),
-        ) {
-            SeekRow(host, ui)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                QualityMenu(inputs.state, intents.onSelectQuality)
-                SpeedMenu(inputs.state.speed, intents.onSelectSpeed)
-                Spacer(modifier = Modifier.weight(1f))
-                // AB 是设置里的可选项(默认关):关掉时控制条不摆这一枚,引擎也停止回跳
-                if (inputs.extras.abLoopEnabled) {
-                    StageTap(inputs.extras.abLabel, intents.onCycleAb)
-                }
-                SleepMenu(inputs.extras.sleepRemainingMs, intents.onSetSleep)
-                intents.window.onEnterPip?.let { StageTap("画中画", it) }
-                StageTap(if (inputs.fullscreen) "退出全屏" else "全屏", intents.window.onToggleFullscreen)
+@Composable
+private fun BoxScope.PlayerBottomControls(inputs: PlayerStageInputs, intents: PlayerIntents) {
+    Column(
+        modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 8.dp),
+    ) {
+        SeekRow(inputs.host, inputs.ui)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            QualityMenu(inputs.state, intents.onSelectQuality)
+            SpeedMenu(inputs.state.speed, intents.onSelectSpeed)
+            Spacer(modifier = Modifier.weight(1f))
+            if (inputs.extras.abLoopEnabled) {
+                StageTap(inputs.extras.abLabel, intents.onCycleAb)
             }
+            SleepMenu(inputs.extras.sleepRemainingMs, intents.onSetSleep)
+            intents.window.onEnterPip?.let { StageTap("画中画", it) }
+            StageTap(if (inputs.fullscreen) "退出全屏" else "全屏", intents.window.onToggleFullscreen)
         }
     }
 }

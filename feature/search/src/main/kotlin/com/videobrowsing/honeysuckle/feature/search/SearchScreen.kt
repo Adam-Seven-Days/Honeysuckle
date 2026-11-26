@@ -1,3 +1,5 @@
+@file:Suppress("TooManyFunctions")
+
 package com.videobrowsing.honeysuckle.feature.search
 
 import androidx.compose.foundation.background
@@ -266,6 +268,7 @@ private fun ResultFooter(state: SearchUiState, onAction: (SearchAction) -> Unit)
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun History(state: SearchUiState, onAction: (SearchAction) -> Unit, onAskClear: () -> Unit) {
+    var managingHistory by remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
@@ -278,7 +281,12 @@ private fun History(state: SearchUiState, onAction: (SearchAction) -> Unit, onAs
                 color = Hsy.colors.onSurface,
             )
             if (state.history.isNotEmpty()) {
-                TextButton(onClick = onAskClear) { Text("清空") }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = onAskClear) { Text("全部清空") }
+                    TextButton(onClick = { managingHistory = !managingHistory }) {
+                        Text(if (managingHistory) "完成" else "管理")
+                    }
+                }
             }
         }
         if (state.history.isEmpty()) {
@@ -292,29 +300,42 @@ private fun History(state: SearchUiState, onAction: (SearchAction) -> Unit, onAs
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 state.history.forEach { entry ->
-                    AssistChip(
-                        onClick = { onAction(SearchAction.Submit(entry.keyword)) },
-                        label = {
-                            Text(
-                                text = entry.keyword,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        },
-                        trailingIcon = {
-                            Icon(
-                                imageVector = HsyIcons.close,
-                                contentDescription = "删除搜索词 ${entry.keyword}",
-                                modifier = Modifier
-                                    .size(16.dp)
-                                    .clickable { onAction(SearchAction.RemoveHistory(entry.keyword)) },
-                            )
-                        },
+                    HistoryChip(
+                        keyword = entry.keyword,
+                        managingHistory = managingHistory,
+                        onAction = onAction,
                     )
                 }
             }
         }
     }
+}
+
+@Composable
+private fun HistoryChip(keyword: String, managingHistory: Boolean, onAction: (SearchAction) -> Unit) {
+    AssistChip(
+        onClick = { onAction(SearchAction.Submit(keyword)) },
+        label = {
+            Text(
+                text = keyword,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+        trailingIcon = if (managingHistory) {
+            {
+                Icon(
+                    imageVector = HsyIcons.close,
+                    contentDescription = "删除搜索词 $keyword",
+                    modifier = Modifier
+                        .size(16.dp)
+                        .clickable { onAction(SearchAction.RemoveHistory(keyword)) },
+                )
+            }
+        } else {
+            null
+        },
+    )
 }
 
 @Composable

@@ -6,6 +6,7 @@ import com.videobrowsing.honeysuckle.core.datastore.danmaku.DanmakuPreferenceRep
 import com.videobrowsing.honeysuckle.core.datastore.danmaku.DanmakuPreferences
 import com.videobrowsing.honeysuckle.core.datastore.general.AppPreferenceRepository
 import com.videobrowsing.honeysuckle.core.datastore.general.AppPreferences
+import com.videobrowsing.honeysuckle.core.model.VideoCodec
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
@@ -81,6 +82,12 @@ sealed interface SettingsAction {
 
     /** 播放默认清晰度(英文 id,与 `QualityTier.storageId` 同表) */
     data class DefaultQuality(val storageId: String) : SettingsAction
+
+    /** 视频编码多选:一次翻一格,至少保留一种(词表在 `:core:model` 的 `VideoCodec`) */
+    data class ToggleVideoCodec(val storageId: String) : SettingsAction
+
+    /** 备用 CDN:主地址失败时换 `backupUrls` 重试 */
+    data class BackupCdnEnabled(val enabled: Boolean) : SettingsAction
     data class KeepScreenOnEnabled(val enabled: Boolean) : SettingsAction
 
     /** 详情页评论的默认排序(英文 id,与 `CommentSort.storageId` 同表) */
@@ -164,6 +171,7 @@ class SettingsViewModel @Inject constructor(
             when (action) {
                 is SettingsAction.AddBlockedWord -> addBlockedWord(action.word)
                 is SettingsAction.RemoveBlockedWord -> removeBlockedWord(action.word)
+                is SettingsAction.ToggleVideoCodec -> toggleVideoCodec(action.storageId)
                 is SettingsAction.ResetSection -> reset(action.section)
                 SettingsAction.DismissMessage -> mutableMessage.value = null
                 else -> writeOne(action)
@@ -254,6 +262,8 @@ class SettingsViewModel @Inject constructor(
             is SettingsAction.AbLoopEnabled,
             is SettingsAction.AutoPlayPolicy,
             is SettingsAction.DefaultQuality,
+            is SettingsAction.ToggleVideoCodec,
+            is SettingsAction.BackupCdnEnabled,
             is SettingsAction.KeepScreenOnEnabled,
             is SettingsAction.BackgroundPlayEnabled,
             is SettingsAction.FullscreenOrientation,
@@ -315,6 +325,7 @@ class SettingsViewModel @Inject constructor(
         when (action) {
             is SettingsAction.AutoPlayPolicy -> appPreferences.setAutoPlayPolicyId(action.storageId)
             is SettingsAction.DefaultQuality -> appPreferences.setDefaultQualityId(action.storageId)
+            is SettingsAction.BackupCdnEnabled -> appPreferences.setBackupCdnEnabled(action.enabled)
             is SettingsAction.KeepScreenOnEnabled -> appPreferences.setKeepScreenOnEnabled(action.enabled)
             is SettingsAction.BackgroundPlayEnabled -> appPreferences.setBackgroundPlayEnabled(action.enabled)
             is SettingsAction.FullscreenOrientation -> appPreferences.setFullscreenOrientationId(action.storageId)
@@ -351,6 +362,23 @@ class SettingsViewModel @Inject constructor(
             is SettingsAction.CommentSort -> appPreferences.setCommentSortId(action.storageId)
             else -> Unit
         }
+    }
+
+    /**
+     * 编码多选:读盘上当前那一份再翻一格,不拿屏上的快照。
+     *
+     * 最后一种不允许取消:全不选等于"什么编码都不要",选轨只能退回平台默认,
+     * 与用户手里这份设置对不上;点掉最后一格时收回这一下并说一句。
+     */
+    private suspend fun toggleVideoCodec(storageId: String) {
+        val codec = VideoCodec.fromStorageId(storageId) ?: return
+        val current = VideoCodec.selectionOf(appPreferences.preferences.first().videoCodecIds)
+        val next = if (codec in current) current - codec else current + codec
+        if (next.isEmpty()) {
+            showMessage("至少保留一种视频编码")
+            return
+        }
+        appPreferences.setVideoCodecIds(next.mapTo(mutableSetOf()) { it.storageId })
     }
 
     private suspend fun addBlockedWord(raw: String) {

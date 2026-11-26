@@ -2,11 +2,13 @@ package com.videobrowsing.honeysuckle.core.player
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
@@ -25,6 +27,7 @@ import com.videobrowsing.honeysuckle.core.model.MediaTrack
 import com.videobrowsing.honeysuckle.core.model.MediaTrackSelection
 import com.videobrowsing.honeysuckle.core.model.Playback
 import com.videobrowsing.honeysuckle.core.model.PlaybackTrackSelector
+import com.videobrowsing.honeysuckle.core.model.VideoCodec
 import com.videobrowsing.honeysuckle.core.network.headers.HsyChannel
 import com.videobrowsing.honeysuckle.core.network.headers.HsyHeaderFactory
 
@@ -36,6 +39,23 @@ private const val PREVIEW_BUFFER_BYTES = 2 * 1024 * 1024
 
 /** 平台 CDN 只认浏览器指纹,UA 这一条头要从 [HsyHeaderFactory] 的产物里取出来单独交一份 */
 private const val HEADER_USER_AGENT = "User-Agent"
+
+private const val PLAYER_LOG_TAG = "HsyPlayerHost"
+
+/**
+ * 一次落座的原始参数。
+ *
+ * 备用 CDN 重试要按"同一对轨、同一个起点、同一个自动播决定"重开,而不是再从页面取一遍状态:
+ * 页面上的清晰度可能已经变了,而这次重试只是同一条流换节点。
+ */
+private class SeatRequest(
+    val video: MediaTrack,
+    val audio: MediaTrack,
+    val startAtMs: Long,
+    val autoStart: Boolean,
+    val metadata: PlaybackMetadata?,
+    val fallbackVideos: List<MediaTrack> = emptyList(),
+)
 
 /**
  * 交给前台通知与锁屏的那点身份:标题 / UP / 封面。
@@ -60,17 +80,27 @@ data class PlaybackMetadata(val title: String, val artist: String, val artworkUr
  * Media3 的这套 source/dataSource 类型都标了 `@UnstableApi`,按官方口径整类挂注解,
  * 而不是在每一处使用点补一句抑制。
  *
- * **备用线路([MediaTrack.backupUrls])这一轮没接**:换 URL 重试要挂在播放器的错误回调上,
- * 而那条路径在 JVM 里测不到、真网又不会稳定复现,不落笔比落一段无人核验的代码诚实(记为未闭环)。
+ * **备用线路([MediaTrack.backupUrls])与编码回退都挂在播放器错误回调上**:IO/解析错误换节点,
+ * 解码错误退到下一档已选编码;重开时从当前播放头接着走,自动播决定与通知元信息沿用落座时的值。
  */
 @Suppress("TooManyFunctions") // 播放适配面按能力逐条展开(取流/选轨/直播/倍速/seek/释放),拆出去反而要重复持有播放器
 @OptIn(UnstableApi::class)
-class HsyPlayerHost(context: Context, referer: String = HsyChannel.WEB.refererBase) :
-    PlayerHost,
+class HsyPlayerHost(
+    context: Context,
+    referer: String = HsyChannel.WEB.refererBase,
+    /** 设置里那一格"备用 CDN";由引擎随盘上的值更新,不在这里自己读盘 */
+    var backupCdnEnabled: Boolean = true,
+) : PlayerHost,
     DanmakuClock {
 
     /** 签名 URL 的占位表:`MediaItem` 只拿占位 URI,真实地址在打开 DataSource 前才还原 */
     private val urlRegistry = MediaUrlRegistry()
+
+    /** 最近一次落座的原样参数;空 = 当前没有可换地址重试的点播源(直播/已停止) */
+    private var seatRequest: SeatRequest? = null
+
+    private var videoFailoverAttempt = 0
+    private var audioFailoverAttempt = 0
 
     private val dataSourceFactory: DataSource.Factory =
         playbackDataSource(context.applicationContext, referer, urlRegistry)
@@ -88,6 +118,17 @@ class HsyPlayerHost(context: Context, referer: String = HsyChannel.WEB.refererBa
             true,
         )
         setWakeMode(C.WAKE_MODE_NETWORK)
+    }
+
+    init {
+        player.addListener(
+            object : Player.Listener {
+                override fun onPlayerError(error: PlaybackException) {
+                    tryBackupCdn(error)
+                    tryFallbackVideo(error)
+                }
+            },
+        )
     }
 
     override val isPlaying: Boolean get() = player.isPlaying
@@ -142,21 +183,105 @@ class HsyPlayerHost(context: Context, referer: String = HsyChannel.WEB.refererBa
         startAtMs: Long = 0L,
         metadata: PlaybackMetadata? = null,
         autoStart: Boolean = true,
+        fallbackVideos: List<MediaTrack> = emptyList(),
     ): MediaTrackSelection? {
         if (selection == null) return null
         // 表只服务当前这一条媒体:换源前清掉上一次的占位名
         urlRegistry.clear()
+        seatRequest = SeatRequest(
+            video = selection.video,
+            audio = selection.audio,
+            startAtMs = startAtMs,
+            autoStart = autoStart,
+            metadata = metadata,
+            fallbackVideos = fallbackVideos.filter { it.url != selection.video.url },
+        )
+        resetFailover()
+        seat(selection.video, selection.audio, startAtMs, autoStart, metadata)
+        this.selection = selection
+        return selection
+    }
+
+    /** 用一对轨装源并准备;公开的 `play` 与备用 CDN 重试共用这一条路径 */
+    private fun seat(
+        video: MediaTrack,
+        audio: MediaTrack,
+        startAtMs: Long,
+        autoStart: Boolean,
+        metadata: PlaybackMetadata?,
+    ) {
         player.setMediaSource(
             MergingMediaSource(
-                progressiveSource(selection.video, metadata),
-                progressiveSource(selection.audio, metadata),
+                progressiveSource(video, metadata),
+                progressiveSource(audio, metadata),
             ),
         )
         player.prepare()
         if (startAtMs > 0L) player.seekTo(startAtMs)
         player.playWhenReady = autoStart
-        this.selection = selection
-        return selection
+    }
+
+    private fun tryBackupCdn(error: PlaybackException) {
+        val request = seatRequest ?: return
+        if (!backupCdnEnabled || !error.mayBeCdnFailure()) return
+        val videoUrls = request.video.playableUrls()
+        val audioUrls = request.audio.playableUrls()
+        val nextVideo = (videoFailoverAttempt + 1).takeIf { it < videoUrls.size }
+        val nextAudio = (audioFailoverAttempt + 1).takeIf { it < audioUrls.size }
+        if (nextVideo == null && nextAudio == null) return
+        nextVideo?.let { videoFailoverAttempt = it }
+        nextAudio?.let { audioFailoverAttempt = it }
+        val video = request.video.copy(url = videoUrls.getOrElse(videoFailoverAttempt) { request.video.url })
+        val audio = request.audio.copy(url = audioUrls.getOrElse(audioFailoverAttempt) { request.audio.url })
+        Log.w(PLAYER_LOG_TAG, "主线路失败(${error.errorCodeName}),改用备用地址")
+        urlRegistry.clear()
+        seat(
+            video = video,
+            audio = audio,
+            startAtMs = player.currentPosition.takeIf { it > 0L } ?: request.startAtMs,
+            autoStart = request.autoStart || player.playWhenReady,
+            metadata = request.metadata,
+        )
+        selection = MediaTrackSelection(video, audio)
+    }
+
+    private fun tryFallbackVideo(error: PlaybackException) {
+        if (!error.mayBeCodecFailure()) return
+        val request = seatRequest ?: return
+        val nextVideo = request.fallbackVideos.firstOrNull() ?: return
+        val startAtMs = player.currentPosition.takeIf { it > 0L } ?: request.startAtMs
+        val autoStart = request.autoStart || player.playWhenReady
+        seatRequest = SeatRequest(
+            video = nextVideo,
+            audio = request.audio,
+            startAtMs = startAtMs,
+            autoStart = autoStart,
+            metadata = request.metadata,
+            fallbackVideos = request.fallbackVideos.drop(1),
+        )
+        resetFailover()
+        urlRegistry.clear()
+        Log.w(
+            PLAYER_LOG_TAG,
+            "解码失败(${error.errorCodeName})," +
+                "改用${VideoCodec.fromCodecid(nextVideo.codecid)?.storageId ?: "备用"}轨",
+        )
+        seat(nextVideo, request.audio, startAtMs, autoStart, request.metadata)
+        selection = MediaTrackSelection(nextVideo, request.audio)
+    }
+
+    private fun PlaybackException.mayBeCdnFailure(): Boolean =
+        errorCodeName.startsWith("ERROR_CODE_IO") || errorCodeName.startsWith("ERROR_CODE_PARSING")
+
+    private fun PlaybackException.mayBeCodecFailure(): Boolean =
+        errorCodeName.contains("DECODING") || errorCodeName.contains("DECODER")
+
+    private fun MediaTrack.playableUrls(): List<String> =
+        (listOf(url) + backupUrls).filter { it.isNotBlank() }.distinct()
+
+    private fun resetFailover() {
+        videoFailoverAttempt = 0
+        audioFailoverAttempt = 0
     }
 
     /** 倍速:播放页只交数值,ExoPlayer 的 `PlaybackParameters` 形状不越过这一层 */
@@ -172,6 +297,9 @@ class HsyPlayerHost(context: Context, referer: String = HsyChannel.WEB.refererBa
      */
     fun playLive(url: String, kind: LiveStreamKind, metadata: PlaybackMetadata? = null) {
         urlRegistry.clear()
+        // 直播地址本身就是一条连续流,没有"这一对点播轨的备用地址"可换
+        seatRequest = null
+        resetFailover()
         val item = mediaItemOfUrl(url, metadata)
         val source = when (kind) {
             LiveStreamKind.HLS -> HlsMediaSource.Factory(dataSourceFactory).createMediaSource(item)
@@ -187,10 +315,39 @@ class HsyPlayerHost(context: Context, referer: String = HsyChannel.WEB.refererBa
         player.playWhenReady = false
     }
 
+    /**
+     * 播放键。
+     *
+     * 三种停住的地方各有一条路:播完(ENDED)从头再来;错误打回 IDLE 时重新 `prepare()`
+     * (只抬 `playWhenReady` 救不回来,这正是"点播放没反应"的那条链);其余情况照常继续。
+     */
     override fun resume() {
-        // Media3 播完停在 ENDED,只把 playWhenReady 抬回来不会从头走;点播放就该重播
-        if (player.playbackState == Player.STATE_ENDED) player.seekTo(0)
+        when (player.playbackState) {
+            Player.STATE_ENDED -> player.seekTo(0)
+            Player.STATE_IDLE -> if (player.currentMediaItem != null) player.prepare()
+            else -> Unit
+        }
         player.playWhenReady = true
+    }
+
+    /**
+     * 这只播放器能不能被重新进页面的同一条视频"领回"。
+     *
+     * 错误态、没有媒体项、以及还没 prepare 成功的 IDLE 都不算:领回一只坏会话,
+     * 用户看到的就是点进去黑屏、按播放也不动;宁可重新选轨落座。
+     */
+    fun canContinuePlayback(): Boolean = player.playerError == null &&
+        player.currentMediaItem != null &&
+        player.playbackState != Player.STATE_IDLE
+
+    /** 停掉当前媒体并清空会话读数;引擎的"用户明确关播"走这里,顺手把备用 CDN 的重试账本清掉 */
+    fun stop() {
+        seatRequest = null
+        resetFailover()
+        selection = null
+        urlRegistry.clear()
+        player.stop()
+        player.clearMediaItems()
     }
 
     /** 跳到某个视频时刻:宿主那边的"清屏重捞"由位置变化自己触发,这里不通知弹幕 */

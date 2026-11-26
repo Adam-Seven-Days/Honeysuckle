@@ -17,11 +17,13 @@ internal class DetailIntents(
     val onEnterPip: (() -> Unit)?,
     val onAction: (VideoDetailAction) -> Unit,
     val onOpenVideo: (String) -> Unit,
+    val onOpenSeasonEpisode: (String, Long) -> Unit,
     val onOpenSpace: (Long) -> Unit,
     val onOpenLogin: () -> Unit,
     val onOpenThread: (aid: Long, rootId: Long, upMid: Long) -> Unit,
     /** 简介页那枚「查看全部 N P」:把分 P 清单页压到整页之上 */
     val onOpenParts: () -> Unit,
+    val onOpenSeason: () -> Unit,
 )
 
 /**
@@ -35,6 +37,7 @@ internal fun rememberDetailIntents(
     viewModel: VideoDetailViewModel,
     callbacks: VideoDetailCallbacks,
     onOpenParts: () -> Unit,
+    onOpenSeason: () -> Unit,
     onToggleFullscreen: () -> Unit,
 ): DetailIntents = remember(viewModel, callbacks) {
     DetailIntents(
@@ -43,9 +46,11 @@ internal fun rememberDetailIntents(
         onEnterPip = callbacks.onEnterPip,
         onAction = viewModel::onAction,
         onOpenVideo = callbacks.onOpenVideo,
+        onOpenSeasonEpisode = callbacks.onOpenSeasonEpisode,
         onOpenSpace = callbacks.onOpenSpace,
         onOpenLogin = callbacks.onOpenLogin,
         onOpenThread = callbacks.onOpenThread,
         onOpenParts = onOpenParts,
+        onOpenSeason = onOpenSeason,
     )
 }

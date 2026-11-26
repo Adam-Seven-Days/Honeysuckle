@@ -32,6 +32,8 @@ internal fun VideoDetailUiState.withPreferences(
     fullscreenOrientationId = toggles.fullscreenOrientationId,
     rememberBrightnessEnabled = toggles.rememberBrightness,
     rememberedBrightness = toggles.rememberedBrightness,
+    videoCodecs = toggles.videoCodecs,
+    backupCdnEnabled = toggles.backupCdnEnabled,
     danmakuPreferences = danmaku,
 )
 
